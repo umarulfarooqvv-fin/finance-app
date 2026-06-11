@@ -44,7 +44,9 @@ git push -u origin main
    | `DAILY_SPENT_SHEET_ID` | `1orMNGjhPKlKPTIQDKFcxd48Fip9K5Wuf5FdLkFWyimc` |
    | `APPS_SCRIPT_URL` | your `…/exec` URL |
    | `APPS_SCRIPT_TOKEN` | your token |
-   | `APP_ACCESS_KEY` | **a new random string — this locks the app** |
+   | `APP_ACCESS_KEY` | **your PIN** — the app shows a PIN screen until entered |
+   | `NTFY_TOPIC` | (optional) random topic name for due-date push alerts |
+   | `CRON_SECRET` | (optional) random string protecting the daily alert cron |
 
    (`DAILY_SPENT_TAB` defaults to `Form Responses 1`; add it only if yours differs.)
 
@@ -52,9 +54,19 @@ git push -u origin main
 
 ## 3. First open
 
-Visit `https://your-app.vercel.app/?key=YOUR_APP_ACCESS_KEY` once — a cookie
-keeps you signed in for a year on that device. Without the key the app returns
-401 Locked. Do this on your phone too.
+Open the app — you'll get a 🔒 PIN screen. Enter your `APP_ACCESS_KEY`; a
+cookie keeps that device signed in for a year. Do it on your phone too.
+
+## 4. Push alerts for card dues (optional, free)
+
+1. Pick a long random topic name, e.g. `farooq-fin-x8k2p9q4w7`.
+2. Set it as `NTFY_TOPIC` in Vercel env vars (+ set `CRON_SECRET` to any random string), redeploy.
+3. Install the **ntfy** app (App Store/Play Store) and subscribe to that exact topic.
+4. Every morning ~8:00 IST the cron checks your cards — you get a push when
+   anything is 🔴 Overdue / ⚠ Due Soon, or a recurring item needs posting.
+   Test it any time by visiting `/api/alerts` while signed in… actually it's
+   cron-only when CRON_SECRET is set; to test manually, temporarily unset CRON_SECRET
+   or run `curl -H "Authorization: Bearer YOUR_CRON_SECRET" https://your-app.vercel.app/api/alerts`.
 
 ## Notes
 

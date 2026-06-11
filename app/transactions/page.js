@@ -86,7 +86,10 @@ export default function Transactions() {
             {rows.map((t) => (
               <tr key={t.id} style={t.needs_review ? { background: 'rgba(251,191,36,.05)' } : undefined}>
                 <td><button className={`verify ${t.verified ? 'on' : ''}`} onClick={() => toggleVerify(t)}>✓</button></td>
-                <td className="muted">{t.ts ? shortDateTime(t.ts) : <span style={{ color: 'var(--amber)' }}>{t.ts_raw || '—'}</span>}</td>
+                <td className="muted">
+                  {t.ts ? shortDateTime(t.ts) : <span style={{ color: 'var(--amber)' }}>{t.ts_raw || '—'}</span>}
+                  {t.ts && new Date(t.ts) > new Date() && <span className="chip soon" style={{ marginLeft: 6 }}>upcoming</span>}
+                </td>
                 <td className="num" style={{ fontWeight: 600 }}>{t.amount === null ? <span style={{ color: 'var(--amber)' }}>blank</span> : inr(t.amount)}</td>
                 <td>{t.method}</td>
                 <td>{t.category}</td>

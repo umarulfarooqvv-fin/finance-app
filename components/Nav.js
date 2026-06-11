@@ -6,6 +6,7 @@ import { useState } from 'react';
 const LINKS = [
   ['/', 'Statements'],
   ['/detailed', 'Expenses'],
+  ['/recurring', 'Recurring'],
   ['/transactions', 'Transactions'],
   ['/cards', 'Cards'],
 ];

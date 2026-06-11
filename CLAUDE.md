@@ -61,6 +61,19 @@ is complete and verified.**
   via Apps Script `setConfig`. `middleware.js` locks public deployments behind
   `APP_ACCESS_KEY` (cookie set via `?key=`). Events table is ephemeral there.
 
+- **PIN lock**: `middleware.js` redirects to `/lock` (PIN form → `/api/lock` →
+  cookie). PIN = `APP_ACCESS_KEY` env. `?key=` entry still works. `/api/alerts`
+  is exempt (cron) and guarded by `CRON_SECRET` instead.
+- **Recurring module** (`lib/recurring.js`, `/recurring`): user-defined defs
+  (settings + AppConfig 'recurring') with occurrence engine — posted (matched
+  by remarks LIKE name within the month) / due (date passed, one-tap "Post to
+  sheet") / upcoming (never counted). Remarks template supports `{n}/{m}`
+  installment counters. Sheet-prelogged future rows (iPad EMIs) are grouped as
+  read-only "upcoming in sheet" series; they auto-activate when dated.
+  Transactions list badges future rows as "upcoming".
+- **Alerts**: `/api/alerts` + `vercel.json` cron (02:30 UTC ≈ 08:00 IST) →
+  ntfy.sh push (`NTFY_TOPIC`) for Overdue/Due-Soon cards and due recurring items.
+
 ## Known gaps / next milestones (spec §5 order)
 
 1. Remaining §3.4 analytics: payment-method split charts, trip rollups, calendar heatmap.
