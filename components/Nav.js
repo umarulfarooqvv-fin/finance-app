@@ -5,7 +5,10 @@ import { useState } from 'react';
 
 const LINKS = [
   ['/', 'Statements'],
+  ['/charts', 'Charts'],
+  ['/balances', 'Balances'],
   ['/detailed', 'Expenses'],
+  ['/income', 'Income'],
   ['/recurring', 'Recurring'],
   ['/transactions', 'Transactions'],
   ['/cards', 'Cards'],

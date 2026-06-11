@@ -19,7 +19,17 @@
 
 var TOKEN = 'Farooq_Finance_2026_#X7A91'; // must match APPS_SCRIPT_TOKEN in .env.local
 var DATA_TAB = 'Form Responses 1';
+var INCOME_TAB = 'Form Responses 2';
 var META_TAB = 'AppMeta';
+
+// Only these tabs may ever be written to by append/update.
+function resolveTab_(name) {
+  var tab = name || DATA_TAB;
+  if (tab !== DATA_TAB && tab !== INCOME_TAB) throw new Error('Tab not allowed: ' + tab);
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(tab);
+  if (!sh) throw new Error('Tab not found: ' + tab);
+  return sh;
+}
 
 function doPost(e) {
   var out;
@@ -59,9 +69,9 @@ function metaSheet_() {
   return sh;
 }
 
-/** Append a transaction. Writes ONLY columns A–E, after the last row with data in A–E. */
+/** Append a row. Writes ONLY columns A–E, after the last row with data in A–E. */
 function doAppend(b) {
-  var sh = dataSheet_();
+  var sh = resolveTab_(b.tab);
   var lastRow = findLastDataRow_(sh);
   var row = lastRow + 1;
   sh.getRange(row, 1, 1, 5).setValues([[
@@ -78,7 +88,7 @@ function doAppend(b) {
 function doUpdate(b) {
   var row = Number(b.row);
   if (!row || row < 2) throw new Error('Invalid row: ' + b.row);
-  var sh = dataSheet_();
+  var sh = resolveTab_(b.tab);
   if (row > sh.getLastRow()) throw new Error('Row out of range: ' + row);
   var current = sh.getRange(row, 1, 1, 5).getValues()[0];
   sh.getRange(row, 1, 1, 5).setValues([[
