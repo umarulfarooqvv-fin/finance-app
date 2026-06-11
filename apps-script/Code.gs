@@ -44,6 +44,7 @@ function doPost(e) {
       case 'getMeta': out = doGetMeta(); break;
       case 'setConfig': out = doSetConfig(body); break;
       case 'getConfig': out = doGetConfig(body); break;
+      case 'getData': out = doGetData(body); break;
       default: throw new Error('Unknown action: ' + body.action);
     }
   } catch (err) {
@@ -131,6 +132,18 @@ function doGetMeta() {
     });
   }
   return { ok: true, meta: meta };
+}
+
+/**
+ * Return ALL rows of columns A–E as displayed strings. Unlike the CSV export,
+ * this is NOT affected by filters applied in the sheet UI — the app uses it
+ * as the primary sync source so filtered views never hide data from the app.
+ */
+function doGetData(b) {
+  var sh = resolveTab_(b.tab);
+  var last = sh.getLastRow();
+  var rows = last < 2 ? [] : sh.getRange(2, 1, last - 1, 5).getDisplayValues();
+  return { ok: true, rows: rows, startRow: 2 };
 }
 
 function configSheet_() {
