@@ -74,6 +74,22 @@ is complete and verified.**
 - **Alerts**: `/api/alerts` + `vercel.json` cron (02:30 UTC ≈ 08:00 IST) →
   ntfy.sh push (`NTFY_TOPIC`) for Overdue/Due-Soon cards and due recurring items.
 
+- **Income** (`/income`, income table): syncs `Form Responses 2`
+  (Timestamp | Payment Received | Source of Income | Bank Account | Remarks),
+  add-income writes to that tab via Apps Script `append` with `tab` param.
+- **Balances** (`/balances`, `lib/balances.js`): per bank/cash account
+  (Fi, Jupiter, SBI, Cash): opening_balance + income − outflows since the
+  configurable "balance_since" date; cards show limit − live debt. Account
+  config persists in AppConfig 'accounts'.
+- **Charts** (`/charts`, recharts): category bars (this month), category trend
+  lines, income-vs-expense bars, pies for card/account/income-source.
+- **Credit Given ledger** (`/credit`, `lib/credit.js`): per-person grouping
+  (manual assignment + fuzzy name match), mark received / partial / reopen,
+  status persists in credit_status table mirrored to AppConfig 'credit_status'.
+  Repayment suggestions from income 'Credit Return' + card payments mentioning
+  credit given. NOTE: cycles.js "Excl. Credit" columns still use the window
+  approximation — wiring them to true per-person outstanding is a good next step.
+
 ## Known gaps / next milestones (spec §5 order)
 
 1. Remaining §3.4 analytics: payment-method split charts, trip rollups, calendar heatmap.

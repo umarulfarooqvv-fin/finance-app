@@ -39,6 +39,7 @@ export default function Charts() {
           {[3, 6, 12, 24].map((m) => (
             <button key={m} className={`small ${months === m ? '' : 'ghost'}`} onClick={() => setMonths(m)}>{m} mo</button>
           ))}
+          <button className={`small ${months === 'all' ? '' : 'ghost'}`} onClick={() => setMonths('all')}>Lifetime</button>
           <span className="muted small" style={{ marginLeft: 'auto' }}>{data.window.from} → {data.window.to}</span>
         </div>
       </div>

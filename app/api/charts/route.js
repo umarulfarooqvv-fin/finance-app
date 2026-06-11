@@ -10,7 +10,9 @@ export async function GET(req) {
   try {
     await ensureData();
     const p = new URL(req.url).searchParams;
-    const months = Math.min(24, Math.max(1, parseInt(p.get('months') || '6', 10)));
+    const months = p.get('months') === 'all'
+      ? 240 // lifetime
+      : Math.min(24, Math.max(1, parseInt(p.get('months') || '6', 10)));
     const db = getDb();
 
     const now = new Date();
