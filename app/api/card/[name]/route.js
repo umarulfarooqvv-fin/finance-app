@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { cardStatement } from '@/lib/cycles';
+import { ensureData } from '@/lib/bootstrap';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req, ctx) {
+  await ensureData();
   const { name } = await ctx.params;
   const db = getDb();
   const card = db.prepare('SELECT * FROM cards WHERE name=?').get(decodeURIComponent(name));

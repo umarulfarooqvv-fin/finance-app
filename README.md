@@ -22,6 +22,8 @@ See `SETUP.md` to get running. Spec: `../FINANCE_APP_SPEC.md`.
 | Card settings CRUD (bill date, grace days, credit limit, active) | ✅ |
 | Event audit log (`events` table) | ✅ |
 | Future-dated EMI rows excluded until their date arrives | ✅ |
+| **Detailed Expenses** (`/detailed`): date-range picker + presets, day counts, category breakdown with % shares, comparison vs 1-month-before & 1-year-ago windows, daily spend with running cumulative, monthly trend incl. future EMI projection months, transactions grouped by category, include/exclude toggles for categories & methods | ✅ |
+| Derived display categories (Credit Card = card payments, Credit Return = credit-given repayments to cards, Medicine/Groceries from remarks keywords) | ✅ |
 
 Not yet (next milestones per spec §5): monthly analytics charts, forecasting +
 Recommended Reserve, Credit Given/Taken ledgers, EMI tracker pages,

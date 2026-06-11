@@ -17,7 +17,7 @@
  *   4. Copy the web app URL into .env.local (APPS_SCRIPT_URL) along with the token
  */
 
-var TOKEN = 'change-me-to-something-random'; // must match APPS_SCRIPT_TOKEN in .env.local
+var TOKEN = 'Farooq_Finance_2026_#X7A91'; // must match APPS_SCRIPT_TOKEN in .env.local
 var DATA_TAB = 'Form Responses 1';
 var META_TAB = 'AppMeta';
 
@@ -32,6 +32,8 @@ function doPost(e) {
       case 'update':  out = doUpdate(body); break;
       case 'setMeta': out = doSetMeta(body); break;
       case 'getMeta': out = doGetMeta(); break;
+      case 'setConfig': out = doSetConfig(body); break;
+      case 'getConfig': out = doGetConfig(body); break;
       default: throw new Error('Unknown action: ' + body.action);
     }
   } catch (err) {
@@ -119,6 +121,42 @@ function doGetMeta() {
     });
   }
   return { ok: true, meta: meta };
+}
+
+function configSheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('AppConfig');
+  if (!sh) {
+    sh = ss.insertSheet('AppConfig');
+    sh.appendRow(['key', 'value', 'updatedAt']);
+  }
+  return sh;
+}
+
+/** Upsert a config value (e.g. card settings JSON) keyed by name. */
+function doSetConfig(b) {
+  if (!b.key) throw new Error('key required');
+  var sh = configSheet_();
+  var data = sh.getDataRange().getValues();
+  var rowIdx = -1;
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(b.key)) { rowIdx = i + 1; break; }
+  }
+  var values = [[String(b.key), String(b.value || ''), new Date().toISOString()]];
+  if (rowIdx === -1) sh.appendRow(values[0]);
+  else sh.getRange(rowIdx, 1, 1, 3).setValues(values);
+  return { ok: true };
+}
+
+function doGetConfig(b) {
+  var sh = configSheet_();
+  var data = sh.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(b.key)) {
+      return { ok: true, key: b.key, value: String(data[i][1]) };
+    }
+  }
+  return { ok: true, key: b.key, value: null };
 }
 
 /** Last row that has any content in columns A–E (ignores checkbox columns F+). */

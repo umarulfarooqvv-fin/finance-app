@@ -3,10 +3,12 @@ import { getDb, logEvent } from '@/lib/db';
 import { appendRow } from '@/lib/sheets';
 import { syncFromSheet } from '@/lib/sync';
 import { formatSheetTimestamp, ALL_METHODS, ALL_CATEGORIES } from '@/lib/parser';
+import { ensureData } from '@/lib/bootstrap';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req) {
+  await ensureData();
   const p = new URL(req.url).searchParams;
   const db = getDb();
   const where = ['t.deleted=0'];

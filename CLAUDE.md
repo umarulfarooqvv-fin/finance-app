@@ -41,9 +41,29 @@ is complete and verified.**
   debt can appear (the sheet behaves the same). A per-card opening-balance
   adjustment setting would fix this — good candidate feature.
 
+- **Detailed Expenses** (`/detailed`, `lib/analytics.js`, `app/api/detailed/`):
+  replicates the sheet's "Detailed Expenses" tab — range picker, category
+  breakdown + % shares, comparisons (same-length window 1 month before; same
+  dates 1 year ago), daily series with cumulative, monthly trend (includes
+  future EMI projection months, like the sheet), grouped transaction list,
+  category/method include-exclude toggles. Display categories add
+  `Credit Card` (card payments), `Credit Return` (credit-given repayments,
+  detected via remarks regex), and keyword-derived `Medicine`/`Groceries`.
+  NOTE: the sheet's monthly history goes back to Jul-2024 but Daily Spent only
+  has data from Mar-2026 (353 rows, verified via gviz count) — the older
+  history lives somewhere in the Financial Summary workbook. Ask Farooq if he
+  wants it imported (one-time backfill into the app DB or a new sheet tab).
+
+- **Vercel-ready** (see DEPLOY.md): DB in `/tmp` when `process.env.VERCEL`,
+  `lib/bootstrap.js#ensureData()` rebuilds the cache from the sheet on cold
+  start (rows + AppMeta verified flags + AppConfig card settings — all GET
+  APIs call it first). Card settings PUT pushes to the sheet's AppConfig tab
+  via Apps Script `setConfig`. `middleware.js` locks public deployments behind
+  `APP_ACCESS_KEY` (cookie set via `?key=`). Events table is ephemeral there.
+
 ## Known gaps / next milestones (spec §5 order)
 
-1. Monthly analytics: Top Categories, month selector, frequency charts, trip rollups (§3.4).
+1. Remaining §3.4 analytics: payment-method split charts, trip rollups, calendar heatmap.
 2. Forecasting + Recommended Bank Reserve = Live Debt + Forecast (§3.5).
 3. Credit Given ledger (per-debtor outstanding) — then replace the current
    approximate Excl.-Credit math in `lib/cycles.js` with true per-debtor netting.
