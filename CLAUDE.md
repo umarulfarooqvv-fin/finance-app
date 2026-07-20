@@ -1,6 +1,6 @@
 # Personal Finance Manager — Claude Code context
 
-Read `../FINANCE_APP_SPEC.md` for the full domain spec. This file covers what's
+Read `docs/SPEC.md` for the full domain spec. This file covers what's
 already built and the decisions made so far. **Do not start from scratch — core v1
 is complete and verified.**
 
@@ -26,9 +26,14 @@ is complete and verified.**
 - **Pages**: `/` Statement View dashboard; `/card/[name]` per-card panel (Bill vs
   Live ledgers, Verified/Unverified split, activity feed); `/transactions`
   (filters, add/edit modal, ✓ verify toggles); `/cards` settings.
-- **Tests**: `npm test` — 14 pass, incl. end-to-end on `tests/fixture.csv`
+- **Tests**: `npm test` — 38 pass, incl. end-to-end on `tests/fixture.csv`
   (real sheet snapshot from 10-Jun-2026). Keep these green; add fixtures rather
   than weakening assertions.
+
+> **Note on local dev vs native module:** `better-sqlite3` is a native module.
+> Use the Node version in `.nvmrc` (20). Tests, lint, and format are wired via
+> `npm test` / `npm run lint` / `npm run format`, and CI runs them on push
+> (`.github/workflows/ci.yml`).
 
 ## Environment facts
 
@@ -54,7 +59,7 @@ is complete and verified.**
   history lives somewhere in the Financial Summary workbook. Ask Farooq if he
   wants it imported (one-time backfill into the app DB or a new sheet tab).
 
-- **Vercel-ready** (see DEPLOY.md): DB in `/tmp` when `process.env.VERCEL`,
+- **Vercel-ready** (see docs/DEPLOY.md): DB in `/tmp` when `process.env.VERCEL`,
   `lib/bootstrap.js#ensureData()` rebuilds the cache from the sheet on cold
   start (rows + AppMeta verified flags + AppConfig card settings — all GET
   APIs call it first). Card settings PUT pushes to the sheet's AppConfig tab
@@ -90,14 +95,50 @@ is complete and verified.**
   credit given. NOTE: cycles.js "Excl. Credit" columns still use the window
   approximation — wiring them to true per-person outstanding is a good next step.
 
+## Recently added modules (this pass)
+
+- **Forecast + Recommended Reserve** (`lib/forecast.js`, `/forecast`,
+  `/api/forecast`): month-to-date run-rate projected over remaining days, by
+  card and by category, with an optional overlay of known recurring items.
+  Recommended Bank Reserve = Total Debt (Live) + Estimated Spend Remaining (§3.5).
+- **EMI tracker** (`lib/emi.js`, `/emi`, `/api/emi`): groups `n/m`-tagged rows
+  into EMI items — installment amount, paid n of m, remaining, next due, card,
+  fee (surcharge/tax) split, full schedule (§3.7).
+- **Category budgets** (`lib/budgets.js`, `/budgets`, `/api/budgets`): monthly
+  caps per display-category, progress vs pace, over/near flags; mirrored to
+  AppConfig 'budgets'; over/near lines added to the daily `/api/alerts` push.
+- **Savings & Investments** (`lib/holdings.js` `holdings` table, `/savings`,
+  `/api/holdings`): manual CRUD, invested vs current value, gain (§3.8).
+- **Freelance / Cirqle invoices** (`lib/holdings.js` `invoices` table,
+  `/freelance`): client, number, amount, issued/due, draft/sent/paid, client
+  rollup (§3.9).
+- **Net worth** (`lib/networth.js`, `/networth`, `/api/networth`): snapshot
+  (bank + savings + investments + credit-given outstanding − card debt) plus a
+  monthly trend reconstructed from history (holdings carried flat — documented).
+- New AppConfig keys (`budgets`, `holdings`, `invoices`) are hydrated on cold
+  start in `lib/bootstrap.js`.
+- **Insights** (`lib/insights.js`, `/insights`, `/api/insights`): trip-tagged
+  spend rollups, a 6-month daily-spend calendar heatmap, and anomaly detection
+  (this month's spends >2σ above the trailing 3-month per-category baseline).
+- **Global search** (`lib/search.js`, `/search`, `/api/search`): across
+  transactions, income, invoices, and holdings.
+- **Backup / export** (`lib/exportData.js`, `/backup`, `/api/export`): full JSON
+  snapshot + per-table CSV download.
+- **Savings goals**: `holdings.target` column (migrated in `db.js`) + goal
+  progress on `/savings`.
+- **PWA**: `app/manifest.js`, `public/sw.js` (network-first offline cache),
+  `components/RegisterSW.js`, icons in `public/`. Installable on phone.
+- **Light/dark theme**: cookie-driven `data-theme` on `<html>` (SSR-set in
+  `app/layout.js`), toggle in `Nav`, light palette in `globals.css`.
+- `middleware.js` matcher now lets PWA assets (`manifest.webmanifest`, `sw.js`,
+  icons) past the PIN lock.
+
 ## Known gaps / next milestones (spec §5 order)
 
-1. Remaining §3.4 analytics: payment-method split charts, trip rollups, calendar heatmap.
-2. Forecasting + Recommended Bank Reserve = Live Debt + Forecast (§3.5).
-3. Credit Given ledger (per-debtor outstanding) — then replace the current
-   approximate Excl.-Credit math in `lib/cycles.js` with true per-debtor netting.
-4. Credit Taken + EMI tracker (§3.7), Savings/Investment (§3.8), Freelance/Cirqle (§3.9).
-5. Open questions for Farooq: credit limits per card (utilization), grace-day
+1. Replace the approximate Excl.-Credit math in `lib/cycles.js` with true
+   per-debtor netting from the Credit Given ledger (`lib/credit.js` already
+   computes real per-person outstanding).
+2. Open questions for Farooq: credit limits per card (utilization), grace-day
    confirmation, and the Financial Summary .xlsx export to match formulas 1:1
    (esp. Coral's opening balance, which the sheet seems to net against
    Cirqle-reimbursed EMIs — ours shows the full carried balance).

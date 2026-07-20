@@ -1,50 +1,91 @@
 # Personal Finance Manager
 
-Replaces the **Financial Summary** workbook with a local web app. The **Daily
-Spent** Google Sheet stays the single source of truth — the Google Form /
-iPhone Shortcut keep feeding it; this app reads it, lets you add/edit/verify,
-and computes statements.
+A mobile-first web app that replaces the **Financial Summary** Google Sheet with a
+proper application, while keeping the **Daily Spent** Google Sheet as the single
+source of truth. The Google Form / iPhone Shortcut keep feeding *Daily Spent*;
+this app reads it, lets you add/edit/verify transactions, and computes credit-card
+statements, dues, forecasts, budgets, and analytics.
 
-See `SETUP.md` to get running. Spec: `../FINANCE_APP_SPEC.md`.
+> **Currency:** INR (₹) · **Locale:** en-IN · **Timezone:** IST · **Owner:** Farooq
 
-## What's implemented (core v1)
+---
 
-| Area | Status |
+## Documentation
+
+| Doc | What's in it |
 |---|---|
-| Sheet sync (CSV endpoint, idempotent, never mutates the sheet) | ✅ auto on load + "Sync now" |
-| Timestamp parser — both formats (`08, March 26 at 03:58:47:71 PM` and `5/21/2026 14:13:19`) | ✅ + date-only `12:00:00:00 AM` rule |
-| Row classification (spend / card_payment / credit_given / emi) incl. "Category = card name → bill payment" | ✅ |
-| Remarks tags: `(Trip …)`, `(Cirqle)`, `n/24` EMI counters, cleared/repayment | ✅ |
-| Statement View: cycles, due dates, days left, Remaining Due, Total Debt (Live), Unbilled, Excl.-Credit columns, KPIs, status chips, utilization bars | ✅ |
-| Per-card panels: cycle math block, Live/Unbilled + Bill ledger views, Verified/Unverified split, sorting, activity timeline | ✅ |
-| Transactions: filters/search, **Add** + **Edit** (writes to the sheet via Apps Script), ✓ verify toggles | ✅ |
-| Verified flags persisted to the sheet's **AppMeta** tab (survives reinstalls/devices) | ✅ |
-| Card settings CRUD (bill date, grace days, credit limit, active) | ✅ |
-| Event audit log (`events` table) | ✅ |
-| Future-dated EMI rows excluded until their date arrives | ✅ |
-| **Detailed Expenses** (`/detailed`): date-range picker + presets, day counts, category breakdown with % shares, comparison vs 1-month-before & 1-year-ago windows, daily spend with running cumulative, monthly trend incl. future EMI projection months, transactions grouped by category, include/exclude toggles for categories & methods | ✅ |
-| Derived display categories (Credit Card = card payments, Credit Return = credit-given repayments to cards, Medicine/Groceries from remarks keywords) | ✅ |
+| [`docs/SETUP.md`](docs/SETUP.md) | Install, run locally, and enable write access (Apps Script) |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Deploy to Vercel via GitHub, env vars, push alerts |
+| [`docs/SPEC.md`](docs/SPEC.md) | Full domain specification (the source of truth for behaviour) |
+| [`CLAUDE.md`](CLAUDE.md) | Running record of what's built and the decisions behind it |
+| [`SECURITY.md`](SECURITY.md) | Secret handling and token rotation |
 
-Not yet (next milestones per spec §5): monthly analytics charts, forecasting +
-Recommended Reserve, Credit Given/Taken ledgers, EMI tracker pages,
-Savings/Investment/Freelance modules.
+---
 
-## Notes & known approximations
+## Quick start
 
-- **Excl.-Credit columns** subtract Credit-Given amounts within each window
-  (billed / unbilled). The sheet nets repayments per debtor; once the Credit
-  Given ledger module lands, these will use true outstanding-per-debtor.
-- `Jupiter` appears in your data as a bank-like source (used to clear cards);
-  it's treated like `Fi`. `Perks` = reward points, also a non-card source.
-- Rows with blank amounts or unparseable timestamps are kept, flagged
-  (amber in the Transactions list), and excluded from balance math.
-- Local DB is `data/finance.db` (SQLite). Delete it any time — everything
-  except *unsynced* annotations rebuilds from the sheet + AppMeta.
+```bash
+npm install
+cp .env.example .env.local     # then fill in values — see docs/SETUP.md
+npm run dev                    # → http://localhost:3000
+```
+
+The app works read-only out of the box (it pulls *Daily Spent* on load). To add,
+edit, and persist verify flags, deploy the Apps Script write proxy — see
+[`docs/SETUP.md`](docs/SETUP.md).
+
+---
+
+## What's implemented
+
+**Core** — sheet sync (idempotent, never mutates the source), dual-format timestamp
+parser, row classification (spend / card payment / credit given / EMI), the statement
+cycle engine (billed vs unbilled, dues, days-left, utilization, excl-credit columns),
+per-card statement panels with a verify/reconcile workflow, a transactions view with
+add/edit/verify, card settings, and an event audit log.
+
+**Analytics & planning** — Detailed Expenses (range picker, category breakdown,
+month/year comparisons, daily & monthly trends), a Charts page, per-account Balances,
+an Income tab, a Credit Given ledger, a Recurring-expenses module with due/upcoming
+tracking and daily push alerts, spend forecasting with a recommended bank reserve,
+category budgets with alerts, an EMI tracker, Savings & Investments (with goals),
+Freelance/Cirqle invoices, a net-worth trend, and an Insights page (trip rollups,
+daily-spend calendar heatmap, anomaly flags).
+
+**Utility** — global search across everything, JSON/CSV backup & export, a
+light/dark theme toggle, and installable-PWA support with offline read.
+
+See [`CLAUDE.md`](CLAUDE.md) for the current status of each area and the roadmap.
+
+---
 
 ## Stack
 
-Next.js 15 (App Router, JS) · better-sqlite3 · no CSS framework (hand-rolled
-dark UI) · Apps Script web app as the only write path to Google Sheets.
+Next.js 15 (App Router, plain JS, ESM) · React 19 · better-sqlite3 · Recharts ·
+a Google Apps Script web app as the only write path to Google Sheets. No CSS
+framework — a hand-rolled dark UI in `app/globals.css`.
+
+## Project layout
+
+```
+app/            Next.js routes — pages + API routes (thin wrappers)
+components/     Shared UI (Nav, formatting helpers)
+lib/            Domain logic — plain ESM, framework-free, unit-tested
+apps-script/    Code.gs — the Google Sheets write proxy
+tests/          node --test suites + a real sheet fixture
+docs/           Setup, deploy, and the full spec
+```
+
+## Scripts
+
+```bash
+npm run dev        # start the dev server
+npm run build      # production build
+npm start          # run the production build
+npm test           # run the test suite (node --test)
+npm run lint       # ESLint (next/core-web-vitals)
+npm run format     # Prettier — format all files
+```
 
 ## Tests
 
@@ -52,5 +93,11 @@ dark UI) · Apps Script web app as the only write path to Google Sheets.
 npm test
 ```
 
-Covers the timestamp parser (both formats + date-only), CSV parsing with
-embedded newlines, classification rules, and EMI/trip/Cirqle tag extraction.
+Covers the timestamp parser (both formats + date-only), CSV parsing with embedded
+newlines, row classification, cycle/statement math, analytics, the credit ledger,
+recurring occurrences, and forecasting — run against a real sheet snapshot in
+`tests/fixture.csv`. Keep them green; add fixtures rather than weakening assertions.
+
+## License
+
+Private — all rights reserved. See [`LICENSE`](LICENSE).

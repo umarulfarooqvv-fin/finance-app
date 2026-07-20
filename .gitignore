@@ -4,3 +4,6 @@ node_modules/
 data/*.db
 data/*.db-journal
 .DS_Store
+
+# local scratch (not committed)
+_to_delete/

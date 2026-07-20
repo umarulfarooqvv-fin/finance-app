@@ -12,6 +12,19 @@
   --radius: 12px;
 }
 
+:root[data-theme='light'] {
+  --bg: #f5f7fb;
+  --panel: #ffffff;
+  --panel2: #eef2f8;
+  --border: #d8e0ec;
+  --text: #14181f;
+  --muted: #5a6576;
+  --accent: #3b6cff;
+  --green: #0ca678;
+  --amber: #d98a00;
+  --red: #e03131;
+}
+
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {

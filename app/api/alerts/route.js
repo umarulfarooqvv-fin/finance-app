@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ensureData } from '@/lib/bootstrap';
 import { statementView } from '@/lib/cycles';
 import { recurringOverview } from '@/lib/recurring';
+import { budgetAlerts } from '@/lib/budgets';
 
 // Daily alert check — hit by the Vercel cron (vercel.json) every morning.
 // Sends a push via ntfy.sh when a card is Overdue / Due Soon or a recurring
@@ -38,6 +39,11 @@ export async function GET(req) {
     if (rec && rec.dueCount > 0) {
       lines.push(`📌 ${rec.dueCount} recurring item${rec.dueCount > 1 ? 's' : ''} due to post (EMI/subscription)`);
     }
+
+    // Category budgets over / near their monthly cap
+    try {
+      for (const line of budgetAlerts()) lines.push(line);
+    } catch {}
 
     let pushed = false;
     const topic = process.env.NTFY_TOPIC;
