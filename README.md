@@ -104,3 +104,4 @@ recurring occurrences, and forecasting — run against a real sheet snapshot in
 ## License
 
 Private — all rights reserved. See [`LICENSE`](LICENSE).
+# finance-app
