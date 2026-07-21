@@ -55,7 +55,7 @@ export default function Recurring() {
       {data.defs.length === 0 && (
         <div className="panel muted">
           No recurring items yet. Add subscriptions (e.g. iCloud, Minoxidil) or EMIs here.
-          Use {'{n}'}/{'{m}'} in remarks for installment counters, e.g. <code>Sheya's {'{n}'}/{'{m}'} Emi</code>.
+          Use {'{n}'}/{'{m}'} in remarks for installment counters, e.g. <code>Sheya&apos;s {'{n}'}/{'{m}'} Emi</code>.
         </div>
       )}
 
@@ -91,7 +91,7 @@ export default function Recurring() {
 
       <h2 style={{ marginTop: 24 }}>Upcoming already in the sheet</h2>
       <p className="muted small">
-        Pre-logged future rows (like the iPad EMIs). They're excluded from all balances and
+        Pre-logged future rows (like the iPad EMIs). They&apos;re excluded from all balances and
         analytics until their date arrives — no action needed, they activate automatically.
       </p>
       {data.sheetUpcoming.length === 0 && <div className="panel muted">Nothing pre-logged.</div>}

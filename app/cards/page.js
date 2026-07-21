@@ -32,7 +32,7 @@ export default function CardsPage() {
       <p className="muted small">
         Bill date = day the statement generates. Due day + cycle = when payment is due
         (from your Card_Settings). Credit limit drives Utilization %. Opening balance is the
-        carried debt on the track-start date (so older history isn't double-counted).
+        carried debt on the track-start date (so older history isn&apos;t double-counted).
       </p>
       {cards.map((c) => <CardRow key={c.name} card={c} onSave={save} />)}
       {toast && <div className="toast">{toast}</div>}

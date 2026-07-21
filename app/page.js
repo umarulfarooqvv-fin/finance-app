@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { inr, sheetDate } from '@/components/format';
 
 const STATUS_CHIP = { Paid: 'paid', Safe: 'safe', 'Due Soon': 'soon', Overdue: 'overdue' };
-const STATUS_ICON = { Paid: '✅ Paid', Safe: 'Safe', 'Due Soon': '⚠ Due Soon', Overdue: '🔴 Overdue' };
+const STATUS_LABEL = { Paid: 'Paid', Safe: 'Safe', 'Due Soon': 'Due Soon', Overdue: 'Overdue' };
 
 export default function StatementView() {
   const [data, setData] = useState(null);
@@ -27,18 +27,49 @@ export default function StatementView() {
   if (!data) return <div className="panel muted">Loading statements…</div>;
 
   const { rows, totals } = data;
+  const dueSoon = rows.filter((r) => r.status === 'Due Soon' || r.status === 'Overdue');
 
   return (
     <>
-      <h1>Statement View</h1>
+      <h1>Statements</h1>
+      <p className="muted small pagesub">Credit-card cycles, dues and live debt across every card.</p>
+
+      {/* hero — the number that matters most */}
+      <div className="hero">
+        <div className="eyebrow">Total Debt (Live)</div>
+        <div className={`big ${totals.totalDebtLive > 0 ? 'red' : 'green'}`}>{inr(totals.totalDebtLive)}</div>
+        <div className="herostats">
+          <div className="hs">
+            <div className="label">Remaining Due (Bill)</div>
+            <div className="val" style={{ color: totals.remainingDueBill > 0 ? 'var(--red)' : 'var(--green)' }}>
+              {inr(totals.remainingDueBill)}
+            </div>
+          </div>
+          <div className="hs">
+            <div className="label">Unbilled</div>
+            <div className="val">{inr(totals.unbilled)}</div>
+          </div>
+          <div className="hs">
+            <div className="label">Utilization</div>
+            <div className="val" style={{ color: 'var(--accent)' }}>
+              {totals.utilization !== null ? `${(totals.utilization * 100).toFixed(1)}%` : '—'}
+            </div>
+          </div>
+          {dueSoon.length > 0 && (
+            <div className="hs">
+              <div className="label">Needs attention</div>
+              <div className="val" style={{ color: 'var(--amber)' }}>
+                {dueSoon.map((r) => r.card).join(', ')}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="kpis">
-        <Kpi label="Σ Remaining Due (Bill)" value={inr(totals.remainingDueBill)} cls={totals.remainingDueBill > 0 ? 'red' : 'green'} />
-        <Kpi label="Σ Total Debt (Live)" value={inr(totals.totalDebtLive)} cls="red" />
-        <Kpi label="Σ Unbilled" value={inr(totals.unbilled)} />
-        <Kpi label="Σ Rem Due (Excl. Credit)" value={inr(totals.remainingDueExcl)} />
-        <Kpi label="Σ Total Debt (Excl. Credit)" value={inr(totals.totalDebtExcl)} />
-        <Kpi label="Aggregate Utilization" value={totals.utilization !== null ? `${(totals.utilization * 100).toFixed(1)}%` : 'set limits'} cls="accent" />
+        <Kpi label="Rem Due (Excl. Credit)" value={inr(totals.remainingDueExcl)} />
+        <Kpi label="Debt (Excl. Credit)" value={inr(totals.totalDebtExcl)} />
+        <Kpi label="Cards Tracked" value={rows.length} cls="accent" />
       </div>
 
       <div className="panel tableWrap">
@@ -55,7 +86,7 @@ export default function StatementView() {
             {rows.map((r) => (
               <tr key={r.card}>
                 <td>
-                  <Link href={`/card/${encodeURIComponent(r.card)}`} style={{ color: r.color, fontWeight: 600, textDecoration: 'none' }}>
+                  <Link href={`/card/${encodeURIComponent(r.card)}`} style={{ color: r.color, fontWeight: 700, textDecoration: 'none' }}>
                     {r.card}
                   </Link>
                 </td>
@@ -63,9 +94,9 @@ export default function StatementView() {
                 <td>{sheetDate(r.dueDate)}</td>
                 <td>{r.daysLeft >= 0 ? `${r.daysLeft} Days` : `${-r.daysLeft}d ago`}</td>
                 <td className="num">{inr(r.remainingDueBill)}</td>
-                <td className="num" style={{ fontWeight: 600 }}>{inr(r.totalDebtLive)}</td>
+                <td className="num" style={{ fontWeight: 700 }}>{inr(r.totalDebtLive)}</td>
                 <td><Utilization value={r.utilization} color={r.color} /></td>
-                <td><span className={`chip ${STATUS_CHIP[r.status]}`}>{STATUS_ICON[r.status]}</span></td>
+                <td><span className={`chip ${STATUS_CHIP[r.status]}`}>{STATUS_LABEL[r.status]}</span></td>
                 <td className="num">{inr(r.unbilled)}</td>
                 <td className="num muted">{inr(r.remainingDueExcl)}</td>
                 <td className="num muted">{inr(r.totalDebtExcl)}</td>
@@ -77,7 +108,7 @@ export default function StatementView() {
 
       <p className="muted small">
         Pre-logged future EMI rows are excluded until their date arrives. Tap a card name for its statement panel.
-        Utilization needs credit limits — set them in <Link href="/cards">Cards</Link>.
+        Utilization needs credit limits — set them in <Link href="/cards">Card Settings</Link>.
       </p>
     </>
   );

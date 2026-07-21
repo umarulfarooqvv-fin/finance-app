@@ -20,7 +20,7 @@ export default function BackupPage() {
       <h1>Backup & Export</h1>
       <div className="panel">
         <h2>Full backup</h2>
-        <p className="muted small">A complete JSON snapshot of the app's data (transactions cache, verify flags, settings, holdings, invoices…). The Google Sheet stays your source of truth; this is a convenience backup.</p>
+        <p className="muted small">A complete JSON snapshot of the app&apos;s data (transactions cache, verify flags, settings, holdings, invoices…). The Google Sheet stays your source of truth; this is a convenience backup.</p>
         <a className="btn" href="/api/export?format=json" download>Download JSON backup</a>
       </div>
       <div className="panel">

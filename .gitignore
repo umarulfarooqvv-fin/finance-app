@@ -3,4 +3,10 @@ node_modules/
 .env.local
 data/*.db
 data/*.db-journal
+data/*.db-shm
+data/*.db-wal
 .DS_Store
+.vercel
+*-log.txt
+env-list.txt
+_to_delete/

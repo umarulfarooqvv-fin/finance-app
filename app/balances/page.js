@@ -49,7 +49,7 @@ export default function Balances() {
         <h2>Count from (tracking start)</h2>
         <p className="muted small">
           Balance = opening balance + income − spends − card bills paid, counted from this date.
-          Set it to the day you started tracking everything, and set each account's opening
+          Set it to the day you started tracking everything, and set each account&apos;s opening
           balance to its real balance on that day — then app balances match your banks.
         </p>
         <div className="row">
@@ -67,7 +67,7 @@ export default function Balances() {
       {data.unassignedIncome.count > 0 && (
         <div className="panel small" style={{ borderColor: 'var(--amber)' }}>
           ⚠ {data.unassignedIncome.count} income entr{data.unassignedIncome.count > 1 ? 'ies' : 'y'} totalling{' '}
-          <b>{inr0(data.unassignedIncome.total)}</b> have account "None" — they're not counted in any
+          <b>{inr0(data.unassignedIncome.total)}</b> have account &quot;None&quot; — they&apos;re not counted in any
           balance. Edit them in the sheet to assign an account.
         </div>
       )}

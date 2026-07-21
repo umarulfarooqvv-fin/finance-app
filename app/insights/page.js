@@ -99,7 +99,7 @@ function Heatmap({ days, max }) {
           </div>
         ))}
       </div>
-      <div className="muted small" style={{ marginTop: 6 }}>Peak day: {inr(max)}. Hover a cell for the day's total.</div>
+      <div className="muted small" style={{ marginTop: 6 }}>Peak day: {inr(max)}. Hover a cell for the day&apos;s total.</div>
     </div>
   );
 }

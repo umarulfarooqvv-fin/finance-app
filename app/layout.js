@@ -14,7 +14,8 @@ export const metadata = {
 export const viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#0e1116',
+  themeColor: '#0a0d13',
+  viewportFit: 'cover',
 };
 
 export default async function RootLayout({ children }) {
@@ -23,8 +24,12 @@ export default async function RootLayout({ children }) {
     <html lang="en" data-theme={theme}>
       <body>
         <RegisterSW />
-        <Nav />
-        <main className="container">{children}</main>
+        <div className="appshell">
+          <Nav />
+          <main className="main">
+            <div className="container">{children}</div>
+          </main>
+        </div>
       </body>
     </html>
   );

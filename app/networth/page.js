@@ -63,7 +63,7 @@ export default function NetWorthPage() {
         </div>
         <p className="muted small">
           Trend is reconstructed from transaction history at each month-end. Savings & investments have no
-          history, so they're carried flat at today's value ({inr0(data.trend.length ? snapshot.assets.savings + snapshot.assets.investments : 0)}).
+          history, so they&apos;re carried flat at today&apos;s value ({inr0(data.trend.length ? snapshot.assets.savings + snapshot.assets.investments : 0)}).
         </p>
       </div>
     </>

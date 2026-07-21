@@ -75,7 +75,7 @@ export default function CreditGiven() {
 
       <h2 style={{ marginTop: 24 }}>Repayments received (for reference)</h2>
       <p className="muted small">
-        "Credit Return" entries from your income tab and card bills cleared with credit-given money.
+        &quot;Credit Return&quot; entries from your income tab and card bills cleared with credit-given money.
         Use these to decide what to mark received above.
       </p>
       <div className="panel tableWrap">
