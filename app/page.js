@@ -13,8 +13,8 @@ export default function StatementView() {
   useEffect(() => {
     (async () => {
       try {
-        // auto-sync on load, then fetch the view
-        await fetch('/api/sync', { method: 'POST' }).catch(() => {});
+        // The server keeps its cache fresh via the version counter — no need
+        // to force a full resync on every visit (that made loads take ~15s).
         const r = await fetch('/api/statement');
         const j = await r.json();
         if (!j.ok) throw new Error(j.error);
