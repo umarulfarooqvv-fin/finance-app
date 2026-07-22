@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTimestamp, classifyRow, parseRemarkTags, parseCsv, normalizeRows } from '../lib/parser.js';
+import {
+  parseTimestamp,
+  classifyRow,
+  parseRemarkTags,
+  parseCsv,
+  normalizeRows,
+} from '../lib/parser.js';
 
 test('format A: custom form timestamp with centiseconds', () => {
   const r = parseTimestamp(' 11, March 26 at 08:06:31:04 PM');
@@ -35,6 +41,24 @@ test('format B: plain sheets timestamp', () => {
   assert.equal(r.dateOnly, false);
 });
 
+// The format almost the entire Daily Spent history is stored in. Missing it
+// meant 2,456 of 2,460 rows imported with ts = NULL — blank dates in the UI
+// and no history for any date-based analytic.
+test('format C: date-only with weekday (the bulk of the sheet history)', () => {
+  const r = parseTimestamp('06-July-2024,  Saturday');
+  assert.ok(r);
+  assert.equal(r.date.getFullYear(), 2024);
+  assert.equal(r.date.getMonth(), 6);
+  assert.equal(r.date.getDate(), 6);
+  assert.equal(r.date.getHours(), 0);
+  assert.equal(r.dateOnly, true);
+  // Weekday suffix is optional, and spacing/case vary across the history.
+  assert.equal(parseTimestamp('6-july-2024').date.getDate(), 6);
+  assert.equal(parseTimestamp('31-December-2025, Wednesday').date.getMonth(), 11);
+  // Not a real month name → still null, not an Invalid Date.
+  assert.equal(parseTimestamp('06-Julyy-2024, Saturday'), null);
+});
+
 test('unparseable timestamp returns null', () => {
   assert.equal(parseTimestamp('not a date'), null);
   assert.equal(parseTimestamp(''), null);
@@ -59,13 +83,23 @@ test('classification: category = card name → payment TO that card', () => {
 });
 
 test('classification: card paying another card', () => {
-  const c = classifyRow({ amount: 189.57, method: 'Jupiter', category: 'One Card', remarks: 'Cleared with credit given' });
+  const c = classifyRow({
+    amount: 189.57,
+    method: 'Jupiter',
+    category: 'One Card',
+    remarks: 'Cleared with credit given',
+  });
   assert.equal(c.kind, 'card_payment');
   assert.deepEqual(c.cardAffected, { card: 'One Card', direction: 'debt-' });
 });
 
 test('classification: credit given via card is still card debt', () => {
-  const c = classifyRow({ amount: 5150, method: 'Scapia', category: 'Credit Given', remarks: 'Ashiq sudu' });
+  const c = classifyRow({
+    amount: 5150,
+    method: 'Scapia',
+    category: 'Credit Given',
+    remarks: 'Ashiq sudu',
+  });
   assert.equal(c.kind, 'credit_given');
   assert.deepEqual(c.cardAffected, { card: 'Scapia', direction: 'debt+' });
 });

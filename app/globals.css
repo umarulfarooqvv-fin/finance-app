@@ -352,6 +352,12 @@ label { display: block; color: var(--muted); font-size: 11.5px; font-weight: 650
 
 /* ---------- responsive ---------- */
 @media (max-width: 960px) {
+  /* .appshell is a flex ROW for the desktop sidebar. The sidebar is
+     position:fixed so it never sat in that row — but .mobilehead is sticky,
+     so the moment it unhides it becomes a flex ITEM and lays out as a
+     full-height column beside .main instead of a bar across the top.
+     Block layout below the breakpoint; the flex row is desktop-only. */
+  .appshell { display: block; }
   .sidebar { display: none; }
   .main { margin-left: 0; }
   .mobilehead { display: flex; }
