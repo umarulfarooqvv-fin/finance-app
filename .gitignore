@@ -10,3 +10,6 @@ data/*.db-wal
 *-log.txt
 env-list.txt
 _to_delete/
+
+# Claude Code local settings (machine-specific)
+.claude/settings.local.json

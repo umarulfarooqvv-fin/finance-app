@@ -41,15 +41,14 @@ and the iPhone Shortcut posts entries directly to `/api/entry`.
 - **Cycle engine** `lib/cycles.js`: statement cycles per card, billed vs unbilled,
   Remaining Due, Total Debt (Live), Excl.-Credit columns, status chips, cycle-math block.
   Future-dated EMI rows (pre-logged through Feb 27) excluded until their date arrives.
-- **Writes** go ONLY through the user's deployed Apps Script web app
-  (`apps-script/Code.gs`, client `lib/sheets.js`): append/update columns A–E of
-  `Form Responses 1`, verified flags in a separate `AppMeta` tab. Never touch the
-  Google Form flow (iPhone Shortcut → Form → sheet must keep working).
-  `.env.local` has the live URL + token (never commit; already gitignored).
+- **Writes** go to Supabase through `lib/store.js` (behind the old `lib/sheets.js`
+  API). The Apps Script web app (`apps-script/Code.gs`) is LEGACY — it is only
+  reachable when `APPS_SCRIPT_URL`/`APPS_SCRIPT_TOKEN` are set, and its only
+  remaining job is the one-time sheet history import (`POST /api/import`).
 - **Pages**: `/` Statement View dashboard; `/card/[name]` per-card panel (Bill vs
   Live ledgers, Verified/Unverified split, activity feed); `/transactions`
   (filters, add/edit modal, ✓ verify toggles); `/cards` settings.
-- **Tests**: `npm test` — 38 pass, incl. end-to-end on `tests/fixture.csv`
+- **Tests**: `npm test` — 61 pass, incl. end-to-end on `tests/fixture.csv`
   (real sheet snapshot from 10-Jun-2026). Keep these green; add fixtures rather
   than weakening assertions.
 
@@ -77,21 +76,22 @@ and the iPhone Shortcut posts entries directly to `/api/entry`.
   category/method include-exclude toggles. Display categories add
   `Credit Card` (card payments), `Credit Return` (credit-given repayments,
   detected via remarks regex), and keyword-derived `Medicine`/`Groceries`.
-  NOTE: the sheet's monthly history goes back to Jul-2024 but Daily Spent only
-  has data from Mar-2026 (353 rows, verified via gviz count) — the older
-  history lives somewhere in the Financial Summary workbook. Ask Farooq if he
-  wants it imported (one-time backfill into the app DB or a new sheet tab).
+  NOTE (resolved Jul-2026): the older history WAS imported — Supabase now holds
+  2,458 transactions + 30 income rows going back to the Feb-2023 era, so the
+  monthly trend no longer starts at Mar-2026.
 
 - **Vercel-ready** (see docs/DEPLOY.md): DB in `/tmp` when `process.env.VERCEL`,
-  `lib/bootstrap.js#ensureData()` rebuilds the cache from the sheet on cold
-  start (rows + AppMeta verified flags + AppConfig card settings — all GET
-  APIs call it first). Card settings PUT pushes to the sheet's AppConfig tab
-  via Apps Script `setConfig`. `middleware.js` locks public deployments behind
-  `APP_ACCESS_KEY` (cookie set via `?key=`). Events table is ephemeral there.
+  `lib/bootstrap.js#ensureData()` rebuilds the cache from Supabase on cold start
+  (rows + all `app_config` blobs — every GET API calls it first). Config writes
+  go to `app_config` via `setConfig`. Events table is ephemeral there.
 
 - **PIN lock**: `middleware.js` redirects to `/lock` (PIN form → `/api/lock` →
-  cookie). PIN = `APP_ACCESS_KEY` env. `?key=` entry still works. `/api/alerts`
-  is exempt (cron) and guarded by `CRON_SECRET` instead.
+  cookie). PIN = `APP_ACCESS_KEY` env; unset (local dev) = no lock. `?key=`
+  entry still works. `/api/entry` (Shortcut, `INGEST_TOKEN`) and `/api/alerts`
+  (cron, `CRON_SECRET`) are exempt and carry their own auth.
+  Two rules keep it deployable, both learned from crashes: the file must import
+  NOTHING (no `next/server`), and it must NOT declare `runtime: 'nodejs'`
+  (experimental in Next 15 — the deploy fails). See the header comment.
 - **Recurring module** (`lib/recurring.js`, `/recurring`): user-defined defs
   (settings + AppConfig 'recurring') with occurrence engine — posted (matched
   by remarks LIKE name within the month) / due (date passed, one-tap "Post to
@@ -135,11 +135,18 @@ and the iPhone Shortcut posts entries directly to `/api/entry`.
 - **Freelance / Cirqle invoices** (`lib/holdings.js` `invoices` table,
   `/freelance`): client, number, amount, issued/due, draft/sent/paid, client
   rollup (§3.9).
+- **Credit Taken** (`lib/debts.js`, `debts` + `debt_payments` tables,
+  `/credit-taken`, `/api/debts`): the sheet's `Credit (Taken)` tab — who Farooq
+  owes, principal, repayments, Balance to Pay. Manual CRUD (nothing in the
+  transaction log marks a borrowing), mirrored to app_config 'debts' /
+  'debt_payments'. `debtsOutstandingAt()` makes the balance date-aware so the
+  net-worth trend can reconstruct it month by month.
 - **Net worth** (`lib/networth.js`, `/networth`, `/api/networth`): snapshot
-  (bank + savings + investments + credit-given outstanding − card debt) plus a
-  monthly trend reconstructed from history (holdings carried flat — documented).
-- New AppConfig keys (`budgets`, `holdings`, `invoices`) are hydrated on cold
-  start in `lib/bootstrap.js`.
+  (bank + savings + investments + credit-given outstanding − card debt −
+  credit-taken outstanding) plus a monthly trend reconstructed from history
+  (holdings carried flat — documented; borrowed money is properly dated).
+- New AppConfig keys (`budgets`, `holdings`, `invoices`, `debts`,
+  `debt_payments`) are hydrated on cold start in `lib/bootstrap.js`.
 - **Insights** (`lib/insights.js`, `/insights`, `/api/insights`): trip-tagged
   spend rollups, a 6-month daily-spend calendar heatmap, and anomaly detection
   (this month's spends >2σ above the trailing 3-month per-category baseline).
@@ -177,10 +184,16 @@ and the iPhone Shortcut posts entries directly to `/api/entry`.
 
 ## Known gaps / next milestones (spec §5 order)
 
-1. Replace the approximate Excl.-Credit math in `lib/cycles.js` with true
+1. Repoint the iPhone "Daily Spent" Shortcut off the Google Form onto
+   `POST /api/entry` — send the token as the `x-token` HEADER, not `?token=`
+   (query strings land in Vercel's request logs). See docs/SUPABASE.md.
+2. Reconcile app statements against the sheet's `Statement_View` card by card
+   (the sheet showed Total Debt ≈ ₹64,795 at handoff time).
+3. Replace the approximate Excl.-Credit math in `lib/cycles.js` with true
    per-debtor netting from the Credit Given ledger (`lib/credit.js` already
    computes real per-person outstanding).
-2. Open questions for Farooq: grace-day
+4. Absorb the sheet's `Email` tab (daily digest) into the `/api/alerts` push.
+5. Open questions for Farooq: grace-day
    confirmation, and the Financial Summary .xlsx export to match formulas 1:1
    (esp. Coral's opening balance, which the sheet seems to net against
    Cirqle-reimbursed EMIs — ours shows the full carried balance).

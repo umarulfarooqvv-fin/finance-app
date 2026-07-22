@@ -37,7 +37,7 @@ Your ~2 years of history in the Google Sheet can be imported in one call. Keep
 full, filter-proof history via your existing Apps Script; falls back to CSV).
 
 ```bash
-curl -X POST "https://YOUR-APP.vercel.app/api/import?token=YOUR_INGEST_TOKEN"
+curl -X POST -H "x-token: YOUR_INGEST_TOKEN" "https://YOUR-APP.vercel.app/api/import"
 # → { ok: true, transactions: 2100, income: 40, source: "apps-script" }
 ```
 
@@ -55,8 +55,11 @@ the *Ask for* / *Choose from List* steps that set **Method**, **Category**,
 
 Replace the final steps with a single **Get Contents of URL**:
 
-- **URL:** `https://YOUR-APP.vercel.app/api/entry?token=YOUR_INGEST_TOKEN`
+- **URL:** `https://YOUR-APP.vercel.app/api/entry`
 - **Method:** `POST`
+- **Headers:** `x-token` = `YOUR_INGEST_TOKEN`
+  (use the header, not `?token=` in the URL — query strings get written to
+  Vercel's request logs, headers don't)
 - **Request Body:** `Form`
 - **Fields:**
   | Key | Value (Shortcut variable) |

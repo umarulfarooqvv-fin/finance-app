@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 // One-time (or occasional) import of the full Google Sheet history into Supabase.
-// Protected by INGEST_TOKEN. POST ?token=... to run. Safe to re-run (upserts).
+// Protected by INGEST_TOKEN (x-token header, or ?token= — prefer the header,
+// query strings land in request logs). Safe to re-run (upserts).
 async function chunkInsert(table, rows) {
   const size = 500;
   let n = 0;
