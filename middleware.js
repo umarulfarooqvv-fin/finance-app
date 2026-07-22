@@ -11,7 +11,10 @@
 //     without it the deploy fails. The default Edge runtime is fine because
 //     nothing here touches Node built-ins.
 
-const PUBLIC_PATHS = ['/lock', '/api/lock', '/api/alerts', '/api/entry'];
+// Exempt from the PIN because each carries its own auth: /api/entry and
+// /api/import check INGEST_TOKEN, /api/alerts checks CRON_SECRET. Anything
+// added here MUST authenticate itself — the PIN is the only other gate.
+const PUBLIC_PATHS = ['/lock', '/api/lock', '/api/alerts', '/api/entry', '/api/import'];
 
 // Pass-through: the x-middleware-next header is the wire protocol behind
 // NextResponse.next() / @vercel/functions next().
