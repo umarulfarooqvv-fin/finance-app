@@ -1,139 +1,108 @@
-# Personal Finance Manager — Project Handoff Brief
+# v3 rebuild — state of play
 
-> Give this file to any new Claude Code / Cowork chat working on this project.
-> It explains what the system is, where everything lives, what's done, and
-> what's next. The repo's `CLAUDE.md` has deeper architecture notes; this file
-> is the orientation + current status. **Where the two disagree, this file
-> wins** — `CLAUDE.md` still carries some pre-Supabase wording.
+Branch `rebuild/v3`. v2 is untouched on `main` and still deployable.
+Your Supabase data was never modified — the rewrite replaced the code that
+reads it, not the records.
 
-## What this is
+## Working
 
-Farooq's personal finance tracker. It **replaced a Google Sheets system** with
-a Next.js web app backed by **Supabase (Postgres)**. He logs every expense from
-an **iPhone Shortcut**, and the app computes credit-card statement cycles,
-dues, forecasts, budgets, net worth, and full expense analytics.
-Currency INR, locale en-IN, timezone IST, mobile-first.
+| Area | Route | State |
+|---|---|---|
+| Today | `/` | Reserve, what needs action, card strip, month, recent |
+| Cards | `/cards`, `/cards/[name]` | Statement view, per-card ledgers, cycle maths |
+| Spending | `/spending` | Categories, methods, daily, 24-month trend, trips |
+| Transactions | `/spending/transactions` | Search, paging, upcoming toggle |
+| Money | `/money` | Net worth, account balances, income |
+| Ledgers | `/ledgers` | Credit given, credit taken, EMI plans |
+| Ask | `/ask` | Plain-English questions (needs `ANTHROPIC_API_KEY`) |
+| Settings | `/settings` | Read-only view of the config in use |
+| Lock | `/lock` | PIN gate |
+| Shortcut | `POST /api/entry` | Live; unchanged contract |
 
-## The reference Google Sheets (source-of-truth for FEATURES, not data)
+60 tests, typecheck clean, lint clean, production build passes.
 
-The app's features replicate these two workbooks. When in doubt about how a
-calculation should behave, open them and compare:
+## Bugs found and fixed during the rebuild
 
-1. **Daily Spent** (raw entry log; fed by the old Google Form/Shortcut):
-   https://docs.google.com/spreadsheets/d/1orMNGjhPKlKPTIQDKFcxd48Fip9K5Wuf5FdLkFWyimc/edit
-   - Tab `Form Responses 1`: Timestamp | Amount | Method | Category | Remarks
-   - Tab `Form Responses 2`: income (Timestamp | Payment Received | Source | Bank Account | Remarks)
+These were all live in v2:
 
-2. **Financial Summary** (all the analysis; 20 tabs):
-   https://docs.google.com/spreadsheets/d/1MOJfCY4DQCfvpfeXPl62DZsAoYemsM1zdP-wd1ZVllA/edit
-   - `Statement_View` → app `/` (statements, dues, live debt, utilization)
-   - `Card_Settings` → app `/cards` (limits, bill/due days, opening balances — already seeded)
-   - `Daily Expense`, `Detailed Expenses`, `Summery of Income & Expense` → app `/detailed`
-   - `Credit Cards` → app `/card/[name]`
-   - `Savings`, `Investment` → app `/savings`
-   - `Credit (Given)`, `Credits Raw Data` → app `/credit`
-   - `Freelance`, `Fruitful Invoice Tracker`, `Client Wise` → app `/freelance`
-   - `EventRecord` → app events audit log
-   - `Credit (Taken)` → app `/credit-taken` (built Jul-2026; balances need entering)
-   - `Email` → half-broken daily digest; app's `/api/alerts` push should absorb it
-   - `Dashboard`, `Draft`, `Sheet44`, `Formula` → empty/scratch, ignore
+1. **Timestamps were regex-matched, never validated.** `"32/13/2026 10:00"`
+   produced the string `"2026-32-13"`.
+2. **Day-of-month never clamped.** `new Date(y, 1, 31)` silently rolls into
+   March, so a card billing after the 28th would bill on the wrong day. None of
+   your six cards trigger it today; it was latent.
+3. **Any `n/m` in remarks became an EMI.** "paid on 5/21" invented a
+   21-instalment plan. Now requires a standard tenor or the word EMI.
+4. **`Excl. Credit` was an approximation** that subtracted every credit-given
+   charge whether or not it had been repaid, and whether or not it was still in
+   the balance. Now: repayments allocate to lendings oldest-first, card payments
+   settle charges oldest-first, and only the unpaid, unreturned part is
+   excluded. Reads ₹20,627.80 of ₹49,940.30 rather than ₹3,765.98.
+5. **The card palette was not colour-vision safe.** Coral and ICICI measured
+   ΔE 10.4 in *normal* vision (floor is 15) — hard to tell apart for everyone.
+6. **Monthly trend ran into the future.** Pre-logged EMI rows extended it to
+   Feb 2027, so the line trailing to zero read as spending collapsing.
+7. **Derived columns were read back from Postgres.** The whole credit history
+   sat under one "Unassigned" debtor because v2 never wrote a person tag. Now
+   classification is re-derived on load.
 
-**NOTE:** the sheets are no longer the data source. All data now lives in
-Supabase; the sheets are kept for reference/comparison only.
+## Things about your data worth knowing
 
-## Where everything lives
+**Repayments are mostly unrecorded.** ₹7,74,333 has been lent out across 337
+rows. Recorded repayments total roughly ₹1,87,640 (6 income rows + 10 Credit
+Return transactions), so ~₹5.86 lakh reads as outstanding. Almost certainly
+much of it came back as cash that was never logged. The UI says "not recorded
+as repaid" rather than "unpaid" everywhere this figure appears, but it does
+flow into net worth and into the excl-credit columns — treat both as soft.
 
-| Thing | Location |
-|---|---|
-| Code (master copy) | `/Volumes/FQLab/Developer/Personal FInancial Manager/finance-app` (Farooq's Mac) |
-| GitHub | https://github.com/umarulfarooqvv-fin/finance-app (branch `main`, auto-deploys) |
-| Live app | https://finance-app-lemon-psi.vercel.app |
-| Vercel project | team `umarulfarooqvv-2111s-projects`, project `finance-app`, **framework preset must stay "Next.js"** |
-| Database | Supabase project `klefuwhalprydcavzgrr` (region ap-southeast-2 / Sydney) — https://supabase.com/dashboard/project/klefuwhalprydcavzgrr |
-| Local dev | `npm run dev` → usually **port 3001** (another app squats on 3000) |
+**August has almost no entries.** The only August rows are the pre-logged Coral
+EMI instalment, which is why this month shows −90% against July.
 
-Environment variables (values live in Vercel → Settings → Environment
-Variables, and in the gitignored `.env.local` on the Mac — never commit them):
-`SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (secret — only Farooq pastes it),
-`INGEST_TOKEN` (guards `/api/entry` + `/api/import`), plus legacy
-`APPS_SCRIPT_URL`/`APPS_SCRIPT_TOKEN` (only needed to re-import sheet history).
+**Debtor names come from free text.** Grouping got 228 fragments down to 95, but
+some entries are descriptions rather than people ("MacBook S f o r", "Microsoft
+Vimec Valves"). `app_config.credit_status` already supports `assign` (per-row)
+and `aliases` (name merging); the UI to edit them is not built.
 
-## Current status (July 2026)
+## Not built
 
-DONE: Supabase schema created; full history imported (**2,458 transactions +
-30 income**, back to Feb-2023 era records); premium dark/light UI (sidebar +
-mobile bottom tabs, design system in `app/globals.css`); deployed to Vercel
-with GitHub auto-deploy; pagination fix for Supabase's 1000-row response cap
-(`lib/store.js` — critical, do not remove); perf pass (no auto-resync on page
-load, parallel bootstrap config hydration, `vercel.json` pins functions to
-`syd1` next to the DB).
+Ordered by what I would do next.
 
-DONE 22-Jul-2026 (this pass):
+1. **Editing.** Everything is read-only. No add/edit/delete transaction, no
+   card settings form, no account opening balances, no debtor merge UI. The
+   domain and the API shapes are ready for it; the forms are not written.
+   Account balances stay meaningless until opening balances can be set.
+2. **Verification toggles.** The reconciliation split renders on each card, but
+   nothing can flip a row's `verified` flag. `PATCH` on the transaction plus
+   `invalidateSnapshot()` is the whole job.
+3. **Alerts.** v2 had `/api/alerts` on a Vercel cron (02:30 UTC ≈ 08:00 IST)
+   pushing to ntfy for overdue cards and due recurring items. The route is not
+   rebuilt, so I removed the dangling cron from `vercel.json` rather than ship
+   a daily 404. Re-add this when the route comes back:
+   `"crons": [{ "path": "/api/alerts", "schedule": "30 2 * * *" }]`
+4. **`/api/import`.** Exempted in middleware and referenced in docs, but not
+   rebuilt — the one-time sheet import already ran, so this only matters if you
+   want to re-import.
+5. **Recurring module, budgets, savings/investments, freelance invoices,
+   insights, backup/export, PWA.** All present in v2, none rebuilt. Savings and
+   investments are deliberately excluded from net worth for now: v2 carried a
+   manual figure flat between updates, which drew a rising line during months
+   when nothing changed.
+6. **Natural-language entry.** You asked for it; `/ask` is read-only by design
+   and I would keep the write path separate — parse to a *draft* the user
+   confirms, never a silent insert.
 
-- **PIN lock restored** — `middleware.js` is back, dependency-free and on the
-  default Edge runtime. Verified locally: `/` 307s to `/lock`, API routes 401,
-  `/api/lock` cookie unlocks. **It only arms when `APP_ACCESS_KEY` is set — set
-  it in Vercel or the deploy stays public.**
-- **Credit (Taken)** — `lib/debts.js` + `/credit-taken` + `/api/debts`, and
-  `lib/networth.js` now subtracts outstanding borrowed money (snapshot *and*
-  trend, which is date-aware via `debtsOutstandingAt()`). Balances still need
-  entering from the sheet's `Credit (Taken)` tab.
-- **`_to_delete/` untracked** — it held three complete stale copies of the app
-  (~300 files) that were committed to git; every grep hit them. Untracked via
-  `git rm -r --cached` (already in `.gitignore`); still on disk, safe to `rm`.
-- `npm test` → 61 pass. `npm run lint` works again (devDependencies were
-  missing from `node_modules`, so lint had been silently unrunnable).
+## To run it
 
-## Pending / next work (in priority order)
+```bash
+npm run dev
+```
 
-1. **Set `APP_ACCESS_KEY` in Vercel** and confirm the deployed app locks. Until
-   then the middleware is a no-op and the app is publicly reachable.
-2. **Enter the Credit (Taken) balances** on `/credit-taken` from the sheet
-   (Aliyanka ₹1.55L, Manaappa ₹70k, device EMIs…) so Net Worth is honest.
-3. **iPhone Shortcut repoint** — the "Daily Spent" Shortcut still posts to the
-   old Google Form. Replace its final URL+"Get contents of URL" steps with ONE
-   POST to `https://finance-app-lemon-psi.vercel.app/api/entry`
-   (Request Body: Form; fields `amount`, `method`, `category`, `remarks` — the
-   existing Ask/Choose steps stay). Send the token as a **header**
-   `x-token: <INGEST_TOKEN>`, not `?token=` — query strings are written to
-   Vercel request logs. Income variant adds `type=income`, `source`, `account`.
-4. **Numbers reconciliation vs sheet** — compare app Statements to the sheet's
-   `Statement_View` card-by-card (sheet showed Total Debt ~₹64,795). Known
-   quirk: Coral's opening balance nets against Cirqle-reimbursed EMIs in the
-   sheet.
-5. Daily digest push (absorb the sheet's `Email` tab into `/api/alerts`).
-6. True per-debtor Excl.-Credit netting in `lib/cycles.js` (see CLAUDE.md).
+For `/ask`, add `ANTHROPIC_API_KEY` to `.env.local` and to the Vercel project.
+I cannot add that key for you.
 
-## Hard-won gotchas (do not relearn these the hard way)
+## Before deploying
 
-- **Supabase caps EVERY REST response at 1000 rows** — `lib/store.js#select()`
-  paginates; any new direct queries must too.
-- **Vercel framework preset** was once "Other" (created against an empty repo)
-  → deployed only static files with the whole app 404ing. It must be "Next.js".
-- **Root `middleware.js` cannot import `next/server` on this Vercel setup**
-  (Edge runtime crashed with `__dirname is not defined`; Node runtime can't
-  resolve `next/server`). It is dependency-free — keep it that way. Also do NOT
-  put `runtime: 'nodejs'` in its config export: Node.js middleware is
-  experimental in Next 15 and needs `experimental.nodeMiddleware`, and that
-  line is the likeliest reason the earlier attempt failed to deploy.
-- **Git push from the Mac is flaky**: macOS keychain sometimes serves the wrong
-  GitHub identity (`vimecvalves` → 403). Retry usually works; fallback deploy
-  is `npx vercel --prod` (answer **N** to the “overwrite .env.local?” prompt).
-- ESLint errors fail Vercel builds; `next.config.mjs` sets
-  `eslint.ignoreDuringBuilds` — lint via `npm run lint`. If lint says "ESLint
-  must be installed", `node_modules` is missing devDependencies: run
-  `npm install` (not `npm install --production`).
-- **`_to_delete/` is gitignored but still on disk** — it contains old full
-  copies of the app. Never edit or grep-match files under it; the live code is
-  at the repo root.
-- Timestamps are **local-naive IST strings**; never convert to UTC. Server
-  stamps new entries via `istIso()` in `lib/parser.js`.
-- Tests: `npm test` (node --test). Keep green.
-
-## How data flows
-
-iPhone Shortcut → `POST /api/entry` (token-guarded) → normalized row in
-Postgres → a DB trigger bumps `app_state.version` → on the next request,
-`ensureData()` sees the new version and reloads the in-process SQLite compute
-cache → all pages/analytics read from that cache. Manual "Sync" button forces
-a reload; `/api/import` re-imports the old sheet (safe to re-run, upserts).
+- `vercel.json` keeps `regions: ["syd1"]` so functions stay next to the
+  database. The alerts cron was removed — see 3 above.
+- Confirm the Shortcut still posts fine — the contract is unchanged, but it is
+  worth one live entry to be sure.
+- `main` still holds v2, so rolling back is a branch switch.

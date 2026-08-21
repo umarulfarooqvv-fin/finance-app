@@ -64,7 +64,7 @@ export default async function MoneyPage() {
       <Panel className="mt-4">
         <SectionTitle
           action={
-            <Link href="/settings/accounts" className="text-xs font-medium text-[var(--color-accent)]">
+            <Link href="/settings" className="text-xs font-medium text-[var(--color-accent)]">
               Configure
             </Link>
           }

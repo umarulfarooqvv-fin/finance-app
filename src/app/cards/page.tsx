@@ -39,7 +39,7 @@ export default async function CardsPage() {
         subtitle={`Statement view as of ${formatDay(today)}`}
         action={
           <Link
-            href="/settings/cards"
+            href="/settings"
             className="rounded-[var(--radius-field)] border border-[var(--color-line)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-line-strong)]"
           >
             Settings
