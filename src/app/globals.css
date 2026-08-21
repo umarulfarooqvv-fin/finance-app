@@ -1,0 +1,183 @@
+@import 'tailwindcss';
+
+/* ===========================================================================
+   Design tokens.
+   Dark is the primary look (this app is read at night, on a phone, in bed);
+   light is a first-class peer, not an afterthought. Both are defined here in
+   full — no colour gets its only definition inside a variant block.
+   =========================================================================== */
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme {
+  /* Surfaces: canvas < surface < raised. Three levels is enough; more reads
+     as visual noise once cards nest. */
+  --color-canvas: oklch(99% 0.003 260);
+  --color-surface: oklch(100% 0 0);
+  --color-raised: oklch(97.2% 0.004 260);
+  --color-line: oklch(91% 0.006 260);
+  --color-line-strong: oklch(84% 0.01 260);
+
+  /* Ink: three weights. ink-3 is for labels only and never carries meaning
+     on its own. */
+  --color-ink: oklch(23% 0.015 265);
+  --color-ink-2: oklch(48% 0.014 265);
+  --color-ink-3: oklch(62% 0.012 265);
+
+  /* Accent is deliberately NOT green or red — those two are load-bearing
+     semantics in a money app (money in / money out) and must never be
+     spent on decoration. */
+  --color-accent: oklch(54% 0.19 277);
+  --color-accent-soft: oklch(95% 0.03 277);
+  --color-accent-ink: oklch(100% 0 0);
+
+  /* Semantics. pos = money toward you, neg = money away from you. */
+  --color-pos: oklch(56% 0.14 158);
+  --color-pos-soft: oklch(95% 0.04 158);
+  --color-neg: oklch(58% 0.19 22);
+  --color-neg-soft: oklch(95% 0.035 22);
+  --color-warn: oklch(70% 0.16 70);
+  --color-warn-soft: oklch(96% 0.05 70);
+
+  --radius-card: 1rem;
+  --radius-field: 0.625rem;
+
+  --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.05), 0 1px 3px oklch(0% 0 0 / 0.04);
+  --shadow-pop: 0 8px 24px oklch(0% 0 0 / 0.12), 0 2px 6px oklch(0% 0 0 / 0.08);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  --font-num:
+    ui-sans-serif, system-ui, -apple-system, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+}
+
+[data-theme='dark'] {
+  --color-canvas: oklch(17% 0.012 265);
+  --color-surface: oklch(21% 0.014 265);
+  --color-raised: oklch(25% 0.016 265);
+  --color-line: oklch(29% 0.016 265);
+  --color-line-strong: oklch(38% 0.018 265);
+
+  --color-ink: oklch(96% 0.004 265);
+  --color-ink-2: oklch(74% 0.012 265);
+  --color-ink-3: oklch(58% 0.014 265);
+
+  --color-accent: oklch(70% 0.16 277);
+  --color-accent-soft: oklch(30% 0.06 277);
+  --color-accent-ink: oklch(17% 0.012 265);
+
+  --color-pos: oklch(74% 0.15 158);
+  --color-pos-soft: oklch(28% 0.05 158);
+  --color-neg: oklch(70% 0.17 22);
+  --color-neg-soft: oklch(29% 0.06 22);
+  --color-warn: oklch(80% 0.15 70);
+  --color-warn-soft: oklch(30% 0.055 70);
+
+  --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.3), 0 1px 3px oklch(0% 0 0 / 0.2);
+  --shadow-pop: 0 12px 32px oklch(0% 0 0 / 0.5), 0 2px 8px oklch(0% 0 0 / 0.35);
+}
+
+/* System preference decides only when the user has not chosen. The guard means
+   an explicit [data-theme='light'] always wins over the media query. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-canvas: oklch(17% 0.012 265);
+    --color-surface: oklch(21% 0.014 265);
+    --color-raised: oklch(25% 0.016 265);
+    --color-line: oklch(29% 0.016 265);
+    --color-line-strong: oklch(38% 0.018 265);
+    --color-ink: oklch(96% 0.004 265);
+    --color-ink-2: oklch(74% 0.012 265);
+    --color-ink-3: oklch(58% 0.014 265);
+    --color-accent: oklch(70% 0.16 277);
+    --color-accent-soft: oklch(30% 0.06 277);
+    --color-accent-ink: oklch(17% 0.012 265);
+    --color-pos: oklch(74% 0.15 158);
+    --color-pos-soft: oklch(28% 0.05 158);
+    --color-neg: oklch(70% 0.17 22);
+    --color-neg-soft: oklch(29% 0.06 22);
+    --color-warn: oklch(80% 0.15 70);
+    --color-warn-soft: oklch(30% 0.055 70);
+  }
+}
+
+/* ===========================================================================
+   Base
+   =========================================================================== */
+
+* {
+  border-color: var(--color-line);
+}
+
+html {
+  background: var(--color-canvas);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  /* Safe areas: this is installed as a PWA and the bottom tab bar sits on the
+     home-indicator on iPhone. */
+  padding-bottom: env(safe-area-inset-bottom);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+/* Every money figure uses tabular numerals so columns of rupees line up and
+   digits do not jitter when a value ticks. Non-negotiable in a finance UI. */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.01em;
+}
+
+/* Respect the user's motion preference — animation here is decorative only. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-ink);
+}
+
+/* Focus: visible, consistent, and never removed. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Scrollbars, dark-mode aware. */
+@supports selector(::-webkit-scrollbar) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 99px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Horizontal scroll containers (wide tables) get a fade hint at the edge so
+   it is obvious there is more to the right. */
+.scroll-x {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
