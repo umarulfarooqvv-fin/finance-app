@@ -105,7 +105,10 @@ export type Card = {
   /** Debt carried on `openingDate`, standing in for untracked history. */
   openingBalance: number;
   openingDate: Day | null;
-  color: string;
+  /** Categorical palette slot 1-6, resolved to a CSS variable at render time
+      so the colour follows the theme. Storing a hex here would freeze one
+      theme's value into the config. */
+  slot: number;
   active: boolean;
 };
 

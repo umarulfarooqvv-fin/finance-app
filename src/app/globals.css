@@ -39,6 +39,30 @@
   --color-warn: oklch(70% 0.16 70);
   --color-warn-soft: oklch(96% 0.05 70);
 
+
+  /* Card identity colours — a categorical palette, validated for colour-vision
+     deficiency rather than picked by eye. v2's set put Coral and ICICI only
+     ΔE 10.4 apart in NORMAL vision (floor is 15), so those two dots were hard
+     to tell apart for everyone, CVD or not.
+
+     Worst adjacent pair here: ΔE 9.1 protan / 19.6 normal (light),
+     8.4 protan / 19.3 normal (dark). Three light steps sit under 3:1 on white,
+     which is allowed only because every card mark in this UI is directly
+     labelled with the card's name — colour never carries identity alone. */
+  --card-1: #2a78d6;
+  --card-2: #eb6834;
+  --card-3: #1baf7a;
+  --card-4: #eda100;
+  --card-5: #e87ba4;
+  --card-6: #008300;
+
+  /* Single-hue ramp for magnitude (heatmaps, intensity). Light to dark. */
+  --seq-100: #cde2fb;
+  --seq-250: #86b6ef;
+  --seq-400: #3987e5;
+  --seq-550: #1c5cab;
+  --seq-700: #0d366b;
+
   --radius-card: 1rem;
   --radius-field: 0.625rem;
 
@@ -73,6 +97,13 @@
   --color-warn: oklch(80% 0.15 70);
   --color-warn-soft: oklch(30% 0.055 70);
 
+  --card-1: #3987e5;
+  --card-2: #d95926;
+  --card-3: #199e70;
+  --card-4: #c98500;
+  --card-5: #d55181;
+  --card-6: #008300;
+
   --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.3), 0 1px 3px oklch(0% 0 0 / 0.2);
   --shadow-pop: 0 12px 32px oklch(0% 0 0 / 0.5), 0 2px 8px oklch(0% 0 0 / 0.35);
 }
@@ -98,6 +129,12 @@
     --color-neg-soft: oklch(29% 0.06 22);
     --color-warn: oklch(80% 0.15 70);
     --color-warn-soft: oklch(30% 0.055 70);
+    --card-1: #3987e5;
+    --card-2: #d95926;
+    --card-3: #199e70;
+    --card-4: #c98500;
+    --card-5: #d55181;
+    --card-6: #008300;
   }
 }
 

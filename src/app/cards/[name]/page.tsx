@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getSnapshot } from '../../../data/snapshot.ts';
-import { cardDetail, type LedgerEntry } from '../../../domain/statement.ts';
+import { cardColor, cardDetail, type LedgerEntry } from '../../../domain/statement.ts';
 import { dayOf, formatDay, formatDayShort, relativeDays } from '../../../domain/time.ts';
 import { money, percent } from '../../../ui/format.ts';
 import { Page, PageHeader } from '../../../ui/PageHeader.tsx';
@@ -98,7 +98,7 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-[var(--color-ink-3)]">
-              <Dot color={card.color} />
+              <Dot color={cardColor(card.slot)} />
               Total balance now
             </div>
             <Money value={row.totalDebtLive} size="display" className="mt-1 block" />

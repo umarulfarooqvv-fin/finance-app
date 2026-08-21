@@ -28,6 +28,7 @@ import type { Card, Snapshot, Transaction } from './types.ts';
 
 export type StatementRow = {
   card: string;
+  /** CSS variable reference, e.g. 'var(--card-3)'. */
   color: string;
   creditLimit: number;
   cycle: Cycle;
@@ -165,7 +166,7 @@ export function cardStatement(
 
   return {
     card: card.name,
-    color: card.color,
+    color: cardColor(card.slot),
     creditLimit: card.creditLimit,
     cycle,
     daysLeft,
@@ -318,6 +319,12 @@ function creditStillInBalance(
     if (c.ts <= stmtEnd) billed += c.lent;
   }
   return { live: round2(live), billed: round2(billed) };
+}
+
+/** Resolve a palette slot to its themed CSS variable. */
+export function cardColor(slot: number): string {
+  const n = Number.isFinite(slot) && slot >= 1 && slot <= 6 ? Math.floor(slot) : 1;
+  return `var(--card-${n})`;
 }
 
 function round2(n: number): number {

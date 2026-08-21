@@ -22,7 +22,7 @@ export const DEFAULT_CARDS: Card[] = [
     creditLimit: 50000,
     openingBalance: 6851.68,
     openingDate: '2025-12-10',
-    color: '#7c5cff',
+    slot: 1,
     active: true,
   },
   {
@@ -34,7 +34,7 @@ export const DEFAULT_CARDS: Card[] = [
     creditLimit: 115000,
     openingBalance: 858.57,
     openingDate: '2025-12-10',
-    color: '#2dd4bf',
+    slot: 2,
     active: true,
   },
   {
@@ -46,7 +46,7 @@ export const DEFAULT_CARDS: Card[] = [
     creditLimit: 50000,
     openingBalance: 5433.13,
     openingDate: '2025-12-10',
-    color: '#f97316',
+    slot: 3,
     active: true,
   },
   {
@@ -58,7 +58,7 @@ export const DEFAULT_CARDS: Card[] = [
     creditLimit: 50000,
     openingBalance: 2662.72,
     openingDate: '2025-12-15',
-    color: '#ef4444',
+    slot: 4,
     active: true,
   },
   {
@@ -70,7 +70,7 @@ export const DEFAULT_CARDS: Card[] = [
     creditLimit: 48000,
     openingBalance: 16951.5,
     openingDate: '2026-01-04',
-    color: '#38bdf8',
+    slot: 5,
     active: true,
   },
   {
@@ -82,7 +82,7 @@ export const DEFAULT_CARDS: Card[] = [
     creditLimit: 2452.5,
     openingBalance: 0,
     openingDate: '2025-12-10',
-    color: '#facc15',
+    slot: 6,
     active: true,
   },
 ];

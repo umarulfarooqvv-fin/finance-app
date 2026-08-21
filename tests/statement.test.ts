@@ -9,7 +9,7 @@ import { fixtureTransactions, income, makeSnapshot, tx } from './helpers.ts';
 /** A card with no carried history, so every figure is hand-checkable. */
 const plain: Card = {
   name: 'Coral', billDate: 25, graceDays: 17, dueDay: 12, dueCycle: 'next',
-  creditLimit: 50000, openingBalance: 0, openingDate: null, color: '#ef4444', active: true,
+  creditLimit: 50000, openingBalance: 0, openingDate: null, slot: 4, active: true,
 };
 
 test('cycle geometry: the closed cycle is the one that already billed', () => {
