@@ -1,3 +1,4 @@
+import { parsePerson } from './classify.ts';
 import { dayOf, type Day, type Instant } from './time.ts';
 import type { CardName, Income, Snapshot, Transaction } from './types.ts';
 
@@ -76,6 +77,45 @@ export function personKey(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+/**
+ * The grouping key for a debtor.
+ *
+ * Remarks name the same person many ways — "Ashiq", "Ashiq sudu", "Ashiq
+ * rahman", "Ashiq food for wife" — and keeping them apart produced hundreds of
+ * one-entry ledgers. The first word is what stays constant across those forms,
+ * so it does the grouping.
+ *
+ * This deliberately over-merges rather than under-merges: two different people
+ * sharing a first name land together, which is visible and correctable from
+ * the ledger, whereas one person scattered across six rows is not. Manual
+ * `assign` and `aliases` in config override it either way.
+ */
+function groupKey(name: string): string {
+  const first = personKey(name).split(' ')[0] ?? '';
+  return first.length >= 3 ? first : personKey(name);
+}
+
+/** Edit distance capped at 1 — enough to catch a spelling slip, not a rename. */
+function withinOneEdit(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+  while (i < short.length && j < long.length) {
+    if (short[i] === long[j]) {
+      i++;
+      j++;
+      continue;
+    }
+    if (++edits > 1) return false;
+    if (short.length === long.length) i++;
+    j++;
+  }
+  return edits + (long.length - j) + (short.length - i) <= 1;
+}
+
 function canonical(name: string, aliases: Record<string, string>): string {
   const key = personKey(name);
   for (const [from, to] of Object.entries(aliases)) {
@@ -106,7 +146,10 @@ export function creditLedger(snapshot: Snapshot, asOf?: Instant): CreditLedger {
   for (const t of snapshot.transactions) {
     if (t.deleted || t.kind !== 'credit_given') continue;
     if (!within(t.ts) || t.amount == null || t.amount <= 0) continue;
-    const named = assign[t.id] ?? t.tags.person ?? 'Unassigned';
+    // Manual assignment wins; otherwise read the name out of the remarks.
+    // Falling back to a stored tag put the entire history under one
+    // "Unassigned" debtor, because v2 never wrote that tag.
+    const named = assign[t.id] ?? t.tags.person ?? parsePerson(t.remarks) ?? 'Unassigned';
     lendings.push({
       txId: t.id,
       person: canonical(named, aliases),
@@ -154,13 +197,29 @@ export function creditLedger(snapshot: Snapshot, asOf?: Instant): CreditLedger {
 
   // --- Allocate, oldest lending first --------------------------------------
   const byPerson = new Map<string, PersonLedger>();
+
+  // Resolve a name to an existing group: exact key, else a near-spelling of
+  // one already seen ("Fayis" and "Fayiz" are one person).
+  const resolveKey = (person: string): string => {
+    const key = groupKey(person);
+    if (byPerson.has(key)) return key;
+    for (const existing of byPerson.keys()) {
+      if (withinOneEdit(existing, key)) return existing;
+    }
+    return key;
+  };
+
   const ledgerFor = (person: string): PersonLedger => {
-    const key = personKey(person);
+    const key = resolveKey(person);
     let l = byPerson.get(key);
     if (!l) {
       l = { person, given: 0, repaid: 0, outstanding: 0, lendings: [], repayments: [], lastActivity: null, settled: false };
       byPerson.set(key, l);
     }
+    // Prefer the shortest form seen as the display name — "Ashiq" over
+    // "Ashiq food for wife", which is a description that happens to start
+    // with the name.
+    if (person.length < l.person.length) l.person = person;
     return l;
   };
 

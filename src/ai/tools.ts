@@ -7,7 +7,7 @@ import {
 import { creditLedger } from '../domain/credit.ts';
 import { forecast } from '../domain/forecast.ts';
 import { statementView } from '../domain/statement.ts';
-import { dayOf, monthKey, monthStart, type Day } from '../domain/time.ts';
+import type { Day } from '../domain/time.ts';
 import type { Snapshot } from '../domain/types.ts';
 
 /* ===========================================================================

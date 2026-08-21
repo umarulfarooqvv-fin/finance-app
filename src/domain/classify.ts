@@ -144,12 +144,22 @@ export function parseTags(remarks: string | null | undefined): Tags {
   const plausibleTenor = STANDARD_TENORS.has(m) || SAYS_EMI.test(remarks);
   if (emi && plausibleTenor && n >= 1 && n <= m) {
     tags.emi = { n, m };
-    // The item name is whatever precedes the counter: "Sheya's 18/24" -> Sheya
+    // The item name is what immediately precedes the counter:
+    //   "Sheya's 18/24 Emi"  -> Sheya
+    //   "Ipad Mini 15/24"    -> Ipad Mini
+    // Only the last few words are taken. A remark can be a whole sentence that
+    // happens to end near a counter, and using the entire prefix turned one
+    // plan's name into a 20-word paragraph.
     const name = remarks
       .slice(0, emi.index)
       .replace(/['’]s?\s*$/i, '')
+      .replace(/\bemi\b/gi, ' ')
+      .trim()
+      .split(/\s+/)
+      .slice(-3)
+      .join(' ')
       .trim();
-    if (name) tags.emiName = name.replace(/\bemi\b/gi, '').trim() || name;
+    if (name) tags.emiName = name;
     // Instalments split into principal + the card's surcharge and tax rows.
     if (/charge|surcharge/i.test(remarks)) tags.emiComponent = 'surcharge';
     else if (/\btax(es)?\b/i.test(remarks)) tags.emiComponent = 'tax';

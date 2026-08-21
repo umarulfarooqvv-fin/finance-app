@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getSnapshot } from '../../data/snapshot.ts';
 import {
-  byCategory, byMethod, byTrip, dailySeries, lastCompleteMonth, monthSummary,
+  byMethod, byTrip, dailySeries, lastCompleteMonth, monthSummary,
   monthlySeries, priorWindow, spendBetween,
 } from '../../domain/analytics.ts';
 import { forecast } from '../../domain/forecast.ts';
@@ -9,7 +9,7 @@ import { dayOf, formatDay, monthKey, monthStart } from '../../domain/time.ts';
 import { DailyColumns, RankedBars, TrendLine } from '../../ui/Charts.tsx';
 import { delta, money } from '../../ui/format.ts';
 import { Page, PageHeader } from '../../ui/PageHeader.tsx';
-import { Badge, Empty, Money, Panel, SectionTitle, Stat, StatGrid } from '../../ui/primitives.tsx';
+import { Badge, Empty, Panel, SectionTitle, Stat, StatGrid } from '../../ui/primitives.tsx';
 
 export const dynamic = 'force-dynamic';
 
