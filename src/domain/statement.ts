@@ -91,7 +91,8 @@ export function cardStatement(
   snapshot: Snapshot,
   card: Card,
   today: Day,
-  creditByCard: Record<string, number> = {},
+  /** Per-lending unrepaid balance, keyed by transaction id (see credit.ts). */
+  outstandingByTx: Record<string, number> = {},
 ): StatementRow {
   const cycle = cycleFor(card, today);
   const now = endOfDay(today);
@@ -109,7 +110,8 @@ export function cardStatement(
   let verified = 0;
   let unverified = 0;
 
-  for (const t of cardRows(snapshot, card, now)) {
+  const rows = cardRows(snapshot, card, now);
+  for (const t of rows) {
     const amt = t.amount as number;
     const ts = t.ts as Instant;
     const isCharge = t.cardDirection === 'debt+';
@@ -152,9 +154,11 @@ export function cardStatement(
   const unbilled = spendsAfter - (paymentsAfter - appliedToBill) + Math.min(0, billedClosing);
   const totalDebtLive = billedClosing + spendsAfter - paymentsAfter;
 
-  // True exclusion: only lending that has NOT been paid back is removed.
-  const creditOutstanding = creditByCard[card.name] ?? 0;
-  const remainingDueExcl = Math.max(0, remainingDueBill - creditOutstanding);
+  // Which of the charges still sitting in the balance is money lent out.
+  const lentInBalance = creditStillInBalance(rows, card, outstandingByTx, now, stmtEnd);
+  const creditOutstanding = round2(Math.min(lentInBalance.live, Math.max(0, totalDebtLive)));
+  const creditBilled = round2(Math.min(lentInBalance.billed, remainingDueBill));
+  const remainingDueExcl = Math.max(0, remainingDueBill - creditBilled);
   const totalDebtExcl = totalDebtLive - creditOutstanding;
 
   const daysLeft = daysUntilDue(cycle, today);
@@ -187,7 +191,7 @@ export function statementView(snapshot: Snapshot, today: Day = dayOf(snapshot.lo
   const credit = creditLedger(snapshot, endOfDay(today));
   const rows = snapshot.cards
     .filter((c) => c.active)
-    .map((c) => cardStatement(snapshot, c, today, credit.outstandingByCard))
+    .map((c) => cardStatement(snapshot, c, today, credit.outstandingByTx))
     .sort((a, b) => a.daysLeft - b.daysLeft || b.totalDebtLive - a.totalDebtLive);
 
   const sum = (pick: (r: StatementRow) => number) => round2(rows.reduce((a, r) => a + pick(r), 0));
@@ -232,7 +236,7 @@ export type CardDetail = {
 
 export function cardDetail(snapshot: Snapshot, card: Card, today: Day): CardDetail {
   const credit = creditLedger(snapshot, endOfDay(today));
-  const row = cardStatement(snapshot, card, today, credit.outstandingByCard);
+  const row = cardStatement(snapshot, card, today, credit.outstandingByTx);
   const stmtEnd = endOfDay(row.cycle.statementEnd);
   const cycleStart = startOfDay(row.cycle.cycleStart);
 
@@ -253,6 +257,67 @@ export function cardDetail(snapshot: Snapshot, card: Card, today: Day): CardDeta
     billed: rows.filter((t) => t.ts! >= cycleStart && t.ts! <= stmtEnd).map(entry),
     unbilled: rows.filter((t) => t.ts! > stmtEnd).map(entry),
   };
+}
+
+/**
+ * How much of what is STILL OWED on this card is money lent to other people.
+ *
+ * The naive answer — total up every credit-given charge — is wrong once a bill
+ * has been paid: money you fronted in March and settled in April is your own
+ * discharged debt, not an outstanding loan sitting in today's balance.
+ *
+ * So payments are allocated against charges oldest-first (the same FIFO
+ * reasoning the credit ledger uses for repayments), leaving the tail of
+ * charges that nobody has paid for yet. That tail IS the current balance. The
+ * figure returned is the part of that tail which was lent out AND which the
+ * borrower has not paid back — money that is neither your spending nor yet
+ * back in your pocket.
+ */
+function creditStillInBalance(
+  rows: Transaction[],
+  card: Card,
+  outstandingByTx: Record<string, number>,
+  now: Instant,
+  stmtEnd: Instant,
+): { live: number; billed: number } {
+  // The opening balance behaves as the oldest charge on the card.
+  let unpaidOpening = Math.max(0, card.openingBalance || 0);
+  const charges: { ts: Instant; remaining: number; lent: number }[] = [];
+
+  for (const t of rows) {
+    if (t.ts == null || t.amount == null || t.ts > now) continue;
+    if (t.cardDirection === 'debt+') {
+      charges.push({
+        ts: t.ts,
+        remaining: t.amount,
+        // Only the still-unrepaid slice of a lending counts as lent-out money.
+        lent: t.kind === 'credit_given' ? Math.min(t.amount, outstandingByTx[t.id] ?? 0) : 0,
+      });
+    } else {
+      // A payment settles the opening balance first, then charges in order.
+      let pool = t.amount;
+      const fromOpening = Math.min(pool, unpaidOpening);
+      unpaidOpening -= fromOpening;
+      pool -= fromOpening;
+      for (const c of charges) {
+        if (pool <= 0) break;
+        const applied = Math.min(pool, c.remaining);
+        // A partly-paid charge sheds its lent portion proportionally.
+        if (c.remaining > 0) c.lent -= c.lent * (applied / c.remaining);
+        c.remaining -= applied;
+        pool -= applied;
+      }
+    }
+  }
+
+  let live = 0;
+  let billed = 0;
+  for (const c of charges) {
+    if (c.lent <= 0) continue;
+    live += c.lent;
+    if (c.ts <= stmtEnd) billed += c.lent;
+  }
+  return { live: round2(live), billed: round2(billed) };
 }
 
 function round2(n: number): number {

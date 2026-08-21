@@ -195,6 +195,30 @@ test('excluding credit removes only lending that is still unpaid', () => {
   assert.equal(after.totalDebtExcl, 3000, 'repaid lending must stop being excluded');
 });
 
+test('the credit exclusion respects the card tracking window', () => {
+  // Lending charged before tracking began is not part of this balance — the
+  // opening balance stands in for that era. Excluding it anyway made Coral
+  // report more money "lent out" than the card carried in total.
+  const carried: Card = { ...plain, openingBalance: 1000, openingDate: '2026-01-01' };
+  const snap = makeSnapshot({
+    cards: [carried],
+    transactions: [
+      // Long before tracking started, never repaid.
+      tx({ ts: '2023-05-01T10:00:00', amount: 30000, method: 'Coral', category: 'Credit Given', kind: 'credit_given', cardAffected: 'Coral', cardDirection: 'debt+', remarks: 'Irshad', tags: { person: 'Irshad' } }),
+      // Inside the tracked window.
+      tx({ ts: '2026-05-01T10:00:00', amount: 500, method: 'Coral', category: 'Credit Given', kind: 'credit_given', cardAffected: 'Coral', cardDirection: 'debt+', remarks: 'Jinan', tags: { person: 'Jinan' } }),
+    ],
+  });
+
+  const r = cardStatement(snap, carried, '2026-06-10', creditLedger(snap).outstandingByTx);
+  assert.equal(r.totalDebtLive, 1500, 'pre-tracking lending must not inflate the balance');
+  // Only the 500 inside the window may be excluded, not the 30000 outside it.
+  assert.equal(r.creditGivenOutstanding, 500);
+  assert.equal(r.totalDebtExcl, 1000);
+  // And the exclusion can never exceed the balance it is subtracted from.
+  assert.ok(r.creditGivenOutstanding <= r.totalDebtLive);
+});
+
 test('credit ledger allocates repayments oldest-first', () => {
   const snap = makeSnapshot({
     transactions: [
