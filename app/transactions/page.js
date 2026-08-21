@@ -13,15 +13,18 @@ export default function Transactions() {
   const [modal, setModal] = useState(null); // null | {mode:'add'} | {mode:'edit', tx}
   const [toast, setToast] = useState(null);
   const [writes, setWrites] = useState(true);
+  const [showUpcoming, setShowUpcoming] = useState(false);
+  const [upcomingCount, setUpcomingCount] = useState(0);
 
   const load = useCallback(async () => {
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries(filters)) if (v !== '') p.set(k, v);
     p.set('limit', '300');
+    if (showUpcoming) p.set('upcoming', '1');
     const r = await fetch(`/api/transactions?${p}`);
     const j = await r.json();
-    if (j.ok) { setRows(j.rows); setTotal(j.total); }
-  }, [filters]);
+    if (j.ok) { setRows(j.rows); setTotal(j.total); setUpcomingCount(j.upcomingHidden || 0); }
+  }, [filters, showUpcoming]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -76,6 +79,20 @@ export default function Transactions() {
           <button onClick={() => setModal({ mode: 'add' })} disabled={!writes}>＋ Add</button>
         </div>
       </div>
+
+      {(upcomingCount > 0 || showUpcoming) && (
+        <div className="panel small" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span className="muted">
+            {showUpcoming
+              ? 'Showing pre-logged upcoming rows (EMIs logged ahead of time).'
+              : `${upcomingCount} upcoming ${upcomingCount === 1 ? 'row is' : 'rows are'} hidden — they appear here automatically on their date.`}
+          </span>
+          <button className="ghost small" onClick={() => setShowUpcoming((s) => !s)}>
+            {showUpcoming ? 'Hide upcoming' : 'Show upcoming'}
+          </button>
+          <a className="ghost small" href="/emi" style={{ textDecoration: 'none' }}>Track on EMIs →</a>
+        </div>
+      )}
 
       <div className="panel tableWrap">
         <table>

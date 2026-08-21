@@ -13,3 +13,5 @@ _to_delete/
 
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json
+.scratch/
+data/

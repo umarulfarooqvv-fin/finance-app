@@ -5,19 +5,22 @@
       "name": "next-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 3000
+      "port": 3000,
+      "autoPort": true
     },
     {
       "name": "next-prod",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "start"],
-      "port": 3000
+      "port": 3000,
+      "autoPort": true
     },
     {
       "name": "next-dev-locked",
       "runtimeExecutable": "sh",
-      "runtimeArgs": ["-c", "APP_ACCESS_KEY=devpin npm run dev -- --port 3002"],
-      "port": 3002
+      "runtimeArgs": ["-c", "APP_ACCESS_KEY=devpin npm run dev"],
+      "port": 3002,
+      "autoPort": true
     }
   ]
 }
