@@ -90,12 +90,25 @@ export function dailySeries(snapshot: Snapshot, from: Day, to: Day): { day: Day;
   return out;
 }
 
-/** Monthly totals over the whole history, oldest first. */
-export function monthlySeries(snapshot: Snapshot): { month: string; total: number; count: number }[] {
+/**
+ * Monthly totals, oldest first.
+ *
+ * `until` bounds the series, and callers should almost always pass the last
+ * COMPLETED month. Two things otherwise corrupt the read of a trend line:
+ * pre-logged EMI instalments extend the data months into the future, so the
+ * line trails off toward zero and looks like spending collapsed; and the
+ * current month is only partly elapsed, so it always dips at the right edge.
+ * Neither is a fall in spending, but both look exactly like one.
+ */
+export function monthlySeries(
+  snapshot: Snapshot,
+  opts: { until?: string } = {},
+): { month: string; total: number; count: number }[] {
   const sums = new Map<string, { total: number; count: number }>();
   for (const t of snapshot.transactions) {
     if (!isSpend(t)) continue;
     const k = monthKey(t.ts!);
+    if (opts.until && k > opts.until) continue;
     const cur = sums.get(k) ?? { total: 0, count: 0 };
     cur.total += t.amount ?? 0;
     cur.count += 1;
@@ -211,6 +224,11 @@ export function upcomingRows(snapshot: Snapshot, today: Day): Transaction[] {
   return snapshot.transactions
     .filter((t) => !t.deleted && t.ts && t.ts > hi)
     .sort((a, b) => (a.ts! < b.ts! ? -1 : 1));
+}
+
+/** The most recent month that has fully elapsed. */
+export function lastCompleteMonth(today: Day): string {
+  return monthKey(addDays(monthStart(monthKey(today)), -1));
 }
 
 export function round2(n: number): number {

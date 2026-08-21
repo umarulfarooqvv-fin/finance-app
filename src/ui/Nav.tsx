@@ -66,8 +66,14 @@ function Tab({ item, active, variant }: { item: NavItem; active: boolean; varian
   );
 }
 
+/** Routes that render without app chrome. The lock screen must show nothing
+    of the app behind it — not even the shape of the navigation. */
+const BARE_ROUTES = ['/lock'];
+const isBare = (pathname: string) => BARE_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`));
+
 export function BottomBar() {
   const pathname = usePathname();
+  if (isBare(pathname)) return null;
   return (
     <nav
       aria-label="Main"
@@ -85,6 +91,7 @@ export function BottomBar() {
 
 export function SideRail() {
   const pathname = usePathname();
+  if (isBare(pathname)) return null;
   return (
     <nav
       aria-label="Main"
