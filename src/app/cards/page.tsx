@@ -75,10 +75,10 @@ export default async function CardsPage() {
           <Empty title="No active cards" hint="Add a card in settings to start tracking statements." />
         ) : (
           <div className="p-4 sm:p-5">
-            <TableWrap>
+            <TableWrap minWidth={760} stickyFirst>
               <thead>
                 <tr>
-                  <Th>Card</Th>
+                  <Th sticky>Card</Th>
                   <Th>Statement</Th>
                   <Th>Due</Th>
                   <Th align="right">Bill due</Th>
@@ -92,7 +92,7 @@ export default async function CardsPage() {
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.card} className="transition-colors hover:bg-[var(--color-raised)]">
-                    <Td>
+                    <Td sticky>
                       <Link
                         href={`/cards/${encodeURIComponent(row.card)}`}
                         className="flex items-center gap-2 font-medium"
@@ -132,7 +132,7 @@ export default async function CardsPage() {
               </tbody>
               <tfoot>
                 <tr className="font-semibold">
-                  <Td>Total</Td>
+                  <Td sticky>Total</Td>
                   <Td />
                   <Td />
                   <Td align="right">

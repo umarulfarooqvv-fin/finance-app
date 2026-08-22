@@ -79,10 +79,10 @@ export default async function MoneyPage() {
           />
         ) : (
           <>
-            <TableWrap>
+            <TableWrap stickyFirst>
               <thead>
                 <tr>
-                  <Th>Account</Th>
+                  <Th sticky>Account</Th>
                   <Th>Tracked since</Th>
                   <Th align="right">Opening</Th>
                   <Th align="right">In</Th>
@@ -93,7 +93,7 @@ export default async function MoneyPage() {
               <tbody>
                 {accounts.map((a) => (
                   <tr key={a.name}>
-                    <Td className="font-medium">{a.name}</Td>
+                    <Td sticky className="font-medium">{a.name}</Td>
                     <Td className="whitespace-nowrap text-xs text-[var(--color-ink-2)]">
                       {a.since ? formatDay(a.since) : 'All history'}
                     </Td>

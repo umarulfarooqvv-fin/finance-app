@@ -68,10 +68,10 @@ export default async function LedgersPage() {
           />
         ) : (
           <>
-            <TableWrap>
+            <TableWrap stickyFirst>
               <thead>
                 <tr>
-                  <Th>Person</Th>
+                  <Th sticky>Person</Th>
                   <Th align="right">Lent</Th>
                   <Th align="right">Came back</Th>
                   <Th align="right">Outstanding</Th>
@@ -81,7 +81,7 @@ export default async function LedgersPage() {
               <tbody>
                 {owedToMe.slice(0, 25).map((p) => (
                   <tr key={p.person}>
-                    <Td className="font-medium">{p.person}</Td>
+                    <Td sticky className="font-medium">{p.person}</Td>
                     <Td align="right">
                       <Money value={p.given} size="sm" tone="muted" />
                     </Td>
@@ -119,10 +119,10 @@ export default async function LedgersPage() {
             hint="Nothing in the transaction log marks a borrowing — money arriving as a loan looks like any other inflow — so these are entered by hand."
           />
         ) : (
-          <TableWrap>
+          <TableWrap stickyFirst>
             <thead>
               <tr>
-                <Th>Person</Th>
+                <Th sticky>Person</Th>
                 <Th>Taken</Th>
                 <Th align="right">Principal</Th>
                 <Th align="right">Repaid</Th>
@@ -133,7 +133,7 @@ export default async function LedgersPage() {
             <tbody>
               {debts.debts.map((d) => (
                 <tr key={d.id}>
-                  <Td className="font-medium">{d.person}</Td>
+                  <Td sticky className="font-medium">{d.person}</Td>
                   <Td className="whitespace-nowrap text-xs text-[var(--color-ink-2)]">
                     {formatDay(d.takenOn)}
                   </Td>

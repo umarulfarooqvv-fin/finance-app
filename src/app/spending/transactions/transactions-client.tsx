@@ -77,10 +77,10 @@ export function TransactionsClient({
       {rows.length === 0 ? (
         <Empty title="Nothing matches" hint="Try a different search, or add an entry." />
       ) : (
-        <TableWrap>
+        <TableWrap minWidth={680} stickyFirst>
           <thead>
             <tr>
-              <Th>Date</Th>
+              <Th sticky>Date</Th>
               <Th>Description</Th>
               <Th>Category</Th>
               <Th>Method</Th>
@@ -91,7 +91,7 @@ export function TransactionsClient({
           <tbody>
             {rows.map((t) => (
               <tr key={t.id} className={t.deleted ? 'opacity-50' : undefined}>
-                <Td className="whitespace-nowrap text-xs text-[var(--color-ink-2)]">
+                <Td sticky className="whitespace-nowrap text-xs text-[var(--color-ink-2)]">
                   {formatDayShort(t.ts.slice(0, 10))}
                 </Td>
                 <Td>

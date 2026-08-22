@@ -218,3 +218,14 @@ body {
   scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
 }
+
+/* A pinned identity column needs a visible seam, otherwise the scrolled
+   columns appear to simply stop rather than to pass underneath. The shadow is
+   drawn on the sticky cell's trailing edge and only while there is something
+   scrolled behind it. */
+.sticky-first table :is(th, td).sticky {
+  box-shadow: 1px 0 0 0 var(--color-line);
+}
+.sticky-first tfoot :is(th, td).sticky {
+  background: var(--color-surface);
+}

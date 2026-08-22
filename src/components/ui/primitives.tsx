@@ -219,17 +219,40 @@ export function SectionTitle({ children, action }: { children: ReactNode; action
 
 /* --- Table ---------------------------------------------------------------
    Wide tables scroll inside their own container so the page body never
-   scrolls sideways on a phone. */
+   scrolls sideways on a phone.
 
-export function TableWrap({ children }: { children: ReactNode }) {
+   The first column can be PINNED. On a money table that is not decoration:
+   scroll right to compare balances and the row's identity — which card, which
+   person — slides out of view, leaving a grid of numbers with nothing saying
+   whose they are. Pinning it keeps every figure attributable.
+
+   `stickyFirst` puts the pinning on the wrapper, and Th/Td opt in with
+   `sticky`, so the pinned cells get an opaque background (content must pass
+   UNDER them, not through) and a hairline edge that reads as a seam. */
+
+export function TableWrap({
+  children, minWidth = 560, stickyFirst = false,
+}: {
+  children: ReactNode;
+  minWidth?: number;
+  stickyFirst?: boolean;
+}) {
   return (
-    <div className="scroll-x -mx-4 px-4 sm:mx-0 sm:px-0">
-      <table className="w-full min-w-[560px] border-collapse text-sm">{children}</table>
+    <div className={cx('scroll-x -mx-4 px-4 sm:mx-0 sm:px-0', stickyFirst && 'sticky-first')}>
+      <table className="w-full border-collapse text-sm" style={{ minWidth }}>
+        {children}
+      </table>
     </div>
   );
 }
 
-export function Th({ children, align = 'left' }: { children?: ReactNode; align?: 'left' | 'right' | 'center' }) {
+export function Th({
+  children, align = 'left', sticky = false,
+}: {
+  children?: ReactNode;
+  align?: 'left' | 'right' | 'center';
+  sticky?: boolean;
+}) {
   return (
     <th
       className={cx(
@@ -237,6 +260,7 @@ export function Th({ children, align = 'left' }: { children?: ReactNode; align?:
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
         align === 'left' && 'text-left',
+        sticky && 'sticky left-0 z-20 bg-[var(--color-surface)]',
       )}
       scope="col"
     >
@@ -246,12 +270,13 @@ export function Th({ children, align = 'left' }: { children?: ReactNode; align?:
 }
 
 export function Td({
-  children, align = 'left', className, colSpan,
+  children, align = 'left', className, colSpan, sticky = false,
 }: {
   children?: ReactNode;
   align?: 'left' | 'right' | 'center';
   className?: string;
   colSpan?: number;
+  sticky?: boolean;
 }) {
   return (
     <td
@@ -260,6 +285,8 @@ export function Td({
         'border-b border-[var(--color-line)] px-3 py-2.5 align-middle',
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
+        // Opaque, so scrolled columns pass under rather than showing through.
+        sticky && 'sticky left-0 z-10 bg-[var(--color-surface)]',
         className,
       )}
     >

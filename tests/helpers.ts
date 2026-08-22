@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { classify } from '@/lib/classify';
 import { transactionsFromCsv } from '@/lib/csv';
 import { DEFAULT_ACCOUNTS, DEFAULT_CARDS } from '@/lib/defaults';
 import type { Income, Snapshot, Transaction } from '@/lib/types';
@@ -28,20 +29,37 @@ export function makeSnapshot(over: Partial<Snapshot> = {}): Snapshot {
 
 let seq = 0;
 
-/** Build a transaction without repeating every field at each call site. */
+/**
+ * Build a transaction without repeating every field at each call site.
+ *
+ * Derived fields — kind, card, direction, tags — are computed from
+ * method/category/remarks exactly as `toTransaction` does when loading from
+ * Postgres, so a fixture behaves like a real row. Building them by hand made
+ * the helper LESS faithful than production: a row with "Ipad Mini 1/24" in its
+ * remarks arrived with empty tags, and the EMI grouper correctly found nothing
+ * to group.
+ *
+ * Explicit overrides still win, so a test can construct an incoherent row on
+ * purpose to prove the engine copes with one.
+ */
 export function tx(over: Partial<Transaction> = {}): Transaction {
   seq += 1;
+  const method = over.method ?? 'Fi';
+  const category = over.category ?? 'Food';
+  const remarks = over.remarks ?? '';
+  const derived = classify({ method, category, remarks });
+
   return {
     id: `t${seq}`,
     ts: '2026-06-01T10:00:00',
     amount: 100,
-    method: 'Fi',
-    category: 'Food',
-    remarks: '',
-    kind: 'spend',
-    cardAffected: null,
-    cardDirection: null,
-    tags: {},
+    method,
+    category,
+    remarks,
+    kind: derived.kind,
+    cardAffected: derived.cardAffected,
+    cardDirection: derived.cardDirection,
+    tags: derived.tags,
     verified: false,
     needsReview: false,
     deleted: false,
