@@ -1,8 +1,8 @@
-import { getSnapshot } from '../../data/snapshot.ts';
-import { cardColor } from '../../domain/statement.ts';
-import { formatDay } from '../../domain/time.ts';
-import { Page, PageHeader } from '../../ui/PageHeader.tsx';
-import { Dot, Money, Panel, SectionTitle, TableWrap, Td, Th } from '../../ui/primitives.tsx';
+import { getSnapshot } from '@/lib/snapshot';
+import { cardColor } from '@/lib/statement';
+import { formatDay } from '@/lib/time';
+import { Page, PageHeader } from '@/components/layout/page-header';
+import { Dot, Money, Panel, SectionTitle, TableWrap, Td, Th } from '@/components/ui/primitives';
 
 export const dynamic = 'force-dynamic';
 

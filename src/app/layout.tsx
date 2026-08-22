@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
-import { BottomBar, SideRail } from '../ui/Nav.tsx';
+import { BottomBar, SideRail } from '@/components/layout/nav';
 import './globals.css';
 
 export const metadata: Metadata = {

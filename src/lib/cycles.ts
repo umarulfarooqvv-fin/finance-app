@@ -1,8 +1,8 @@
 import {
   addDays, dayInMonth, dayOf, daysBetween, endOfDay, shiftMonth, startOfDay,
   type Day, type Instant,
-} from './time.ts';
-import type { Card } from './types.ts';
+} from '@/lib/time';
+import type { Card } from '@/lib/types';
 
 /* ===========================================================================
    Statement cycle geometry (spec §3.1).

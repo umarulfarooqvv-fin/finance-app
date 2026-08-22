@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { invalidateSnapshot } from '../../../data/snapshot.ts';
-import { insert, logEvent } from '../../../data/supabase.ts';
-import { normaliseEntry, toRow } from '../../../domain/entry.ts';
-import { nowIST } from '../../../domain/time.ts';
+import { invalidateSnapshot } from '@/lib/snapshot';
+import { insert, logEvent } from '@/lib/supabase';
+import { normaliseEntry, toRow } from '@/lib/entry';
+import { nowIST } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 

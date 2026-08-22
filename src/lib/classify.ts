@@ -1,5 +1,5 @@
-import { daysInMonth, fromCivil, type Instant } from './time.ts';
-import { CARD_NAMES, SPEND_CATEGORIES, isCard, type CardDirection, type CardName, type Tags, type TxKind } from './types.ts';
+import { daysInMonth, fromCivil, type Instant } from '@/lib/time';
+import { CARD_NAMES, SPEND_CATEGORIES, isCard, type CardDirection, type CardName, type Tags, type TxKind } from '@/lib/types';
 
 /* ===========================================================================
    Turning a raw row into meaning.

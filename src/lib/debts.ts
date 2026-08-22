@@ -1,6 +1,6 @@
-import { round2 } from './analytics.ts';
-import { endOfDay, type Day, type Instant } from './time.ts';
-import type { Snapshot } from './types.ts';
+import { round2 } from '@/lib/analytics';
+import { endOfDay, type Day, type Instant } from '@/lib/time';
+import type { Snapshot } from '@/lib/types';
 
 /* ===========================================================================
    Credit Taken (spec §3.7) — money Farooq owes to people, as opposed to the

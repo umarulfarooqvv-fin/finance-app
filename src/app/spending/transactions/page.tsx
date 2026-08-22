@@ -1,10 +1,10 @@
 import Link from 'next/link';
-import { getSnapshot } from '../../../data/snapshot.ts';
-import { upcomingRows } from '../../../domain/analytics.ts';
-import { dayOf, endOfDay, formatDayShort } from '../../../domain/time.ts';
-import { money } from '../../../ui/format.ts';
-import { Page, PageHeader } from '../../../ui/PageHeader.tsx';
-import { Badge, Empty, Money, Panel, TableWrap, Td, Th } from '../../../ui/primitives.tsx';
+import { getSnapshot } from '@/lib/snapshot';
+import { upcomingRows } from '@/lib/analytics';
+import { dayOf, endOfDay, formatDayShort } from '@/lib/time';
+import { money } from '@/lib/format';
+import { Page, PageHeader } from '@/components/layout/page-header';
+import { Badge, Empty, Money, Panel, TableWrap, Td, Th } from '@/components/ui/primitives';
 
 export const dynamic = 'force-dynamic';
 

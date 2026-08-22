@@ -1,6 +1,6 @@
-import { round2 } from './analytics.ts';
-import { dayOf, endOfDay, monthKey, type Day, type Instant } from './time.ts';
-import type { Snapshot, Transaction } from './types.ts';
+import { round2 } from '@/lib/analytics';
+import { dayOf, endOfDay, monthKey, type Day, type Instant } from '@/lib/time';
+import type { Snapshot, Transaction } from '@/lib/types';
 
 /* ===========================================================================
    EMI tracker (spec §3.7).

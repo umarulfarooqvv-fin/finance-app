@@ -1,7 +1,7 @@
-import { byCategory, byMethod, monthSummary, round2, spendBetween } from './analytics.ts';
-import { statementView } from './statement.ts';
-import { endOfDay, monthEnd, monthKey, monthStart, type Day } from './time.ts';
-import type { Snapshot } from './types.ts';
+import { byCategory, byMethod, monthSummary, round2, spendBetween } from '@/lib/analytics';
+import { statementView } from '@/lib/statement';
+import { endOfDay, monthEnd, monthKey, monthStart, type Day } from '@/lib/time';
+import type { Snapshot } from '@/lib/types';
 
 /* ===========================================================================
    Forecast and Recommended Reserve (spec §3.5).

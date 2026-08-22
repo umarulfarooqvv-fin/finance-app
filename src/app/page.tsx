@@ -1,11 +1,11 @@
 import Link from 'next/link';
-import { cardsView, currentSnapshot, forecastView } from '../data/views.ts';
-import { monthSummary, priorWindow, recentActivity } from '../domain/analytics.ts';
-import type { StatementRow } from '../domain/statement.ts';
-import { formatDay, formatDayShort, relativeDays } from '../domain/time.ts';
-import { delta, money, moneyCompact } from '../ui/format.ts';
-import { Page, PageHeader } from '../ui/PageHeader.tsx';
-import { Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, cx } from '../ui/primitives.tsx';
+import { cardsView, currentSnapshot, forecastView } from '@/lib/views';
+import { monthSummary, priorWindow, recentActivity } from '@/lib/analytics';
+import type { StatementRow } from '@/lib/statement';
+import { formatDay, formatDayShort, relativeDays } from '@/lib/time';
+import { delta, money, moneyCompact } from '@/lib/format';
+import { Page, PageHeader } from '@/components/layout/page-header';
+import { Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
 
 export const dynamic = 'force-dynamic';
 

@@ -1,4 +1,4 @@
-import type { Account, Card } from './types.ts';
+import type { Account, Card } from '@/lib/types';
 
 /* ===========================================================================
    Seed configuration, audited against the workbook's Card_Settings tab.

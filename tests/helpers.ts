@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { transactionsFromCsv } from '../src/domain/csv.ts';
-import { DEFAULT_ACCOUNTS, DEFAULT_CARDS } from '../src/domain/defaults.ts';
-import type { Income, Snapshot, Transaction } from '../src/domain/types.ts';
+import { transactionsFromCsv } from '@/lib/csv';
+import { DEFAULT_ACCOUNTS, DEFAULT_CARDS } from '@/lib/defaults';
+import type { Income, Snapshot, Transaction } from '@/lib/types';
 
 /** The fixture is a real snapshot of the Daily Spent sheet (10-Jun-2026). */
 export function fixtureCsv(): string {

@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getSnapshot } from '../../../data/snapshot.ts';
-import { cardColor, cardDetail, type LedgerEntry } from '../../../domain/statement.ts';
-import { dayOf, formatDay, formatDayShort, relativeDays } from '../../../domain/time.ts';
-import { money, percent } from '../../../ui/format.ts';
-import { Page, PageHeader } from '../../../ui/PageHeader.tsx';
+import { getSnapshot } from '@/lib/snapshot';
+import { cardColor, cardDetail, type LedgerEntry } from '@/lib/statement';
+import { dayOf, formatDay, formatDayShort, relativeDays } from '@/lib/time';
+import { money, percent } from '@/lib/format';
+import { Page, PageHeader } from '@/components/layout/page-header';
 import {
   Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, Stat, StatGrid, TableWrap, Td, Th,
-} from '../../../ui/primitives.tsx';
+} from '@/components/ui/primitives';
 
 export const dynamic = 'force-dynamic';
 

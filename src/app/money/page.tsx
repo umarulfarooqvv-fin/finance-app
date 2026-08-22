@@ -1,12 +1,12 @@
 import Link from 'next/link';
-import { getSnapshot } from '../../data/snapshot.ts';
-import { incomeBetween } from '../../domain/analytics.ts';
-import { accountBalances, netWorth } from '../../domain/balances.ts';
-import { dayOf, formatDay, monthKey, monthStart } from '../../domain/time.ts';
-import { Page, PageHeader } from '../../ui/PageHeader.tsx';
+import { getSnapshot } from '@/lib/snapshot';
+import { incomeBetween } from '@/lib/analytics';
+import { accountBalances, netWorth } from '@/lib/balances';
+import { dayOf, formatDay, monthKey, monthStart } from '@/lib/time';
+import { Page, PageHeader } from '@/components/layout/page-header';
 import {
   Empty, Money, Panel, SectionTitle, Stat, StatGrid, TableWrap, Td, Th,
-} from '../../ui/primitives.tsx';
+} from '@/components/ui/primitives';
 
 export const dynamic = 'force-dynamic';
 

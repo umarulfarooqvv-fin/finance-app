@@ -1,7 +1,7 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
-import type { Day } from '../domain/time.ts';
-import type { Snapshot } from '../domain/types.ts';
+import type { Day } from '@/lib/time';
+import type { Snapshot } from '@/lib/types';
 import { buildTools, systemPrompt } from './tools.ts';
 
 /* ===========================================================================

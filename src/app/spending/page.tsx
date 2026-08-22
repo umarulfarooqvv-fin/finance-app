@@ -1,15 +1,15 @@
 import Link from 'next/link';
-import { getSnapshot } from '../../data/snapshot.ts';
+import { getSnapshot } from '@/lib/snapshot';
 import {
   byMethod, byTrip, dailySeries, lastCompleteMonth, monthSummary,
   monthlySeries, priorWindow, spendBetween,
-} from '../../domain/analytics.ts';
-import { forecast } from '../../domain/forecast.ts';
-import { dayOf, formatDay, monthKey, monthStart } from '../../domain/time.ts';
-import { DailyColumns, RankedBars, TrendLine } from '../../ui/Charts.tsx';
-import { delta, money } from '../../ui/format.ts';
-import { Page, PageHeader } from '../../ui/PageHeader.tsx';
-import { Badge, Empty, Panel, SectionTitle, Stat, StatGrid } from '../../ui/primitives.tsx';
+} from '@/lib/analytics';
+import { forecast } from '@/lib/forecast';
+import { dayOf, formatDay, monthKey, monthStart } from '@/lib/time';
+import { DailyColumns, RankedBars, TrendLine } from '@/components/charts/charts';
+import { delta, money } from '@/lib/format';
+import { Page, PageHeader } from '@/components/layout/page-header';
+import { Badge, Empty, Panel, SectionTitle, Stat, StatGrid } from '@/components/ui/primitives';
 
 export const dynamic = 'force-dynamic';
 

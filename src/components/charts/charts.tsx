@@ -1,9 +1,9 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { formatDay, formatMonth, type Day } from '../domain/time.ts';
-import { money, moneyCompact } from './format.ts';
-import { cx } from './primitives.tsx';
+import { formatDay, formatMonth, type Day } from '@/lib/time';
+import { money, moneyCompact } from '@/lib/format';
+import { cx } from '@/components/ui/primitives';
 
 /* ===========================================================================
    Charts, in plain SVG.

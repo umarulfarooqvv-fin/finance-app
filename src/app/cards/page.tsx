@@ -1,12 +1,12 @@
 import Link from 'next/link';
-import { cardsView, currentSnapshot } from '../../data/views.ts';
-import type { StatementRow } from '../../domain/statement.ts';
-import { formatDay, relativeDays } from '../../domain/time.ts';
-import { money, percent } from '../../ui/format.ts';
-import { Page, PageHeader } from '../../ui/PageHeader.tsx';
+import { cardsView, currentSnapshot } from '@/lib/views';
+import type { StatementRow } from '@/lib/statement';
+import { formatDay, relativeDays } from '@/lib/time';
+import { money, percent } from '@/lib/format';
+import { Page, PageHeader } from '@/components/layout/page-header';
 import {
   Badge, Dot, Empty, Meter, Money, Panel, Stat, StatGrid, TableWrap, Td, Th,
-} from '../../ui/primitives.tsx';
+} from '@/components/ui/primitives';
 
 export const dynamic = 'force-dynamic';
 

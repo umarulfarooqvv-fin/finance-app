@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { creditLedger } from '../src/domain/credit.ts';
-import { cycleFor, dueStatus } from '../src/domain/cycles.ts';
-import { cardStatement, statementView } from '../src/domain/statement.ts';
-import type { Card } from '../src/domain/types.ts';
+import { creditLedger } from '@/lib/credit';
+import { cycleFor, dueStatus } from '@/lib/cycles';
+import { cardStatement, statementView } from '@/lib/statement';
+import type { Card } from '@/lib/types';
 import { fixtureTransactions, income, makeSnapshot, tx } from './helpers.ts';
 
 /** A card with no carried history, so every figure is hand-checkable. */

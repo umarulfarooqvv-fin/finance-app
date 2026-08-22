@@ -1,13 +1,13 @@
-import { getSnapshot } from '../../data/snapshot.ts';
-import { creditLedger } from '../../domain/credit.ts';
-import { debtLedger } from '../../domain/debts.ts';
-import { emiPlans, emiSummary } from '../../domain/emi.ts';
-import { dayOf, formatDay } from '../../domain/time.ts';
-import { money } from '../../ui/format.ts';
-import { Page, PageHeader } from '../../ui/PageHeader.tsx';
+import { getSnapshot } from '@/lib/snapshot';
+import { creditLedger } from '@/lib/credit';
+import { debtLedger } from '@/lib/debts';
+import { emiPlans, emiSummary } from '@/lib/emi';
+import { dayOf, formatDay } from '@/lib/time';
+import { money } from '@/lib/format';
+import { Page, PageHeader } from '@/components/layout/page-header';
 import {
   Badge, Empty, Money, Panel, SectionTitle, Stat, StatGrid, TableWrap, Td, Th,
-} from '../../ui/primitives.tsx';
+} from '@/components/ui/primitives';
 
 export const dynamic = 'force-dynamic';
 

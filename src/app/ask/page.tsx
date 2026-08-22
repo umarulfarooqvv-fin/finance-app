@@ -1,5 +1,5 @@
-import { aiConfigured } from '../../ai/ask.ts';
-import { Page, PageHeader } from '../../ui/PageHeader.tsx';
+import { aiConfigured } from '@/lib/ai/ask';
+import { Page, PageHeader } from '@/components/layout/page-header';
 import { AskClient } from './AskClient.tsx';
 
 export const dynamic = 'force-dynamic';

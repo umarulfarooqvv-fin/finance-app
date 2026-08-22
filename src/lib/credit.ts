@@ -1,6 +1,6 @@
-import { parsePerson } from './classify.ts';
-import { dayOf, type Day, type Instant } from './time.ts';
-import type { CardName, Income, Snapshot, Transaction } from './types.ts';
+import { parsePerson } from '@/lib/classify';
+import { dayOf, type Day, type Instant } from '@/lib/time';
+import type { CardName, Income, Snapshot, Transaction } from '@/lib/types';
 
 /* ===========================================================================
    Credit Given ledger (spec §3.6) — money Farooq fronted for other people.

@@ -3,12 +3,12 @@ import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema';
 import {
   byCategory, byMethod, byTrip, lastCompleteMonth, monthSummary, monthlySeries,
   priorWindow, spendBetween, total,
-} from '../domain/analytics.ts';
-import { creditLedger } from '../domain/credit.ts';
-import { forecast } from '../domain/forecast.ts';
-import { statementView } from '../domain/statement.ts';
-import type { Day } from '../domain/time.ts';
-import type { Snapshot } from '../domain/types.ts';
+} from '@/lib/analytics';
+import { creditLedger } from '@/lib/credit';
+import { forecast } from '@/lib/forecast';
+import { statementView } from '@/lib/statement';
+import type { Day } from '@/lib/time';
+import type { Snapshot } from '@/lib/types';
 
 /* ===========================================================================
    The tools Claude may use to answer questions about Farooq's money.

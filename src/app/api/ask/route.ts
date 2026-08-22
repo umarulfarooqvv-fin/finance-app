@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { ask, type Turn } from '../../../ai/ask.ts';
-import { getSnapshot } from '../../../data/snapshot.ts';
-import { dayOf } from '../../../domain/time.ts';
+import { ask, type Turn } from '@/lib/ai/ask';
+import { getSnapshot } from '@/lib/snapshot';
+import { dayOf } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 // Tool loops take several round trips; the default Vercel ceiling is too tight.

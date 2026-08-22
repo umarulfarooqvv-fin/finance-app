@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { classify, parsePerson, parseTags, parseTimestamp } from '../src/domain/classify.ts';
+import { classify, parsePerson, parseTags, parseTimestamp } from '@/lib/classify';
 import { fixtureTransactions } from './helpers.ts';
 
 test('parses the form custom format, with centiseconds', () => {

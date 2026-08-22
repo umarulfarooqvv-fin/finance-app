@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { money } from './format.ts';
+import { money } from '@/lib/format';
 
 /* ===========================================================================
    The shared vocabulary.

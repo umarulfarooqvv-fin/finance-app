@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Badge, Panel, cx } from '../../ui/primitives.tsx';
+import { Badge, Panel, cx } from '@/components/ui/primitives';
 
 type Turn = { role: 'user' | 'assistant'; content: string; tools?: string[]; error?: boolean };
 

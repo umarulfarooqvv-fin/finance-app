@@ -3,7 +3,7 @@ import { test } from 'vitest';
 import {
   addDays, dayInMonth, daysBetween, daysInMonth, dayNumber, formatDay,
   monthEnd, monthKey, nowIST, shiftMonth, weekdayName,
-} from '../src/domain/time.ts';
+} from '@/lib/time';
 
 test('civil date arithmetic round-trips', () => {
   for (const d of ['2023-01-01', '2024-02-29', '2026-06-10', '2026-12-31']) {

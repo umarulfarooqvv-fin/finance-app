@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ThemeToggle } from './ThemeToggle.tsx';
+import { ThemeToggle } from '@/components/layout/theme-toggle';
 
 /** Consistent page chrome: title, one line of context, and room for actions. */
 export function PageHeader({

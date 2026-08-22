@@ -1,8 +1,8 @@
 import {
   addDays, dayOf, daysBetween, endOfDay, monthEnd, monthKey, monthStart, startOfDay,
   type Day, type Instant,
-} from './time.ts';
-import type { Snapshot, Transaction } from './types.ts';
+} from '@/lib/time';
+import type { Snapshot, Transaction } from '@/lib/types';
 
 /* ===========================================================================
    Spend analytics.

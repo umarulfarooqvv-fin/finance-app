@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { normaliseEntry, parseAmount, toRow } from '../src/domain/entry.ts';
+import { normaliseEntry, parseAmount, toRow } from '@/lib/entry';
 
 test('amounts arrive in several shapes', () => {
   assert.equal(parseAmount('1,234.50'), 1234.5);

@@ -1,7 +1,7 @@
-import { creditLedger } from './credit.ts';
-import { cycleFor, daysUntilDue, dueStatus, type Cycle, type DueStatus } from './cycles.ts';
-import { dayOf, endOfDay, startOfDay, type Day, type Instant } from './time.ts';
-import type { Card, Snapshot, Transaction } from './types.ts';
+import { creditLedger } from '@/lib/credit';
+import { cycleFor, daysUntilDue, dueStatus, type Cycle, type DueStatus } from '@/lib/cycles';
+import { dayOf, endOfDay, startOfDay, type Day, type Instant } from '@/lib/time';
+import type { Card, Snapshot, Transaction } from '@/lib/types';
 
 /* ===========================================================================
    Statement View (spec §3.2) — the master dashboard.

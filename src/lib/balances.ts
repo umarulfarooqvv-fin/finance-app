@@ -1,9 +1,9 @@
-import { round2 } from './analytics.ts';
-import { creditLedger } from './credit.ts';
-import { debtLedger } from './debts.ts';
-import { statementView } from './statement.ts';
-import { addDays, endOfDay, monthEnd, monthKey, startOfDay, type Day } from './time.ts';
-import type { Snapshot } from './types.ts';
+import { round2 } from '@/lib/analytics';
+import { creditLedger } from '@/lib/credit';
+import { debtLedger } from '@/lib/debts';
+import { statementView } from '@/lib/statement';
+import { addDays, endOfDay, monthEnd, monthKey, startOfDay, type Day } from '@/lib/time';
+import type { Snapshot } from '@/lib/types';
 
 /* ===========================================================================
    What you actually have: account balances and net worth.

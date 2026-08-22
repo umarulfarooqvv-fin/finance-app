@@ -1,5 +1,5 @@
-import { classify, parseTimestamp } from './classify.ts';
-import type { Transaction } from './types.ts';
+import { classify, parseTimestamp } from '@/lib/classify';
+import type { Transaction } from '@/lib/types';
 
 /* ===========================================================================
    CSV reading, for importing sheet history and for loading test fixtures.

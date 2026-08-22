@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 /* Node environment only. Like the blueprint's suite, these tests are weighted
@@ -5,6 +6,10 @@ import { defineConfig } from 'vitest/config';
    component-testing layer, and adding one would test React more than it tests
    the engine. */
 export default defineConfig({
+  resolve: {
+    // Mirrors the `@/*` path alias in tsconfig.json.
+    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+  },
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],

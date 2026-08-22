@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { NAV_ITEMS, isActive, type NavItem } from './nav-items.ts';
-import { cx } from './primitives.tsx';
+import { NAV_ITEMS, isActive, type NavItem } from '@/lib/nav-sections';
+import { cx } from '@/components/ui/primitives';
 
 /* ===========================================================================
    Navigation, in two shapes for two body positions.

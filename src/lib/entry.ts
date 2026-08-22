@@ -1,6 +1,6 @@
-import { classify } from './classify.ts';
-import { nowIST, type Instant } from './time.ts';
-import type { Transaction } from './types.ts';
+import { classify } from '@/lib/classify';
+import { nowIST, type Instant } from '@/lib/time';
+import type { Transaction } from '@/lib/types';
 
 /* ===========================================================================
    Normalising a new entry (from the iPhone Shortcut, or the in-app form).

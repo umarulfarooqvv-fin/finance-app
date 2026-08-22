@@ -1,4 +1,4 @@
-import type { Day, Instant } from './time.ts';
+import type { Day, Instant } from '@/lib/time';
 
 /* ===========================================================================
    Core domain types.
