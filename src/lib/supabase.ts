@@ -8,6 +8,10 @@
    =========================================================================== */
 
 import 'server-only';
+import type { Database, Tables, TablesInsert, TablesUpdate } from '@/types/database';
+
+/** Every table the app may touch, checked against the generated schema. */
+export type TableName = keyof Database['public']['Tables'];
 
 const baseUrl = () => (process.env.SUPABASE_URL ?? '').replace(/\/$/, '');
 const serviceKey = () => process.env.SUPABASE_SERVICE_KEY ?? '';
@@ -57,8 +61,15 @@ export type SelectOptions = {
  * a bare limit therefore returns a silent truncation, not an error — which is
  * exactly how a full history quietly becomes the most recent thousand rows.
  * This loops until a short page comes back.
+ *
+ * The row type is inferred from the table name against the generated schema,
+ * so a column that is renamed or dropped in Postgres becomes a compile error
+ * here rather than an undefined at runtime.
  */
-export async function select<T>(table: string, opts: SelectOptions = {}): Promise<T[]> {
+export async function select<T extends TableName>(
+  table: T,
+  opts: SelectOptions = {},
+): Promise<Tables<T>[]> {
   const base = new URLSearchParams();
   base.set('select', opts.select ?? '*');
   for (const [col, cond] of Object.entries(opts.filters ?? {})) base.set(col, cond);
@@ -66,14 +77,14 @@ export async function select<T>(table: string, opts: SelectOptions = {}): Promis
 
   const want = Number.isFinite(opts.limit) ? (opts.limit as number) : Infinity;
   const pageSize = 1000;
-  const out: T[] = [];
+  const out: Tables<T>[] = [];
 
   for (let offset = 0; out.length < want; offset += pageSize) {
     const ask = Math.min(pageSize, want - out.length);
     const q = new URLSearchParams(base);
     q.set('limit', String(ask));
     q.set('offset', String(offset));
-    const rows = await rest<T[]>(`${table}?${q.toString()}`);
+    const rows = await rest<Tables<T>[]>(`${table}?${q.toString()}`);
     if (!rows?.length) break;
     out.push(...rows);
     if (rows.length < ask) break;
@@ -82,12 +93,16 @@ export async function select<T>(table: string, opts: SelectOptions = {}): Promis
 }
 
 /** INSERT, or upsert on the primary key when `upsert` is set. */
-export async function insert<T>(table: string, rows: T | T[], { upsert = false } = {}): Promise<T[]> {
+export async function insert<T extends TableName>(
+  table: T,
+  rows: TablesInsert<T> | TablesInsert<T>[],
+  { upsert = false } = {},
+): Promise<Tables<T>[]> {
   const list = Array.isArray(rows) ? rows : [rows];
   if (!list.length) return [];
   const prefer = ['return=representation'];
   if (upsert) prefer.push('resolution=merge-duplicates');
-  return rest<T[]>(table, {
+  return rest<Tables<T>[]>(table, {
     method: 'POST',
     headers: authHeaders({ Prefer: prefer.join(',') }),
     body: JSON.stringify(list),
@@ -95,13 +110,13 @@ export async function insert<T>(table: string, rows: T | T[], { upsert = false }
 }
 
 /** PATCH rows matching a filter, e.g. update('transactions', { id: 'eq.X' }, { verified: true }). */
-export async function update<T>(
-  table: string,
+export async function update<T extends TableName>(
+  table: T,
   filters: Record<string, string>,
-  patch: Record<string, unknown>,
-): Promise<T[]> {
+  patch: TablesUpdate<T>,
+): Promise<Tables<T>[]> {
   const q = new URLSearchParams(filters);
-  return rest<T[]>(`${table}?${q.toString()}`, {
+  return rest<Tables<T>[]>(`${table}?${q.toString()}`, {
     method: 'PATCH',
     headers: authHeaders({ Prefer: 'return=representation' }),
     body: JSON.stringify(patch),
@@ -121,7 +136,9 @@ export async function storeVersion(): Promise<number> {
 /** Append to the audit log (spec §3.10). Failures never block the caller. */
 export async function logEvent(type: string, detail: unknown): Promise<void> {
   try {
-    await insert('events', [{ type, detail: typeof detail === 'string' ? detail : JSON.stringify(detail) }]);
+    await insert('events', [
+      { type, detail: typeof detail === 'string' ? detail : JSON.stringify(detail) },
+    ]);
   } catch {
     // An unwritten audit line must not fail the user's action.
   }

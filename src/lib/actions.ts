@@ -43,12 +43,27 @@ function readable(err: unknown, name: string): string {
   console.error(`[action:${name}]`, raw);
 
   if (/duplicate key|23505/i.test(raw)) return 'That entry already exists.';
-  if (/violates check constraint/i.test(raw)) {
-    if (/amount/i.test(raw)) return 'That amount is not valid.';
-    if (/ts_format|ts_check/i.test(raw)) return 'That date is not valid.';
+
+  // Check violations arrive as SQLSTATE 23514. These are the database's own
+  // last line — validation should have caught them first, so reaching here
+  // means either a bug or a caller that bypassed the form. The names are the
+  // real constraint names from db/migrations/001_integrity.sql.
+  if (/23514|violates check constraint/i.test(raw)) {
+    if (/tx_amount_positive|income_amount_positive/i.test(raw)) {
+      return 'Amounts must be positive — use the category to say where the money went.';
+    }
+    if (/tx_amount_ceiling/i.test(raw)) return 'That amount is larger than this app allows.';
+    if (/ts_format/i.test(raw)) return 'That date is not in a valid format.';
+    if (/tx_card_coherent/i.test(raw)) {
+      return 'That entry names a card without saying which way the balance moves.';
+    }
+    if (/tx_kind_enum|tx_direction_enum/i.test(raw)) {
+      return 'That entry has an unrecognised type.';
+    }
     return 'That entry failed a database rule.';
   }
-  if (/violates foreign key/i.test(raw)) return 'That refers to something that no longer exists.';
+  if (/violates foreign key|23503/i.test(raw)) return 'That refers to something that no longer exists.';
+  if (/23502|null value in column/i.test(raw)) return 'A required field was missing.';
   if (/not configured/i.test(raw)) return 'The database is not configured.';
   if (/fetch failed|ECONNREFUSED|ETIMEDOUT|network/i.test(raw)) {
     return 'Could not reach the database. Your change was not saved.';

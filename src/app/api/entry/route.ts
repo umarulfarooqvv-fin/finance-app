@@ -3,6 +3,7 @@ import { invalidateSnapshot } from '@/lib/snapshot';
 import { insert, logEvent } from '@/lib/supabase';
 import { normaliseEntry, toRow } from '@/lib/entry';
 import { nowIST } from '@/lib/time';
+import type { TablesInsert } from '@/types/database';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +49,7 @@ export async function POST(req: Request): Promise<Response> {
         return NextResponse.json({ ok: false, error: 'amount is required' }, { status: 400 });
       }
       const ts = nowIST();
-      const row = {
+      const row: TablesInsert<'income'> = {
         id: `inc-${ts.replace(/\D/g, '')}-${Math.random().toString(36).slice(2, 8)}`,
         ts,
         amount,

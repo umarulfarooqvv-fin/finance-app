@@ -40,10 +40,7 @@ async function hardDelete(id: string) {
 }
 
 async function rowsFor(id: string) {
-  return select<{ id: string; amount: number; deleted: boolean; kind: string; card_affected: string | null; verified: boolean }>(
-    'transactions',
-    { filters: { id: `eq.${id}` } },
-  );
+  return select('transactions', { filters: { id: `eq.${id}` } });
 }
 
 describe.skipIf(!live)('write path against the live store', () => {
@@ -130,7 +127,7 @@ describe.skipIf(!live)('write path against the live store', () => {
   });
 
   test('no test rows are left behind', async () => {
-    const leftovers = await select<{ id: string }>('transactions', {
+    const leftovers = await select('transactions', {
       filters: { remarks: `like.*INTEGRATION TEST ROW*` },
     });
     assert.deepEqual(leftovers.map((r) => r.id), [], 'integration tests must clean up after themselves');

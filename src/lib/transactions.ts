@@ -5,6 +5,7 @@ import { parseUserAmount } from '@/lib/money';
 import { insert, logEvent, select, update } from '@/lib/supabase';
 import { nowIST } from '@/lib/time';
 import type { TransactionInput } from '@/lib/validation';
+import type { Tables, TablesInsert } from '@/types/database';
 
 /* ===========================================================================
    Transaction writes.
@@ -26,22 +27,11 @@ import type { TransactionInput } from '@/lib/validation';
       say what a row used to be cannot answer "why did my balance change?".
    =========================================================================== */
 
-export type TransactionRow = {
-  id: string;
-  ts: string;
-  amount: number;
-  method: string;
-  category: string;
-  remarks: string;
-  kind: string;
-  card_affected: string | null;
-  card_direction: string | null;
-  tags: Record<string, unknown>;
-  verified: boolean;
-  needs_review: boolean;
-  deleted: boolean;
-  source: string;
-};
+/* The row shapes come from the generated schema rather than being restated
+   here. A column renamed in Postgres then becomes a compile error at every
+   call site, instead of an undefined discovered at runtime. */
+export type TransactionRow = Tables<'transactions'>;
+export type NewTransactionRow = TablesInsert<'transactions'>;
 
 /** Stable id from the client's idempotency key. */
 export async function idFromKey(clientKey: string): Promise<string> {
@@ -59,7 +49,7 @@ export function buildRow(
   input: TransactionInput,
   id: string,
   source: string,
-): TransactionRow {
+): NewTransactionRow {
   const parsed = parseUserAmount(input.amount);
   if (!parsed.ok) throw new Error('buildRow called with an unvalidated amount');
 
@@ -79,7 +69,8 @@ export function buildRow(
     kind: cls.kind,
     card_affected: cls.cardAffected,
     card_direction: cls.cardDirection,
-    tags: cls.tags as Record<string, unknown>,
+    // `tags` is jsonb; the generated Json type is what the column accepts.
+    tags: cls.tags as TablesInsert<'transactions'>['tags'],
     verified: false,
     needs_review: cls.kind === 'unknown',
     deleted: false,
@@ -88,12 +79,12 @@ export function buildRow(
 }
 
 async function fetchRow(id: string): Promise<TransactionRow | null> {
-  const rows = await select<TransactionRow>('transactions', { filters: { id: `eq.${id}` }, limit: 1 });
+  const rows = await select('transactions', { filters: { id: `eq.${id}` }, limit: 1 });
   return rows[0] ?? null;
 }
 
 /** Fields worth recording in the audit trail. */
-function auditable(row: Partial<TransactionRow> | null) {
+function auditable(row: Partial<TransactionRow> | Partial<NewTransactionRow> | null) {
   if (!row) return null;
   return {
     ts: row.ts, amount: row.amount, method: row.method,
@@ -135,7 +126,9 @@ export async function updateTransaction(
 
   // Rebuild from scratch so the derived fields cannot drift out of step with
   // the values they are derived from.
-  const next = buildRow(input, id, before.source);
+  // `source` is nullable in the schema; an edit keeps the original provenance
+  // and falls back to 'app' only if history never recorded one.
+  const next = buildRow(input, id, before.source ?? 'app');
 
   await update('transactions', { id: `eq.${id}` }, {
     ts: next.ts,

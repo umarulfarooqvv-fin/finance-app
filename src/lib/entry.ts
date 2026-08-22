@@ -1,4 +1,5 @@
 import { classify } from '@/lib/classify';
+import type { TablesInsert } from '@/types/database';
 import { nowIST, type Instant } from '@/lib/time';
 import type { Transaction } from '@/lib/types';
 
@@ -71,7 +72,7 @@ export async function normaliseEntry(input: EntryInput, source = 'shortcut'): Pr
 }
 
 /** Map the domain shape onto the Postgres column names. */
-export function toRow(e: NormalisedEntry): Record<string, unknown> {
+export function toRow(e: NormalisedEntry): TablesInsert<'transactions'> {
   return {
     id: e.id,
     ts: e.ts,
@@ -82,7 +83,7 @@ export function toRow(e: NormalisedEntry): Record<string, unknown> {
     kind: e.kind,
     card_affected: e.cardAffected,
     card_direction: e.cardDirection,
-    tags: e.tags,
+    tags: e.tags as TablesInsert<'transactions'>['tags'],
     verified: e.verified,
     needs_review: e.needsReview,
     deleted: e.deleted,

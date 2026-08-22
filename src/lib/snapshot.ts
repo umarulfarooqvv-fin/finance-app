@@ -20,6 +20,9 @@ import { select, storeConfigured, storeVersion } from '@/lib/supabase';
    is still exactly right and nothing is refetched.
    =========================================================================== */
 
+/* Rows arrive typed from the generated schema. The mappers below still treat
+   individual values defensively, because a column being `string | null` in
+   Postgres says nothing about whether its CONTENT is meaningful. */
 type Row = Record<string, unknown>;
 
 const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : v == null ? fallback : String(v));
@@ -148,19 +151,19 @@ function mergeAccounts(stored: unknown): Account[] {
 /** Read everything, in parallel. */
 async function loadSnapshot(version: number): Promise<Snapshot> {
   const [txRows, incRows, cfgRows] = await Promise.all([
-    select<Row>('transactions', { order: 'ts.asc' }),
-    select<Row>('income', { order: 'ts.asc' }),
-    select<Row>('app_config'),
+    select('transactions', { order: 'ts.asc' }),
+    select('income', { order: 'ts.asc' }),
+    select('app_config'),
   ]);
 
   const config: Record<string, unknown> = {};
   for (const row of cfgRows) {
-    config[str(row['key'])] = parseConfigValue(row['value']);
+    config[str(row.key)] = parseConfigValue(row.value);
   }
 
   return {
-    transactions: txRows.map(toTransaction),
-    income: incRows.map(toIncome),
+    transactions: txRows.map((r) => toTransaction(r as Row)),
+    income: incRows.map((r) => toIncome(r as Row)),
     cards: mergeCards(config['cards']),
     accounts: mergeAccounts(config['accounts']),
     config,

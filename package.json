@@ -15,7 +15,8 @@
     "lint": "eslint src tests",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "gen:types": "node --env-file=.env.local scripts/gen-db-types.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
