@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { getSnapshot } from '../../data/snapshot.ts';
-import { statementView, type StatementRow } from '../../domain/statement.ts';
-import { dayOf, formatDay, relativeDays } from '../../domain/time.ts';
+import { cardsView, currentSnapshot } from '../../data/views.ts';
+import type { StatementRow } from '../../domain/statement.ts';
+import { formatDay, relativeDays } from '../../domain/time.ts';
 import { money, percent } from '../../ui/format.ts';
 import { Page, PageHeader } from '../../ui/PageHeader.tsx';
 import {
@@ -28,9 +28,8 @@ function StatusCell({ row }: { row: StatementRow }) {
 }
 
 export default async function CardsPage() {
-  const snap = await getSnapshot();
-  const today = dayOf(snap.loadedAt);
-  const { rows, totals } = statementView(snap, today);
+  const { today } = await currentSnapshot();
+  const { rows, totals } = await cardsView();
 
   return (
     <Page>

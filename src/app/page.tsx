@@ -1,9 +1,8 @@
 import Link from 'next/link';
-import { getSnapshot } from '../data/snapshot.ts';
+import { cardsView, currentSnapshot, forecastView } from '../data/views.ts';
 import { monthSummary, priorWindow, recentActivity } from '../domain/analytics.ts';
-import { forecast } from '../domain/forecast.ts';
-import { statementView, type StatementRow } from '../domain/statement.ts';
-import { dayOf, formatDay, formatDayShort, relativeDays } from '../domain/time.ts';
+import type { StatementRow } from '../domain/statement.ts';
+import { formatDay, formatDayShort, relativeDays } from '../domain/time.ts';
 import { delta, money, moneyCompact } from '../ui/format.ts';
 import { Page, PageHeader } from '../ui/PageHeader.tsx';
 import { Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, cx } from '../ui/primitives.tsx';
@@ -42,11 +41,10 @@ function utilisationLabel(row: StatementRow): string {
 }
 
 export default async function TodayPage() {
-  const snap = await getSnapshot();
-  const today = dayOf(snap.loadedAt);
-
-  const view = statementView(snap, today);
-  const fc = forecast(snap, today);
+  const { snap, today } = await currentSnapshot();
+  // Both go through the cached selectors: forecast() calls statementView()
+  // internally, so without the dedupe the engine would run twice per render.
+  const [view, fc] = await Promise.all([cardsView(), forecastView()]);
   const month = monthSummary(snap, today);
   const prior = priorWindow(snap, today);
   const recent = recentActivity(snap, today, 6);

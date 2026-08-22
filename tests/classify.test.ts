@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { classify, parsePerson, parseTags, parseTimestamp } from '../src/domain/classify.ts';
 import { fixtureTransactions } from './helpers.ts';
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { normaliseEntry, parseAmount, toRow } from '../src/domain/entry.ts';
 
 test('amounts arrive in several shapes', () => {

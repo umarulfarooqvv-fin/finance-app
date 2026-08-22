@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { creditLedger } from '../src/domain/credit.ts';
 import { cycleFor, dueStatus } from '../src/domain/cycles.ts';
 import { cardStatement, statementView } from '../src/domain/statement.ts';

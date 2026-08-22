@@ -1,5 +1,6 @@
 /* ===========================================================================
-   PIN lock for public deployments.
+   PIN lock for public deployments.  (Next 16 "proxy" file convention — the
+   `middleware` filename is deprecated as of v16.0.0.)
 
    Set APP_ACCESS_KEY in the environment and visitors get a PIN screen. Without
    it (local dev) there is no lock at all.
@@ -9,9 +10,11 @@
      1. Import NOTHING. Importing `next/server` broke both runtimes here — Edge
         crashed on __dirname, Node could not resolve the module. Everything
         below is pure Web API: Request, Response, URL, crypto.subtle.
-     2. Do NOT declare `runtime: 'nodejs'`. Node middleware is experimental in
-        Next 15 and the deploy fails without the experimental flag. The default
-        Edge runtime is fine because nothing here touches a Node built-in.
+     2. Do NOT declare `runtime` at all. On Next 15 this file had to avoid
+        `runtime: 'nodejs'` because Node middleware was experimental and the
+        deploy failed. On Next 16 Proxy defaults to the Node.js runtime and
+        setting the option *throws* — so the rule survives the upgrade with a
+        different reason behind it, and is now enforced by the framework too.
 
    Change from v2: the cookie used to hold the PIN itself, so the shared secret
    travelled on every single request. It now holds a SHA-256 derivation of it
@@ -67,7 +70,7 @@ function sameToken(a: string | null, b: string): boolean {
   return diff === 0;
 }
 
-export default async function middleware(req: Request): Promise<Response> {
+export default async function proxy(req: Request): Promise<Response> {
   const key = process.env.APP_ACCESS_KEY;
   if (!key) return CONTINUE();
 
