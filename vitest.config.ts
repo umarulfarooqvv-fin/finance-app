@@ -17,6 +17,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // Live tests are opt-in via RUN_LIVE_TESTS=1; see tests/integration/.
     reporters: ['default'],
   },
 });

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { BottomBar, SideRail } from '@/components/layout/nav';
+import { ToastProvider } from '@/components/ui/toast';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -34,12 +35,16 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en-IN" data-theme={themeAttr} suppressHydrationWarning>
       <body className="min-h-dvh">
-        <div className="flex">
-          <SideRail />
-          {/* Bottom padding clears the fixed tab bar on phones. */}
-          <main className="min-w-0 flex-1 pb-24 lg:pb-8">{children}</main>
-        </div>
-        <BottomBar />
+        {/* Every write reports its outcome through this provider — a save must
+            never be left ambiguous. */}
+        <ToastProvider>
+          <div className="flex">
+            <SideRail />
+            {/* Bottom padding clears the fixed tab bar on phones. */}
+            <main className="min-w-0 flex-1 pb-24 lg:pb-8">{children}</main>
+          </div>
+          <BottomBar />
+        </ToastProvider>
       </body>
     </html>
   );
