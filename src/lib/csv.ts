@@ -1,4 +1,5 @@
 import { classify, parseTimestamp } from '@/lib/classify';
+import { round2 } from '@/lib/money';
 import type { Transaction } from '@/lib/types';
 
 /* ===========================================================================
@@ -73,7 +74,10 @@ export async function transactionsFromCsv(text: string): Promise<Transaction[]> 
     if (![tsRaw, amtRaw, method, category, remarks].some((c) => c.trim())) continue;
 
     const parsed = parseTimestamp(tsRaw);
-    const amount = amtRaw.trim() === '' ? null : Number(amtRaw.replace(/,/g, ''));
+    // Same paisa rounding as the live loader, so the fixture and the database
+    // put identical numbers into the engine.
+    const parsedAmount = amtRaw.trim() === '' ? null : Number(amtRaw.replace(/,/g, ''));
+    const amount = parsedAmount !== null && Number.isFinite(parsedAmount) ? round2(parsedAmount) : parsedAmount;
     const cls = classify({
       method: method.trim(),
       category: category.trim(),

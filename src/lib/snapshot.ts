@@ -1,5 +1,6 @@
 import 'server-only';
 import { classify } from '@/lib/classify';
+import { round2 } from '@/lib/money';
 import { DEFAULT_ACCOUNTS, DEFAULT_CARDS } from '@/lib/defaults';
 import { nowIST } from '@/lib/time';
 import type { Account, Card, Income, Snapshot, Transaction } from '@/lib/types';
@@ -22,10 +23,26 @@ import { select, storeConfigured, storeVersion } from '@/lib/supabase';
 type Row = Record<string, unknown>;
 
 const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : v == null ? fallback : String(v));
+/**
+ * Amounts enter the domain rounded to the paisa, and this is the ONLY place it
+ * happens.
+ *
+ * Postgres holds the value exactly as it arrived, including the bank's own
+ * fractions on EMI tax and surcharge rows (51.929568, 288.4976). Those stay in
+ * the database untouched. But a screen cannot show a row as ₹51.93 and then
+ * total it as 51.929568 — measured against the live data that produced eight
+ * places where the visible rows did not add up to the visible total, including
+ * the Coral card page (rows ₹199,919.52 under a total of ₹199,919.53) and a
+ * three-row month that a person could check by hand.
+ *
+ * Rounding once, here, makes every downstream sum a sum of the same numbers
+ * the user is looking at, so totals reconcile by construction rather than by
+ * luck. A reconciliation test asserts it across every grouping the UI uses.
+ */
 const num = (v: unknown): number | null => {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) ? round2(n) : null;
 };
 const bool = (v: unknown): boolean => v === true || v === 'true' || v === 1;
 
@@ -68,7 +85,9 @@ function toTransaction(r: Row): Transaction {
     tags: cls.tags,
     // Reconciliation state is real user input, not derived — always trusted.
     verified: bool(r['verified']),
-    needsReview: amount === null || cls.kind === 'unknown',
+    // A blank method means the money left from somewhere unrecorded. Five
+    // such rows exist and none were flagged, so they were counting silently.
+    needsReview: amount === null || cls.kind === 'unknown' || method.trim() === '',
     deleted: bool(r['deleted']),
     source: str(r['source'], 'app'),
   };
