@@ -1,70 +1,173 @@
+import {
+  ArrowLeftRight, BookOpen, CreditCard, Home, LineChart,
+  MessageCircleQuestion, Search, Settings, Wallet, type LucideIcon,
+} from 'lucide-react';
+
 /* ===========================================================================
-   Information architecture.
+   Navigation as data — the single source of truth for destinations.
 
-   v2 shipped twenty-two sibling pages in one flat nav bar, which pushed the
-   work of finding anything onto the user. The same features live here under
-   six destinations, grouped by the question being asked rather than by the
-   spreadsheet tab they came from:
+   Three surfaces render from this one array: the sidebar, the phone tab bar,
+   and the command palette. Adding a destination in one place makes it appear
+   in all three, which is the whole point; the blueprint's version also feeds
+   an app launcher off the same list.
 
-     Today     am I OK right now, and is anything about to bite me?
-     Cards     what do I owe, on which card, by when?
-     Spending  where is the money going?
-     Money     what do I actually have?
-     Ledgers   who owes me, who do I owe, what is scheduled?
-     Ask       anything not covered by the five above.
-
-   Everything that used to be a top-level page is still reachable — as a
-   section or a tab inside its destination, one level down.
+   The blueprint's item shape carries `requiredPerm` and `adminOnly`. This app
+   has one user, so those are dropped — but `keywords` is kept and matters more
+   here than it looks: it is what lets the palette find "Cards" when you type
+   "bill", or "Ledgers" when you type "who owes me".
    =========================================================================== */
 
 export type NavItem = {
-  href: string;
   label: string;
-  /** Inline SVG path data, 24x24 grid, stroked. */
-  icon: string;
-  /** Sub-pages that should light this tab up as active. */
+  href: string;
+  icon: LucideIcon;
+  /** One line, shown in the palette under the label. */
+  hint?: string;
+  /** Extra terms the palette should match on. */
+  keywords?: string[];
+  /** Sub-paths that should light this destination up as active. */
   match?: string[];
+  /** Shown in the phone tab bar. Only the primary six are. */
+  primary?: boolean;
 };
 
-export const NAV_ITEMS: NavItem[] = [
+export type NavSection = {
+  title: string;
+  items: NavItem[];
+};
+
+export const NAV_SECTIONS: NavSection[] = [
   {
-    href: '/',
-    label: 'Today',
-    icon: 'M3 12l9-9 9 9M5 10v10h14V10',
+    title: 'Overview',
+    items: [
+      {
+        label: 'Today',
+        href: '/',
+        icon: Home,
+        hint: 'Reserve, what needs paying, this month',
+        keywords: ['home', 'dashboard', 'reserve', 'summary', 'overview'],
+        primary: true,
+      },
+    ],
   },
   {
-    href: '/cards',
-    label: 'Cards',
-    icon: 'M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7zM2 10h20',
-    match: ['/cards'],
+    title: 'Money',
+    items: [
+      {
+        label: 'Cards',
+        href: '/cards',
+        icon: CreditCard,
+        hint: 'Statements, balances and due dates',
+        keywords: ['credit', 'bill', 'due', 'statement', 'debt', 'limit', 'utilisation',
+                   'edge', 'coral', 'icici', 'scapia', 'one card', 'super money'],
+        match: ['/cards'],
+        primary: true,
+      },
+      {
+        label: 'Spending',
+        href: '/spending',
+        icon: LineChart,
+        hint: 'Where the money goes',
+        keywords: ['expenses', 'categories', 'trend', 'analytics', 'charts', 'monthly'],
+        match: ['/spending'],
+        primary: true,
+      },
+      {
+        label: 'Money',
+        href: '/money',
+        icon: Wallet,
+        hint: 'Net worth, accounts and income',
+        keywords: ['net worth', 'balance', 'bank', 'accounts', 'income', 'salary', 'savings'],
+        match: ['/money'],
+        primary: true,
+      },
+      {
+        label: 'Ledgers',
+        href: '/ledgers',
+        icon: BookOpen,
+        hint: 'Lent, borrowed and instalments',
+        keywords: ['credit given', 'who owes me', 'lent', 'borrowed', 'emi', 'instalment',
+                   'debt', 'people'],
+        match: ['/ledgers'],
+        primary: true,
+      },
+    ],
   },
   {
-    href: '/spending',
-    label: 'Spending',
-    icon: 'M3 3v18h18M7 15l4-5 3 3 5-7',
-    match: ['/spending'],
-  },
-  {
-    href: '/money',
-    label: 'Money',
-    icon: 'M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6',
-    match: ['/money'],
-  },
-  {
-    href: '/ledgers',
-    label: 'Ledgers',
-    icon: 'M4 4h13a2 2 0 012 2v14H6a2 2 0 01-2-2V4zM4 16h15M9 8h6',
-    match: ['/ledgers'],
-  },
-  {
-    href: '/ask',
-    label: 'Ask',
-    icon: 'M21 12a9 9 0 01-9 9 8.7 8.7 0 01-4-.9L3 21l1-4.2A8.7 8.7 0 013 12a9 9 0 1118 0z',
-    match: ['/ask'],
+    title: 'Tools',
+    items: [
+      {
+        label: 'Ask',
+        href: '/ask',
+        icon: MessageCircleQuestion,
+        hint: 'Questions answered from your records',
+        keywords: ['ai', 'chat', 'question', 'claude', 'query'],
+        match: ['/ask'],
+        primary: true,
+      },
+      {
+        label: 'Transactions',
+        href: '/spending/transactions',
+        icon: ArrowLeftRight,
+        hint: 'Every entry, searchable',
+        keywords: ['history', 'list', 'entries', 'rows', 'find', 'search'],
+      },
+      {
+        label: 'Search',
+        href: '/search',
+        icon: Search,
+        hint: 'Find a transaction',
+        keywords: ['find', 'lookup'],
+      },
+      {
+        label: 'Settings',
+        href: '/settings',
+        icon: Settings,
+        hint: 'Cards, accounts and data',
+        keywords: ['config', 'preferences', 'cards', 'limits', 'opening balance'],
+        match: ['/settings'],
+      },
+    ],
   },
 ];
 
+export const ALL_NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((s) => s.items);
+
+/** The six destinations the phone tab bar shows. */
+export const PRIMARY_NAV_ITEMS: NavItem[] = ALL_NAV_ITEMS.filter((i) => i.primary);
+
+/**
+ * Which destination is active for a pathname.
+ *
+ * Longest match wins, so /spending/transactions highlights Transactions rather
+ * than lighting up its parent Spending as well.
+ */
+export function resolveActiveHref(pathname: string): string | null {
+  let best: string | null = null;
+  for (const item of ALL_NAV_ITEMS) {
+    const candidates = item.match ?? [item.href];
+    for (const c of candidates) {
+      const hit = c === '/' ? pathname === '/' : pathname === c || pathname.startsWith(`${c}/`);
+      if (hit && (best === null || c.length > best.length)) best = item.href === '/' ? '/' : c;
+    }
+    // An exact href match always wins over a prefix match on a shorter parent.
+    if (pathname === item.href && (best === null || item.href.length >= best.length)) {
+      best = item.href;
+    }
+  }
+  return best;
+}
+
 export function isActive(pathname: string, item: NavItem): boolean {
-  if (item.href === '/') return pathname === '/';
-  return (item.match ?? [item.href]).some((m) => pathname === m || pathname.startsWith(`${m}/`));
+  const active = resolveActiveHref(pathname);
+  if (active === null) return false;
+  return active === item.href || (item.match ?? []).includes(active);
+}
+
+/** Free-text match for the command palette. */
+export function matchesQuery(item: NavItem, query: string): boolean {
+  const q = query.toLowerCase().trim();
+  if (!q) return true;
+  const hay = [item.label, item.hint ?? '', ...(item.keywords ?? [])].join(' ').toLowerCase();
+  return q.split(/\s+/).every((term) => hay.includes(term));
 }
