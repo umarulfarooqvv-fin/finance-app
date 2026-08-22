@@ -104,3 +104,30 @@ test('STRUCTURAL: the file imports nothing and declares no runtime', () => {
   assert.ok(!/^\s*runtime\s*:/m.test(src), 'a Proxy file must not declare a runtime');
   assert.ok(config.matcher.length > 0, 'a matcher is required');
 });
+
+test('CONTRACT: proxy.ts and lib/auth.ts derive the same session token', async () => {
+  // These two derivations are duplicated on purpose — proxy.ts may not import
+  // anything (see its header), so it cannot share a helper. If they drift, the
+  // proxy issues a cookie that every server action then rejects, and the app
+  // becomes unusable in a way that looks like an expired session.
+  const { sessionToken } = await import('@/lib/auth');
+
+  for (const pin of ['1234', 'a-longer-pin', 'ünïcødé-pin', '']) {
+    if (!pin) continue;
+    process.env['APP_ACCESS_KEY'] = pin;
+    const issued = (await proxy(req(`/?key=${pin}`))).headers.get('Set-Cookie') ?? '';
+    const fromProxy = issued.match(/app_session=([a-f0-9]+)/)?.[1];
+    const fromAuth = await sessionToken(pin);
+    assert.equal(fromProxy, fromAuth, `derivations diverged for PIN "${pin}"`);
+  }
+});
+
+test('CONTRACT: the two implementations use the same cookie name and salt', () => {
+  const proxySrc = readFileSync(fileURLToPath(new URL('../src/proxy.ts', import.meta.url)), 'utf8');
+  const authSrc = readFileSync(fileURLToPath(new URL('../src/lib/auth.ts', import.meta.url)), 'utf8');
+
+  for (const [label, needle] of [['cookie name', "'app_session'"], ['salt', 'pfm-v3:']] as const) {
+    assert.ok(proxySrc.includes(needle), `proxy.ts must contain the ${label}`);
+    assert.ok(authSrc.includes(needle), `auth.ts must contain the ${label}`);
+  }
+});
