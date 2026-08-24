@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
+import { PrivacyToggle } from '@/components/layout/privacy-toggle';
 
 /** Consistent page chrome: title, one line of context, and room for actions. */
 export function PageHeader({
@@ -18,6 +19,7 @@ export function PageHeader({
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {action}
+        <PrivacyToggle />
         {showTheme ? <ThemeToggle /> : null}
       </div>
     </header>

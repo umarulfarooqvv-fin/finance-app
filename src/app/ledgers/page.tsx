@@ -5,6 +5,7 @@ import { emiPlans, emiSummary } from '@/lib/emi';
 import { dayOf, formatDay } from '@/lib/time';
 import { money } from '@/lib/format';
 import { Page, PageHeader } from '@/components/layout/page-header';
+import { Private } from '@/contexts/privacy-context';
 import {
   Badge, Empty, Money, Panel, SectionTitle, Stat, StatGrid, TableWrap, Td, Th,
 } from '@/components/ui/primitives';
@@ -52,7 +53,12 @@ export default async function LedgersPage() {
           <Stat
             label="EMIs each month"
             value={emi.monthlyOutgo}
-            hint={`${emi.activeCount} active · ${money(emi.remainingTotal)} left`}
+            hint={
+              <>
+                {emi.activeCount} active ·{' '}
+                <span className="sensitive">{money(emi.remainingTotal)}</span> left
+              </>
+            }
           />
         </StatGrid>
       </Panel>
@@ -81,7 +87,11 @@ export default async function LedgersPage() {
               <tbody>
                 {owedToMe.slice(0, 25).map((p) => (
                   <tr key={p.person}>
-                    <Td sticky className="font-medium">{p.person}</Td>
+                    <Td sticky className="font-medium">
+                      {/* A list of who owes you money is exactly what you do
+                          not want visible over your shoulder. */}
+                      <Private>{p.person}</Private>
+                    </Td>
                     <Td align="right">
                       <Money value={p.given} size="sm" tone="muted" />
                     </Td>
@@ -133,7 +143,9 @@ export default async function LedgersPage() {
             <tbody>
               {debts.debts.map((d) => (
                 <tr key={d.id}>
-                  <Td sticky className="font-medium">{d.person}</Td>
+                  <Td sticky className="font-medium">
+                    <Private>{d.person}</Private>
+                  </Td>
                   <Td className="whitespace-nowrap text-xs text-[var(--color-ink-2)]">
                     {formatDay(d.takenOn)}
                   </Td>
@@ -197,10 +209,11 @@ export default async function LedgersPage() {
 
                 <div className="mt-2 flex flex-wrap justify-between gap-x-4 gap-y-1 text-[11px] text-[var(--color-ink-3)]">
                   <span>
-                    {p.paidCount} of {p.months} paid · {money(p.paidAmount)} so far
+                    {p.paidCount} of {p.months} paid ·{' '}
+                    <span className="sensitive">{money(p.paidAmount)}</span> so far
                   </span>
                   <span>
-                    {money(p.remainingAmount)} left
+                    <span className="sensitive">{money(p.remainingAmount)}</span> left
                     {p.nextDue ? ` · next ${formatDay(p.nextDue)}` : ''}
                   </span>
                 </div>

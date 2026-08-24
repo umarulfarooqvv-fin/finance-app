@@ -68,7 +68,7 @@ export default async function SpendingPage() {
         {change !== null ? (
           <p className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--color-line)] pt-4 text-xs text-[var(--color-ink-2)]">
             <Badge tone={change > 0 ? 'bad' : 'good'}>{delta(change)}</Badge>
-            versus {money(prior.spend)} over the same {month.elapsed}{' '}
+            versus <span className="sensitive">{money(prior.spend)}</span> over the same {month.elapsed}{' '}
             {month.elapsed === 1 ? 'day' : 'days'} of last month
           </p>
         ) : null}

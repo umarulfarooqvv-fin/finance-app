@@ -54,7 +54,7 @@ export default async function CardsPage() {
           <Stat
             label="Utilisation"
             value={percent(totals.utilization)}
-            hint={`of ${money(totals.limits, { whole: true })} limits`}
+            hint={<>of <span className="sensitive">{money(totals.limits, { whole: true })}</span> limits</>}
           />
         </StatGrid>
 

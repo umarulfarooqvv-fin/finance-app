@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/check-privacy.mjs && next build",
     "start": "next start",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
@@ -16,7 +16,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:watch": "vitest",
-    "gen:types": "node --env-file=.env.local scripts/gen-db-types.mjs"
+    "gen:types": "node --env-file=.env.local scripts/gen-db-types.mjs",
+    "check:privacy": "node scripts/check-privacy.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { money } from '@/lib/format';
+import { Private } from '@/contexts/privacy-context';
 
 /* ===========================================================================
    The shared vocabulary.
@@ -93,7 +94,13 @@ export function Money({
     else if (value < 0) color = 'text-[var(--color-neg)]';
   }
 
-  return <span className={cx('num', sizes[size], color, className)}>{money(value, { whole })}</span>;
+  // Every rupee figure on screen passes through here, which is what makes
+  // privacy mode a single switch rather than a hunt through the components.
+  return (
+    <Private>
+      <span className={cx('num', sizes[size], color, className)}>{money(value, { whole })}</span>
+    </Private>
+  );
 }
 
 /* --- Stat tile ----------------------------------------------------------- */

@@ -229,3 +229,21 @@ body {
 .sticky-first tfoot :is(th, td).sticky {
   background: var(--color-surface);
 }
+
+/* ---------------------------------------------------------------------------
+   Privacy mode. One rule drives every masked value, so the same class works on
+   an HTML span and on SVG text inside a chart. Blur rather than replacement:
+   layout must not shift, or a column of figures jumps when you unmask it.
+
+   This obscures values ON SCREEN. It is not an access control — the numbers
+   are still in the DOM. The PIN is the access control.
+   --------------------------------------------------------------------------- */
+[data-privacy='hidden'] .sensitive {
+  filter: blur(7px);
+  user-select: none;
+  cursor: default;
+  transition: filter 120ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-privacy='hidden'] .sensitive { transition: none; }
+}

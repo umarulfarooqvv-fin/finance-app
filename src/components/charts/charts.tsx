@@ -65,7 +65,7 @@ export function RankedBars({
               style={{ width: `${max > 0 ? Math.max(1.5, (r.total / max) * 100) : 0}%`, background: hue }}
             />
           </span>
-          <span className="num w-20 shrink-0 text-right text-xs tabular-nums">{money(r.total)}</span>
+          <span className="num sensitive w-20 shrink-0 text-right text-xs tabular-nums">{money(r.total)}</span>
           <span className="num w-10 shrink-0 text-right text-[11px] text-[var(--color-ink-3)]">
             {(r.share * 100).toFixed(0)}%
           </span>
@@ -129,7 +129,7 @@ export function DailyColumns({ data, height = 120 }: { data: { day: Day; total: 
 
       {active ? (
         <div className="pointer-events-none absolute -top-1 left-1/2 z-10 -translate-x-1/2 rounded-md bg-[var(--color-ink)] px-2 py-1 text-[11px] whitespace-nowrap text-[var(--color-canvas)] shadow-[var(--shadow-pop)]">
-          {formatDay(active.day)} · {money(active.total)}
+          {formatDay(active.day)} · <span className="sensitive">{money(active.total)}</span>
         </div>
       ) : null}
     </div>
@@ -190,7 +190,8 @@ export function TrendLine({
         {ticks.map((t) => (
           <g key={t.v}>
             <line x1={pad.left} x2={W - pad.right} y1={t.y} y2={t.y} stroke={GRID} strokeWidth={1} />
-            <text x={pad.left - 6} y={t.y + 3} textAnchor="end" fontSize={9} fill={AXIS}>
+            {/* SVG text takes no wrapper element, so the same rule arrives by class. */}
+            <text x={pad.left - 6} y={t.y + 3} textAnchor="end" fontSize={9} fill={AXIS} className="sensitive">
               {moneyCompact(t.v)}
             </text>
           </g>
@@ -233,7 +234,7 @@ export function TrendLine({
 
       {active ? (
         <div className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 rounded-md bg-[var(--color-ink)] px-2 py-1 text-[11px] whitespace-nowrap text-[var(--color-canvas)] shadow-[var(--shadow-pop)]">
-          {formatMonth(active.month)} · {money(active.total)}
+          {formatMonth(active.month)} · <span className="sensitive">{money(active.total)}</span>
         </div>
       ) : null}
     </div>

@@ -105,7 +105,7 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
             <p className="mt-2 text-sm text-[var(--color-ink-2)]">
               {row.remainingDueBill > 0 ? (
                 <>
-                  <strong className="font-semibold text-[var(--color-ink)]">
+                  <strong className="sensitive font-semibold text-[var(--color-ink)]">
                     {money(row.remainingDueBill)}
                   </strong>{' '}
                   due {formatDay(row.cycle.dueDate)} · {relativeDays(row.daysLeft)}
@@ -133,7 +133,13 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
             <Stat
               label="Utilisation"
               value={row.totalDebtLive <= 0 ? 'Nothing owed' : percent(row.utilization)}
-              hint={card.creditLimit > 0 ? `of ${money(card.creditLimit, { whole: true })}` : 'No limit set'}
+              hint={
+                card.creditLimit > 0 ? (
+                  <>of <span className="sensitive">{money(card.creditLimit, { whole: true })}</span></>
+                ) : (
+                  'No limit set'
+                )
+              }
             />
             <Stat
               label="Lent to others"
@@ -190,10 +196,10 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
             </div>
             <div className="mt-2 flex justify-between text-xs">
               <span className="text-[var(--color-pos)]">
-                {money(row.verified.verified)} verified
+                <span className="sensitive">{money(row.verified.verified)}</span> verified
               </span>
               <span className="text-[var(--color-ink-3)]">
-                {money(row.verified.unverified)} unchecked
+                <span className="sensitive">{money(row.verified.unverified)}</span> unchecked
               </span>
             </div>
           </div>
@@ -202,7 +208,9 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
 
       {/* ---- Ledgers ------------------------------------------------------ */}
       <Panel className="mt-4">
-        <SectionTitle>Still building · {money(row.unbilled)}</SectionTitle>
+        <SectionTitle>
+          Still building · <span className="sensitive">{money(row.unbilled)}</span>
+        </SectionTitle>
         <Ledger entries={unbilled} empty="Bill cleared. No new spends yet." />
       </Panel>
 

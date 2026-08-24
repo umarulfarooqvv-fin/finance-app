@@ -129,7 +129,11 @@ export default async function TransactionsPage({
             <Link href={qs({ page: String(page - 1) })} className="font-medium text-[var(--color-accent)]">← Newer</Link>
           ) : <span />}
           <span className="text-[var(--color-ink-3)]">
-            Page {page} of {pages} · {money(sorted.reduce((a, t) => a + (t.amount ?? 0), 0))} total
+            Page {page} of {pages} ·{' '}
+            <span className="sensitive">
+              {money(sorted.reduce((a, t) => a + (t.amount ?? 0), 0))}
+            </span>{' '}
+            total
           </span>
           {page < pages ? (
             <Link href={qs({ page: String(page + 1) })} className="font-medium text-[var(--color-accent)]">Older →</Link>

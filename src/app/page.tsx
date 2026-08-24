@@ -163,10 +163,19 @@ export default async function TodayPage() {
                 <div className="mt-3">
                   <Money value={row.totalDebtLive} size="xl" />
                   <div className="mt-0.5 text-xs text-[var(--color-ink-3)]">
-                    {row.remainingDueBill > 0
-                      ? `${money(row.remainingDueBill)} on this bill`
-                      : 'Bill cleared'}
-                    {row.unbilled > 0 ? ` · ${money(row.unbilled)} unbilled` : ''}
+                    {row.remainingDueBill > 0 ? (
+                      <>
+                        <span className="sensitive">{money(row.remainingDueBill)}</span> on this bill
+                      </>
+                    ) : (
+                      'Bill cleared'
+                    )}
+                    {row.unbilled > 0 ? (
+                      <>
+                        {' · '}
+                        <span className="sensitive">{money(row.unbilled)}</span> unbilled
+                      </>
+                    ) : null}
                   </div>
                 </div>
 
@@ -205,8 +214,9 @@ export default async function TodayPage() {
             ) : null}
           </div>
           <p className="mt-1 text-xs text-[var(--color-ink-3)]">
-            {money(month.perDay)} a day over {month.elapsed}{' '}
-            {month.elapsed === 1 ? 'day' : 'days'} · on track for {money(fc.projectedMonthTotal)}
+            <span className="sensitive">{money(month.perDay)}</span> a day over {month.elapsed}{' '}
+            {month.elapsed === 1 ? 'day' : 'days'} · on track for{' '}
+            <span className="sensitive">{money(fc.projectedMonthTotal)}</span>
           </p>
 
           <div className="mt-4 flex flex-col gap-2.5">
@@ -219,7 +229,7 @@ export default async function TodayPage() {
                     style={{ width: `${Math.max(2, c.share * 100)}%` }}
                   />
                 </div>
-                <div className="num w-20 shrink-0 text-right text-xs">{money(c.total)}</div>
+                <div className="num sensitive w-20 shrink-0 text-right text-xs">{money(c.total)}</div>
               </div>
             ))}
             {month.categories.length === 0 ? (
