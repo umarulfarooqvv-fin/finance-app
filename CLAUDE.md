@@ -1,130 +1,158 @@
 # Personal Finance Manager — Claude Code context
 
-Read `docs/SPEC.md` for the domain spec. This file describes **v3**, a full
-rewrite. `HANDOFF.md` lists what is done and what is not.
+Read `docs/SPEC.md` for the domain spec. `HANDOFF.md` lists what is done and
+what is not.
 
-> **v2 is still on `main`.** This is branch `rebuild/v3`. If you need to check
-> how the old engine did something: `git show main:lib/cycles.js`.
+> **v2 is still on `main`.** This is branch `rebuild/v3`. To check how the old
+> engine did something: `git show main:lib/cycles.js`.
 
 ## What this is
 
 A personal finance app for one person (Farooq). Credit-card statement tracking,
-spending analytics, ledgers for money lent and borrowed, EMI plans, and a
-plain-English question interface. Currency INR, locale en-IN, timezone IST,
-used mostly on a phone.
+spending analytics, ledgers for money lent and borrowed, EMI plans, voice
+entry, and a plain-English question interface. Currency INR, locale en-IN,
+timezone IST, used mostly on a phone.
 
 ## Architecture
 
 ```
 src/
-  domain/     pure, dependency-free money logic — the whole engine
-  data/       Supabase access + the in-memory snapshot cache
-  ui/         design system + shared components
-  ai/         Claude API tools and the ask() entry point
-  app/        Next.js App Router pages and API routes
-  middleware.ts   PIN lock (see the rules below — it must import nothing)
-tests/        node --test over TypeScript directly, no build step
+  lib/              all business logic — framework-free and testable
+    ai/             Claude API: ask() and the voice-entry parser
+  components/
+    ui/             generic primitives (button, dialog, field, toast, table)
+    layout/         nav, page header, theme and privacy toggles
+    charts/         hand-written SVG charts
+    entry/          voice capture
+  contexts/         privacy provider
+  types/            generated DB types (npm run gen:types)
+  app/              routes only — orchestrate, never compute
+  proxy.ts          the PIN lock
+tests/              vitest; tests/integration/ is opt-in and hits the real DB
+scripts/            maintenance tools (sheet sync, type generation, checks)
+db/migrations/      numbered SQL, applied by hand in the Supabase editor
 ```
 
-**Supabase Postgres is the source of truth.** `db/schema.sql` is unchanged from
-v2 — the rewrite never touched the data, only the code that reads it.
+**Supabase Postgres is the source of truth.**
 
-### The three rules that shape everything
+### The rules that shape everything
 
-1. **`domain/` is pure.** No network, no filesystem, no clock, no framework
-   imports. Every function takes a `Snapshot` and returns a value. That is why
-   the engine is testable with plain objects and no database.
+1. **`src/lib/` is pure where it can be.** The money engine takes a `Snapshot`
+   and returns a value — no network, no clock, no framework imports. That is
+   why it is testable with plain objects and no database. Modules that must do
+   I/O (`supabase`, `snapshot`, `transactions`, `ai/`) are marked `server-only`.
 
-2. **Derived columns in Postgres are a cache, not truth.** `kind`,
+2. **Routes orchestrate; `lib/` computes.** `src/app/**` may fetch, guard,
+   strip and render. Anything that computes a number or applies a business rule
+   lives in `lib/` and is unit-testable without Next.js.
+
+3. **Derived columns in Postgres are a cache, not truth.** `kind`,
    `card_affected`, `card_direction` and `tags` are re-derived on load from the
-   raw fields the user entered (`method`, `category`, `remarks`). Reading them
-   back would freeze whichever app version wrote them into the data forever —
-   this is exactly what left 2,468 historical rows classified by v2's rules.
-   See the comment on `toTransaction` in `src/data/snapshot.ts`.
+   raw fields the user entered. Reading them back would freeze whichever app
+   version wrote them into the data forever. See `toTransaction` in
+   `src/lib/snapshot.ts`.
 
-3. **No `Date` in date arithmetic.** Timestamps are IST wall-clock strings
-   (`YYYY-MM-DDTHH:MM:SS`, naive, no offset) and sort lexicographically. All
-   calendar maths runs on integer y/m/d via `src/domain/time.ts`. `nowIST()` is
-   the only function in the codebase that reads the host clock. This makes a
-   UTC Vercel box and an IST laptop agree by construction.
+4. **No `Date` in date arithmetic.** Timestamps are IST wall-clock strings
+   (`YYYY-MM-DDTHH:MM:SS`, naive) that sort lexicographically. All calendar
+   maths runs on integer y/m/d via `src/lib/time.ts`. `nowIST()` is the only
+   function that reads the host clock, so a UTC Vercel box and an IST laptop
+   agree by construction.
+
+5. **Money rounds once, at the data boundary.** `snapshot.ts` and the CSV
+   importer round to the paisa on the way in, so every downstream sum is a sum
+   of the numbers actually on screen. This was a real defect: ten groupings had
+   rows that did not add up to their own total.
+
+6. **A write cannot skip the guard.** `guardedAction` demands an `Actor`, and
+   only `requireSession()` produces one, so a handler that skips the check does
+   not compile.
 
 ### Data flow
 
-`getSnapshot()` (`src/data/snapshot.ts`) loads transactions + income +
-`app_config` into a plain object and caches it in module scope. Freshness costs
-one query: a Postgres trigger bumps `app_state.version` on every write, and if
-that number has not moved the cache is still exactly right. There is **no
-SQLite, no native module, no bootstrap step** — v2's compute cache existed to
-run SQL over half a megabyte of data.
+`getSnapshot()` loads transactions, income and `app_config` into a plain object
+cached in module scope. A Postgres trigger bumps `app_state.version` on every
+write; the check is throttled to a 30-second window, because running it per
+request put a full network round-trip under every render. Local writes call
+`invalidateSnapshot()` and are visible immediately. Derived views go through
+`src/lib/views.ts`, which wraps them in React `cache()` — `forecast()` calls
+`statementView()` internally, so without it the engine runs twice per render.
 
-## Domain modules
+## Domain modules (`src/lib/`)
 
 | Module | What it owns |
 |---|---|
 | `time.ts` | Wall-clock instants, civil-date arithmetic, formatting |
+| `money.ts` | Exact paise parsing, `round2`, rounding policy |
 | `types.ts` | `Transaction`, `Income`, `Card`, `Account`, `Snapshot` |
 | `classify.ts` | Three timestamp formats, remarks tags, row classification |
-| `cycles.ts` | Statement cycle geometry, due dates, status |
-| `statement.ts` | The statement view; per-card detail; credit exclusion |
+| `cycles.ts` | Statement geometry, due dates, the statement boundary |
+| `statement.ts` | Statement view, per-card detail, credit exclusion |
+| `reconcile.ts` | Deducing the cut-off from the bank's own figure |
 | `credit.ts` | Credit Given ledger, FIFO repayment allocation |
 | `debts.ts` | Credit Taken (manual, from `app_config`) |
 | `emi.ts` | Instalment plans regrouped from `n/m` remarks |
 | `analytics.ts` | Spend definitions, breakdowns, series |
 | `forecast.ts` | Run-rate projection, Recommended Bank Reserve |
 | `balances.ts` | Account balances, net worth |
-| `entry.ts` | Normalising a new entry from the Shortcut or the app |
+| `validation.ts` | Server-side entry rules |
+| `transactions.ts` | Create / update / delete, idempotent and audited |
+| `auth.ts`, `actions.ts` | The authorization boundary and `guardedAction` |
 
 ### Definitions that are easy to get wrong
 
-- **Spend means money consumed.** It excludes card bill payments (the charge
-  was already counted), money lent to others, and transfers into savings or
-  investments. Without this, a month with three bill payments looks like a
-  spending disaster.
-- **`totalDebtLive` can be negative.** An overpaid card is real; clamping it
-  would misstate the reserve.
+- **Spend means money consumed.** It excludes card bill payments, money lent to
+  others, and transfers into savings. Without this, a month with three bill
+  payments reads as a spending disaster.
+- **`totalDebtLive` can be negative.** An overpaid card is real.
 - **`remainingDueBill + unbilled === totalDebtLive`** is an accounting identity
-  asserted by tests across every card in the fixture. If it breaks, the
-  dashboard is showing three numbers that cannot all be true.
+  asserted across every card in the fixture.
+- **A total on screen must equal the sum of the rows on screen.** Asserted
+  across every grouping the UI aggregates by.
 - **Excluding credit given** means the part of the *currently unpaid* balance
-  that was lent out and has not come back. Payments settle charges oldest-first;
-  the unpaid tail is the balance. Summing every credit-given charge ever made
-  is wrong once a bill has been paid.
-- **The opening balance replaces history.** Rows older than a card's
-  `openingDate` are skipped, not added.
+  that was lent out and has not come back. Payments settle charges oldest-first.
+- **The opening balance replaces history.** Rows older than `openingDate` are
+  skipped, not added.
+- **`statementEnd` is the date printed on the statement; `periodEnd` is where
+  the spending stops.** They differ by a day when the boundary is exclusive.
+  The debt cut-off uses `periodEnd`. Cycle boundaries CHAIN — a cycle's start
+  depends on the previous cycle's boundary — or a day falls on no statement at
+  all and vanishes from both.
 
 ## Integrations that are live — do not break these
 
-- **`POST /api/entry`** — the iPhone "Daily Spent" Shortcut posts here.
-  Form-encoded or JSON: `amount`, `method`, `category`, `remarks`, optional
-  `type=income`. Auth via `INGEST_TOKEN` in the **`x-token` header** (query
-  strings land in Vercel request logs). Ids are content-derived, so a retry
-  upserts instead of double-counting.
-- **`src/middleware.ts`** — the PIN lock (`APP_ACCESS_KEY`; unset = no lock).
-  **Two rules, both from real deploy failures, asserted by tests:**
-  1. It must **import nothing**. `next/server` broke both runtimes.
-  2. It must **not declare `runtime: 'nodejs'`** — experimental in Next 15;
-     the deploy fails.
-  The session cookie holds a SHA-256 derivation, never the PIN itself.
+- **`POST /api/entry`** — the iPhone Shortcut. Form-encoded or JSON: `amount`,
+  `method`, `category`, `remarks`, optional `type=income`. Auth via
+  `INGEST_TOKEN` in the **`x-token` header**. Ids are content-derived, so a
+  retry upserts instead of double-counting.
+- **`src/proxy.ts`** — the PIN lock (`APP_ACCESS_KEY`; unset = no lock). Next
+  16 renamed the `middleware` convention to `proxy`. **Two rules, from real
+  deploy failures, asserted by tests:** it must import nothing, and it must not
+  declare a `runtime` (Next 16 throws). The session cookie holds a SHA-256
+  derivation, never the PIN. That derivation is duplicated in `lib/auth.ts`
+  because proxy may not import — a contract test pins them together.
 
 ## Conventions
 
-- TypeScript, strict, `erasableSyntaxOnly` — tests run under `node --test`
-  with native type stripping, so **no enums, no parameter properties, no
-  namespaces**.
-- Money rounded to 2dp at the edge (`round2`), formatted via `src/ui/format.ts`.
-- Every money figure on screen uses the `.num` class (tabular numerals).
-- Card colours are **palette slots**, not hex — resolved to a themed CSS
-  variable so they follow light/dark. The set is validated for colour-vision
-  deficiency; do not hand-pick replacements without re-running the validator.
-- Charts are hand-written SVG in `src/ui/Charts.tsx`. No charting library.
+- TypeScript strict, `erasableSyntaxOnly`: no enums, no parameter properties.
+- **Every money figure on screen goes through `<Money>` or `<Private>`.**
+  `npm run check:privacy` fails the build otherwise, because privacy mode is
+  only a single switch if every amount passes one choke point.
+- Card colours are **palette slots**, not hex, validated for colour-vision
+  deficiency. Do not hand-pick replacements without re-running the validator.
+- Charts are hand-written SVG. No charting library.
+- Maintenance scripts import app modules via `scripts/register-alias.mjs`, so a
+  script cannot drift from the engine it is checking.
 
 ## Commands
 
 ```bash
-npm test        # 60 tests, node --test over TypeScript directly
+npm test                    # 130 offline tests
+RUN_LIVE_TESTS=1 npm test   # + integration tests against the real database
 npm run typecheck
 npm run lint
-npm run build
+npm run check:privacy
+npm run build               # runs the privacy gate first
+npm run gen:types           # regenerate src/types/database.ts from the live schema
 ```
 
 `.claude/launch.json` has `next-dev` (respects the PIN) and `next-dev-open`
@@ -134,6 +162,7 @@ npm run build
 
 - `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` — required; without them the app
   renders empty states rather than crashing.
-- `INGEST_TOKEN` — guards `/api/entry` and `/api/import`.
+- `INGEST_TOKEN` — guards `/api/entry`.
 - `APP_ACCESS_KEY` — the PIN. Unset locally = no lock.
-- `ANTHROPIC_API_KEY` — required for `/ask`. Absent = a clear setup message.
+- `ANTHROPIC_API_KEY` — required for `/ask` and voice entry. Absent = a clear
+  setup message, never a crash.
