@@ -6,9 +6,11 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
 /* Parses a spoken phrase into a transaction DRAFT. It writes nothing — the
-   draft goes back to the form for the user to confirm. Still session-guarded,
-   because it spends money on an API call and reflects the user's own data
-   vocabulary back to whoever asks. */
+   draft goes back to the form for the user to confirm.
+
+   Session-guarded even though the default path is free and local: the reply
+   reflects the user's own methods and categories back to whoever asks, and a
+   configured provider would spend their quota. */
 
 export async function POST(req: Request): Promise<Response> {
   const auth = await requireSession();

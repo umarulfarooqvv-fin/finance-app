@@ -106,7 +106,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSa
         body: JSON.stringify({ transcript }),
       });
       const json = (await res.json()) as
-        | { ok: true; draft: { amount: string | null; method: string | null; category: string | null; remarks: string; uncertain: string[]; interpretation: string } }
+        | { ok: true; draft: { amount: string | null; method: string | null; category: string | null; remarks: string; uncertain: string[]; source: string } }
         | { ok: false; error: string };
 
       if (!json.ok) { notify('error', json.error); return; }
@@ -120,7 +120,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSa
         remarks: d.remarks || f.remarks,
       }));
       setUncertain(d.uncertain);
-      setHeardAs(d.interpretation || transcript);
+      setHeardAs(`${transcript} — read by the ${d.source}`);
 
       if (d.uncertain.length) {
         notify('error', `Check the highlighted ${d.uncertain.join(' and ')} before saving.`);
@@ -199,7 +199,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSa
 
         {heardAs ? (
           <p className="rounded-[var(--radius-field)] border border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-2 text-[11px] text-[var(--color-ink-2)]">
-            Understood as: {heardAs}
+            Heard: {heardAs}
           </p>
         ) : null}
 

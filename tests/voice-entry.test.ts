@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { parserConfigured, sanitise } from '@/lib/ai/parse-entry';
+import { parseSpokenEntry, parserConfigured, sanitise } from '@/lib/ai/parse-entry';
 
 /* ===========================================================================
    The safety layer between speech and a transaction.
@@ -103,9 +103,36 @@ test('junk from the model cannot crash the parser', () => {
   assert.equal(d.uncertain.length, 3, 'all three fields reported as unknown');
 });
 
-test('voice entry reports itself unavailable without a key', () => {
-  const had = process.env['ANTHROPIC_API_KEY'];
+test('voice entry works with NO key and no provider configured', async () => {
+  // The whole point of the offline parser: a phrase that names everything
+  // needs no model, no key and no network, so the feature is never gated
+  // behind a signup.
+  const hadAnthropic = process.env['ANTHROPIC_API_KEY'];
+  const hadProvider = process.env['ENTRY_AI'];
   delete process.env['ANTHROPIC_API_KEY'];
-  assert.equal(parserConfigured(), false);
-  if (had) process.env['ANTHROPIC_API_KEY'] = had;
+  process.env['ENTRY_AI'] = 'off';
+
+  assert.equal(parserConfigured(), true, 'voice entry is always available');
+
+  const result = await parseSpokenEntry('four eighty for lunch on Coral');
+  assert.ok(result.ok);
+  assert.equal(result.draft.amount, '480');
+  assert.equal(result.draft.method, 'Coral');
+  assert.equal(result.draft.category, 'Food');
+  assert.deepEqual(result.draft.uncertain, [], 'nothing needed a second look');
+  assert.match(result.draft.source, /offline/);
+
+  if (hadAnthropic) process.env['ANTHROPIC_API_KEY'] = hadAnthropic;
+  if (hadProvider) process.env['ENTRY_AI'] = hadProvider; else delete process.env['ENTRY_AI'];
+});
+
+test('a phrase the offline parser cannot finish is reported, not invented', async () => {
+  process.env['ENTRY_AI'] = 'off';
+  const result = await parseSpokenEntry('four eighty');
+  assert.ok(result.ok);
+  assert.equal(result.draft.amount, '480');
+  assert.equal(result.draft.method, null);
+  assert.equal(result.draft.category, null);
+  assert.ok(result.draft.uncertain.includes('method'));
+  assert.ok(result.draft.uncertain.includes('category'));
 });
