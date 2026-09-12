@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, inputClass } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
+import { VoiceInput } from '@/components/entry/voice-input';
 import { createTransactionAction, updateTransactionAction } from './actions';
 
 /* ===========================================================================
@@ -56,6 +57,13 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSa
   const [errors, setErrors] = useState<FieldErrors>({});
   const [form, setForm] = useState(() => blank(defaultTs));
 
+  /* Fields the voice parser was unsure about. Highlighted rather than
+     silently accepted: a misheard payment method moves debt onto the wrong
+     card, which is the hardest error to spot weeks later. */
+  const [uncertain, setUncertain] = useState<string[]>([]);
+  const [heardAs, setHeardAs] = useState<string | null>(null);
+  const [parsing, setParsing] = useState(false);
+
   // One key per opening of the dialog. Re-submitting after a network error
   // reuses it, so a request that actually succeeded cannot become two rows.
   const [clientKey, setClientKey] = useState(() => crypto.randomUUID());
@@ -63,6 +71,8 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSa
   useEffect(() => {
     if (!open) return;
     setErrors({});
+    setUncertain([]);
+    setHeardAs(null);
     setClientKey(crypto.randomUUID());
     setForm(
       editing
@@ -77,7 +87,52 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSa
     );
   }, [open, editing, defaultTs]);
 
-  const set = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: keyof typeof form) => (v: string) => {
+    setForm((f) => ({ ...f, [k]: v }));
+    // Touching a field is the user vouching for it, so the warning goes.
+    setUncertain((u) => u.filter((x) => x !== k));
+  };
+
+  /* A transcript becomes a DRAFT, never a row. Fields the parser could not
+     determine are left blank rather than guessed, so the form still refuses
+     to submit until they are filled in. */
+  async function handleTranscript(transcript: string) {
+    setParsing(true);
+    setHeardAs(null);
+    try {
+      const res = await fetch('/api/parse-entry', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ transcript }),
+      });
+      const json = (await res.json()) as
+        | { ok: true; draft: { amount: string | null; method: string | null; category: string | null; remarks: string; uncertain: string[]; interpretation: string } }
+        | { ok: false; error: string };
+
+      if (!json.ok) { notify('error', json.error); return; }
+
+      const d = json.draft;
+      setForm((f) => ({
+        ...f,
+        amount: d.amount ?? f.amount,
+        method: d.method ?? f.method,
+        category: d.category ?? f.category,
+        remarks: d.remarks || f.remarks,
+      }));
+      setUncertain(d.uncertain);
+      setHeardAs(d.interpretation || transcript);
+
+      if (d.uncertain.length) {
+        notify('error', `Check the highlighted ${d.uncertain.join(' and ')} before saving.`);
+      }
+    } catch {
+      notify('error', 'Could not parse that. Type the entry instead.');
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  const flagged = (field: string) => (uncertain.includes(field) ? 'Heard, but not certain — please check.' : undefined);
 
   // Paying a card bill reads differently from spending on one, so the form
   // says which it is rather than leaving the user to infer it.
@@ -138,7 +193,22 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSa
       }
     >
       <form onSubmit={submit} className="flex flex-col gap-3.5" noValidate>
-        <Field label="Amount" htmlFor="amount" error={errors['amount']} hint="Rupees, to the paisa">
+        {!editing ? (
+          <VoiceInput onTranscript={handleTranscript} parsing={parsing} disabled={pending} />
+        ) : null}
+
+        {heardAs ? (
+          <p className="rounded-[var(--radius-field)] border border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-2 text-[11px] text-[var(--color-ink-2)]">
+            Understood as: {heardAs}
+          </p>
+        ) : null}
+
+        <Field
+          label="Amount"
+          htmlFor="amount"
+          error={errors['amount'] ?? flagged('amount')}
+          hint="Rupees, to the paisa"
+        >
           <input
             id="amount"
             name="amount"
@@ -155,7 +225,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSa
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Paid from" htmlFor="method" error={errors['method']}>
+          <Field label="Paid from" htmlFor="method" error={errors['method'] ?? flagged('method')}>
             <select
               id="method"
               name="method"
@@ -171,7 +241,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSa
             </select>
           </Field>
 
-          <Field label="Category" htmlFor="category" error={errors['category']}>
+          <Field label="Category" htmlFor="category" error={errors['category'] ?? flagged('category')}>
             <select
               id="category"
               name="category"
