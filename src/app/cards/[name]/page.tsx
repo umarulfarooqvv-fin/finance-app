@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getSnapshot } from '@/lib/snapshot';
 import { cardColor, cardDetail, type LedgerEntry } from '@/lib/statement';
+import { reconcileRecorded, recentStatementDates } from '@/lib/reconcile';
+import { ReconcileClient } from './reconcile-client';
 import { dayOf, formatDay, formatDayShort, relativeDays } from '@/lib/time';
 import { money, percent } from '@/lib/format';
 import { Page, PageHeader } from '@/components/layout/page-header';
@@ -72,6 +74,8 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
   if (!card) notFound();
 
   const { row, billed, unbilled } = cardDetail(snap, card, today);
+  const recorded = reconcileRecorded(snap, card);
+  const statementDates = recentStatementDates(card, today, 6);
   const m = row.cycleMath;
   const checked = row.verified.verified + row.verified.unverified;
 
@@ -179,8 +183,23 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
           </span>
         </div>
         <p className="mt-3 text-xs text-[var(--color-ink-3)]">
-          Cycle ran {formatDay(row.cycle.cycleStart)} to {formatDay(row.cycle.statementEnd)}.
+          Cycle ran {formatDay(row.cycle.cycleStart)} to {formatDay(row.cycle.periodEnd)}.
+          {row.cycle.boundary === 'exclusive' ? (
+            <>
+              {' '}The statement is dated {formatDay(row.cycle.statementEnd)}, but was cut before
+              that day&rsquo;s spending.
+            </>
+          ) : null}
         </p>
+      </Panel>
+
+      {/* ---- Reconciliation against the bank ------------------------------ */}
+      <Panel className="mt-4">
+        <ReconcileClient
+          card={card.name}
+          statementDates={statementDates}
+          recorded={recorded}
+        />
       </Panel>
 
       {/* ---- Reconciliation ---------------------------------------------- */}
