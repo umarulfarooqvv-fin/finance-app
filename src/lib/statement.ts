@@ -1,5 +1,8 @@
 import { creditLedger } from '@/lib/credit';
-import { cycleFor, daysUntilDue, dueStatus, type Cycle, type DueStatus } from '@/lib/cycles';
+import {
+  cycleFor, daysUntilDue, dueStatus,
+  type Cycle, type CycleOverrides, type DueStatus,
+} from '@/lib/cycles';
 import { dayOf, endOfDay, startOfDay, type Day, type Instant } from '@/lib/time';
 import type { Card, Snapshot, Transaction } from '@/lib/types';
 
@@ -94,10 +97,14 @@ export function cardStatement(
   today: Day,
   /** Per-lending unrepaid balance, keyed by transaction id (see credit.ts). */
   outstandingByTx: Record<string, number> = {},
+  overrides: CycleOverrides = {},
 ): StatementRow {
-  const cycle = cycleFor(card, today);
+  const cycle = cycleFor(card, today, overrides);
   const now = endOfDay(today);
-  const stmtEnd = endOfDay(cycle.statementEnd);
+  /* periodEnd, NOT statementEnd. They differ by a day exactly when the bank
+     cut this statement before the bill date's own spending posted, which is
+     the case this boundary exists to model. */
+  const stmtEnd = endOfDay(cycle.periodEnd);
   const cycleStart = startOfDay(cycle.cycleStart);
 
   let debtThroughEnd = 0;
@@ -190,9 +197,10 @@ export function cardStatement(
 
 export function statementView(snapshot: Snapshot, today: Day = dayOf(snapshot.loadedAt)): StatementView {
   const credit = creditLedger(snapshot, endOfDay(today));
+  const overrides = (snapshot.config['statement_cycles'] as CycleOverrides | undefined) ?? {};
   const rows = snapshot.cards
     .filter((c) => c.active)
-    .map((c) => cardStatement(snapshot, c, today, credit.outstandingByTx))
+    .map((c) => cardStatement(snapshot, c, today, credit.outstandingByTx, overrides))
     .sort((a, b) => a.daysLeft - b.daysLeft || b.totalDebtLive - a.totalDebtLive);
 
   const sum = (pick: (r: StatementRow) => number) => round2(rows.reduce((a, r) => a + pick(r), 0));
@@ -237,8 +245,9 @@ export type CardDetail = {
 
 export function cardDetail(snapshot: Snapshot, card: Card, today: Day): CardDetail {
   const credit = creditLedger(snapshot, endOfDay(today));
-  const row = cardStatement(snapshot, card, today, credit.outstandingByTx);
-  const stmtEnd = endOfDay(row.cycle.statementEnd);
+  const overrides = (snapshot.config['statement_cycles'] as CycleOverrides | undefined) ?? {};
+  const row = cardStatement(snapshot, card, today, credit.outstandingByTx, overrides);
+  const stmtEnd = endOfDay(row.cycle.periodEnd);
   const cycleStart = startOfDay(row.cycle.cycleStart);
 
   const entry = (t: Transaction): LedgerEntry => ({

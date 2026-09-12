@@ -10,6 +10,7 @@ import { fixtureTransactions, income, makeSnapshot, tx } from './helpers.ts';
 const plain: Card = {
   name: 'Coral', billDate: 25, graceDays: 17, dueDay: 12, dueCycle: 'next',
   creditLimit: 50000, openingBalance: 0, openingDate: null, slot: 4, active: true,
+  statementBoundary: 'inclusive',
 };
 
 test('cycle geometry: the closed cycle is the one that already billed', () => {

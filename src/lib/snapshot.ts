@@ -134,8 +134,11 @@ function mergeCards(stored: unknown): Card[] {
     const base = byName.get(raw.name) ?? {
       name: raw.name, billDate: 1, graceDays: 15, dueDay: null, dueCycle: 'same' as const,
       creditLimit: 0, openingBalance: 0, openingDate: null, slot: 1, active: true,
+      statementBoundary: 'inclusive' as const,
     };
-    out.push({ ...base, ...raw });
+    // A stored card written before this field existed must not arrive with
+    // `statementBoundary: undefined` — the default has to survive the spread.
+    out.push({ ...base, ...raw, statementBoundary: raw.statementBoundary ?? base.statementBoundary ?? 'inclusive' });
     byName.delete(raw.name);
   }
   // Any default card the stored config never mentioned still belongs.

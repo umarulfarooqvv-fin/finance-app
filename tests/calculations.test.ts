@@ -22,6 +22,7 @@ import { income, makeSnapshot, tx } from './helpers.ts';
 const coral: Card = {
   name: 'Coral', billDate: 25, graceDays: 17, dueDay: 12, dueCycle: 'next',
   creditLimit: 50000, openingBalance: 0, openingDate: null, slot: 4, active: true,
+  statementBoundary: 'inclusive',
 };
 
 /* --- What counts as spend ------------------------------------------------ */

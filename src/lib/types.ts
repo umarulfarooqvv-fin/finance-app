@@ -49,6 +49,9 @@ export type TxKind = 'spend' | 'card_payment' | 'credit_given' | 'investment' | 
 /** Which way a row moves a card's balance. */
 export type CardDirection = 'debt+' | 'debt-';
 
+/** Whether the statement date itself counts as part of that statement. */
+export type StatementBoundary = 'inclusive' | 'exclusive';
+
 export type EmiTag = { n: number; m: number };
 
 export type Tags = {
@@ -102,6 +105,18 @@ export type Card = {
   /** Whether dueDay falls in the statement's month or the next one. */
   dueCycle: 'same' | 'next';
   creditLimit: number;
+  /**
+   * Where a transaction dated ON the statement date belongs.
+   *
+   *   inclusive — it is on THIS statement (the common case, and the default)
+   *   exclusive — the statement was cut before it, so it rolls to the next one
+   *
+   * Banks generate a statement at some moment during the bill date, so whether
+   * that day's spending made it in genuinely varies month to month. This is
+   * the card's usual behaviour; a single cycle can override it, and the
+   * reconciler can work it out from the amount the bank actually billed.
+   */
+  statementBoundary: StatementBoundary;
   /** Debt carried on `openingDate`, standing in for untracked history. */
   openingBalance: number;
   openingDate: Day | null;
