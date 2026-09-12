@@ -157,8 +157,108 @@ export function diff(sheetRows, dbRows) {
     }
   }
 
+  /* Pass 3 - an edit that changed the REMARKS, which pass 2 keys on.
+
+     Appending "(Banglore Trip)" to twenty-three rows, and correcting a typo in
+     another, made each look like a delete plus an insert. Applying that would
+     have inserted the duplicate AND left the stale original, double-counting a
+     whole trip. Nothing is deleted by a sync, so the error would have been
+     silent and permanent.
+
+     The rule is deliberately narrow. Two leftovers on the SAME DAY are the
+     same transaction only when the evidence is strong on two fronts, and only
+     when the pairing is UNAMBIGUOUS - exactly one candidate on each side. A
+     day with two plausible matches is reported, never guessed, because a wrong
+     pairing overwrites a real row. */
+
+  const tokens = (t) =>
+    String(t ?? '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+
+  function remarksRelated(a, b) {
+    const ta = tokens(a);
+    const tb = tokens(b);
+    if (!ta.length || !tb.length) return false;
+    // One is the other with words appended: "Dinner" -> "Dinner (Banglore Trip)".
+    const [short, long] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+    if (short.every((w, i) => long[i] === w)) return true;
+    // Or a typo fix: "Kunch from chemb" -> "lunch from chemb".
+    const setB = new Set(tb);
+    const shared = ta.filter((w) => setB.has(w)).length;
+    return shared / Math.min(ta.length, tb.length) >= 0.6;
+  }
+
+  /* How strong is the evidence that these two are the same transaction?
+     Tiers, not a score, because the tiers are applied in order and a weaker
+     one never competes with a stronger one. Two ₹30 and ₹15 teas on one day
+     both "look like" each other; only the amount tells them apart. */
+  function tierOf(sheetRow, dbRow) {
+    const amountSame = sheetRow.amount === dbRow.amount;
+    const methodSame = norm(dbRow.method) === norm(sheetRow.method);
+    const related = remarksRelated(sheetRow.remarks, dbRow.remarks);
+    if (amountSame && related) return 3;   // the same thing, re-described
+    if (amountSame && methodSame) return 2; // same money, same source
+    if (related && methodSame) return 1;    // the amount itself was corrected
+    return 0;
+  }
+
+  const leftoverDb = db.filter((r) => !matchedDbIds.has(r.id));
+  const byDay = new Map();
+  for (const r of leftoverDb) {
+    const d = dayOfTs(r.ts);
+    byDay.set(d, [...(byDay.get(d) ?? []), r]);
+  }
+
+  const claimed = new Set();
+  const pairs = new Map(); // sheet row -> db row
+  const ambiguous = [];
+
+  /* Strongest evidence first. Within a tier a pairing is only made when it is
+     unique in BOTH directions - one candidate for the sheet row, and that db
+     row has one candidate too. Anything else is reported, never guessed: a
+     wrong pairing silently overwrites a real row. */
+  for (const tier of [3, 2, 1]) {
+    for (const sRow of toInsert) {
+      if (pairs.has(sRow)) continue;
+      const candidates = (byDay.get(dayOfTs(sRow.ts)) ?? []).filter(
+        (d) => !claimed.has(d.id) && tierOf(sRow, d) === tier,
+      );
+      if (candidates.length === 0) continue;
+      if (candidates.length > 1) { ambiguous.push({ sheetRow: sRow, candidates, tier }); continue; }
+
+      const before = candidates[0];
+      // Same day only. Without this, a ₹15 "Tea" three days later competes for
+      // the same row and every tea in the ledger looks ambiguous.
+      const backwards = toInsert.filter(
+        (other) =>
+          !pairs.has(other) &&
+          dayOfTs(other.ts) === dayOfTs(before.ts) &&
+          tierOf(other, before) === tier,
+      );
+      if (backwards.length !== 1) { ambiguous.push({ sheetRow: sRow, candidates, tier }); continue; }
+
+      claimed.add(before.id);
+      pairs.set(sRow, before);
+    }
+  }
+
+  const stillInsert = [];
+  for (const sRow of toInsert) {
+    const before = pairs.get(sRow);
+    if (!before) { stillInsert.push(sRow); continue; }
+    matchedDbIds.add(before.id);
+    const changes = [];
+    if (before.amount !== sRow.amount) changes.push(`amount ${before.amount} -> ${sRow.amount}`);
+    if (norm(before.method) !== sRow.method) changes.push(`method ${before.method} -> ${sRow.method}`);
+    if (norm(before.category) !== sRow.category) changes.push(`category ${before.category} -> ${sRow.category}`);
+    if (norm(before.remarks) !== sRow.remarks) changes.push(`remarks "${before.remarks}" -> "${sRow.remarks}"`);
+    toUpdate.push({ before, after: sRow, changes, rematched: true });
+  }
+
+  // Only report ambiguity that was never resolved by a later, weaker tier.
+  const unresolved = ambiguous.filter((a) => !pairs.has(a.sheetRow));
+
   const orphans = db.filter((r) => !matchedDbIds.has(r.id));
-  return { toInsert, toUpdate, orphans };
+  return { toInsert: stillInsert, toUpdate, orphans, ambiguous: unresolved };
 }
 
 // --- report ----------------------------------------------------------------
@@ -169,21 +269,44 @@ const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
 if (isMain) {
   const { rows: sheet, unparseable } = await loadSheet(process.argv[2] ?? '.scratch-sheet.csv');
   const db = await loadDb();
-  const { toInsert, toUpdate, orphans } = diff(sheet, db);
+  const { toInsert, toUpdate, orphans, ambiguous } = diff(sheet, db);
 
   console.log('sheet rows (non-blank)   :', sheet.length);
   console.log('  unparseable timestamps :', unparseable);
   console.log('database rows            :', db.length);
   console.log('');
   console.log('MATCHED (unchanged)      :', sheet.length - toInsert.length - toUpdate.length);
-  console.log('EDITED in the sheet      :', toUpdate.length);
+  console.log('EDITED in the sheet      :', toUpdate.length,
+    `(${toUpdate.filter((u) => u.rematched).length} of them re-matched on a changed remark)`);
   console.log('NEW -> would be inserted :', toInsert.length);
   console.log('In DB, absent from sheet :', orphans.length);
 
-  if (toUpdate.length) {
+  const plain = toUpdate.filter((u) => !u.rematched);
+  const rematched = toUpdate.filter((u) => u.rematched);
+
+  if (plain.length) {
     console.log('\n--- edited in the sheet since the import ---');
-    for (const u of toUpdate) {
+    for (const u of plain) {
       console.log(`  ${u.before.ts}  ${String(u.after.remarks).slice(0, 32).padEnd(34)} ${u.changes.join('; ')}`);
+    }
+  }
+
+  if (rematched.length) {
+    console.log('\n--- edited INCLUDING the remarks, re-matched by pass 3 ---');
+    console.log('    (check these: each one updates a row instead of inserting a duplicate)');
+    for (const u of rematched) {
+      console.log(`  ${u.before.ts}  ${String(u.before.amount).padStart(9)}  ${u.changes.join(' ; ')}`);
+    }
+  }
+
+  if (ambiguous?.length) {
+    console.log('\n--- AMBIGUOUS: more than one row could be the same transaction ---');
+    console.log('    (left as inserts and reported; resolve by hand rather than guessing)');
+    for (const a of ambiguous) {
+      console.log(`  sheet row ${a.sheetRow.sheetRow}: ${a.sheetRow.ts} ${a.sheetRow.amount} ${a.sheetRow.method} | ${a.sheetRow.remarks}`);
+      for (const c of a.candidates) {
+        console.log(`      could be db ${c.id}  ${c.amount} ${c.method} | ${c.category} | ${c.remarks}`);
+      }
     }
   }
 

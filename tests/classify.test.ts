@@ -22,6 +22,20 @@ test('parses the plain sheets format the sheet switched to', () => {
   assert.equal(parseTimestamp('12/1/2026 9:05')?.ts, '2026-12-01T09:05:00');
 });
 
+test('that format without a time is a date, not a failure', () => {
+  // A row typed by hand rather than entered through the form has no time.
+  // Rejecting it sent five scheduled EMI instalments in with ts = NULL, which
+  // puts a charge on no statement at all.
+  const p = parseTimestamp('9/14/2026');
+  assert.equal(p?.ts, '2026-09-14T00:00:00');
+  assert.equal(p?.dateOnly, true, 'midnight here means "no time given", not midnight');
+  assert.equal(parseTimestamp('12/14/2026')?.ts, '2026-12-14T00:00:00');
+  // Still the same US order as the rows that do carry a time.
+  assert.equal(parseTimestamp('8/22/2026')?.ts, '2026-08-22T00:00:00');
+  // And an impossible date is still refused rather than rolled over.
+  assert.equal(parseTimestamp('2/30/2026'), null);
+});
+
 test('parses the dashed history format, weekday and all', () => {
   const p = parseTimestamp('06-July-2024,  Saturday');
   assert.equal(p?.ts, '2024-07-06T00:00:00');

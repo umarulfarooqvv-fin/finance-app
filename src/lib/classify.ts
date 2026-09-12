@@ -26,8 +26,18 @@ const MONTHS: Record<string, number> = {
 const FMT_A = /^\s*(\d{1,2}),\s+([A-Za-z]+)\s+(\d{2})\s+at\s+(\d{1,2}):(\d{2}):(\d{2}):(\d{2})\s*(AM|PM)\s*$/i;
 
 /* Format B — plain Sheets serial format, 24-hour. The sheet switched to this
-   on 21-May-2026. e.g. "5/21/2026 14:13:19" (US order: month first) */
-const FMT_B = /^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*$/;
+   on 21-May-2026. e.g. "5/21/2026 14:13:19" (US order: month first)
+
+   The time is OPTIONAL: a row the user types by hand rather than through the
+   form arrives date-only, "9/14/2026". Requiring the time sent five scheduled
+   EMI instalments in with ts = NULL, which puts a charge on no statement at
+   all. Date-only here means the same thing it means for format C.
+
+   US order is not a guess — it is the order this sheet already uses for the
+   rows that do carry a time. A hand-typed "5/6/2026" is genuinely ambiguous
+   and would be read as 6 May; every such row in the live data has a day past
+   the 12th, so none is affected. */
+const FMT_B = /^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?\s*$/;
 
 /* Format C — the display format covering almost the whole 2023-2024 history,
    with a redundant weekday. Missing this once caused the entire history import
@@ -80,12 +90,13 @@ export function parseTimestamp(raw: string | null | undefined): ParsedTime | nul
   const b = raw.match(FMT_B);
   if (b) {
     const [, mo, dd, yyyy, hh, mi, ss] = b;
+    const dateOnly = hh === undefined;
     const parts = {
       y: Number(yyyy), m: Number(mo), d: Number(dd),
-      hh: Number(hh), mm: Number(mi), ss: Number(ss ?? 0),
+      hh: dateOnly ? 0 : Number(hh), mm: dateOnly ? 0 : Number(mi), ss: dateOnly ? 0 : Number(ss ?? 0),
     };
     if (!validParts(parts.y, parts.m, parts.d, parts.hh, parts.mm, parts.ss)) return null;
-    return { ts: fromCivil(parts), dateOnly: false };
+    return { ts: fromCivil(parts), dateOnly };
   }
 
   const c = raw.match(FMT_C);
