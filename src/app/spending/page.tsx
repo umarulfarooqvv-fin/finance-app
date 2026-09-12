@@ -45,7 +45,7 @@ export default async function SpendingPage() {
         subtitle={`${formatDay(month.from)} to ${formatDay(today)}`}
         action={
           <Link
-            href="/spending/transactions"
+            href="/transactions"
             className="rounded-[var(--radius-field)] border border-[var(--color-line)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-line-strong)]"
           >
             All transactions

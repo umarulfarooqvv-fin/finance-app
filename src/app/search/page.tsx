@@ -11,5 +11,5 @@ export default async function SearchPage({
   searchParams: Promise<{ q?: string }>;
 }) {
   const { q } = await searchParams;
-  redirect(q ? `/spending/transactions?q=${encodeURIComponent(q)}` : '/spending/transactions');
+  redirect(q ? `/transactions?q=${encodeURIComponent(q)}` : '/transactions');
 }

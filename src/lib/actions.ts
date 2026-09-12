@@ -114,7 +114,7 @@ export const MONEY_PATHS = [
   '/',
   '/cards',
   '/spending',
-  '/spending/transactions',
+  '/transactions',
   '/money',
   '/ledgers',
 ];

@@ -27,7 +27,7 @@ export type NavItem = {
   keywords?: string[];
   /** Sub-paths that should light this destination up as active. */
   match?: string[];
-  /** Shown in the phone tab bar. Only the primary six are. */
+  /** Shown in the phone tab bar. */
   primary?: boolean;
 };
 
@@ -61,6 +61,16 @@ export const NAV_SECTIONS: NavSection[] = [
         keywords: ['credit', 'bill', 'due', 'statement', 'debt', 'limit', 'utilisation',
                    'edge', 'coral', 'icici', 'scapia', 'one card', 'super money'],
         match: ['/cards'],
+        primary: true,
+      },
+      {
+        label: 'Entries',
+        href: '/transactions',
+        icon: ArrowLeftRight,
+        hint: 'Every transaction, grouped by day and filterable',
+        keywords: ['transactions', 'history', 'list', 'entries', 'rows', 'find',
+                   'search', 'filter', 'ledger', 'all activity'],
+        match: ['/transactions'],
         primary: true,
       },
       {
@@ -105,13 +115,7 @@ export const NAV_SECTIONS: NavSection[] = [
         match: ['/ask'],
         primary: true,
       },
-      {
-        label: 'Transactions',
-        href: '/spending/transactions',
-        icon: ArrowLeftRight,
-        hint: 'Every entry, searchable',
-        keywords: ['history', 'list', 'entries', 'rows', 'find', 'search'],
-      },
+
       {
         label: 'Search',
         href: '/search',
@@ -133,14 +137,14 @@ export const NAV_SECTIONS: NavSection[] = [
 
 export const ALL_NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((s) => s.items);
 
-/** The six destinations the phone tab bar shows. */
+/** The destinations the phone tab bar shows. */
 export const PRIMARY_NAV_ITEMS: NavItem[] = ALL_NAV_ITEMS.filter((i) => i.primary);
 
 /**
  * Which destination is active for a pathname.
  *
- * Longest match wins, so /spending/transactions highlights Transactions rather
- * than lighting up its parent Spending as well.
+ * Longest match wins, so a nested route highlights its own destination rather
+ * than lighting up a parent as well.
  */
 export function resolveActiveHref(pathname: string): string | null {
   let best: string | null = null;

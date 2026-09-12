@@ -241,7 +241,7 @@ export default async function TodayPage() {
         <Panel>
           <SectionTitle
             action={
-              <Link href="/spending/transactions" className="text-xs font-medium text-[var(--color-accent)]">
+              <Link href="/transactions" className="text-xs font-medium text-[var(--color-accent)]">
                 All activity
               </Link>
             }
