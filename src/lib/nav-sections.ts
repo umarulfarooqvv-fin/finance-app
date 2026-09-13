@@ -1,6 +1,6 @@
 import {
   ArrowLeftRight, BookOpen, CreditCard, Home, LineChart,
-  MessageCircleQuestion, Search, Settings, TrendingUp, Wallet, type LucideIcon,
+  MessageCircleQuestion, Scale, Search, Settings, TrendingUp, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 /* ===========================================================================
@@ -99,6 +99,15 @@ export const NAV_SECTIONS: NavSection[] = [
         keywords: ['net worth', 'balance', 'bank', 'accounts', 'income', 'salary', 'savings'],
         match: ['/money'],
         primary: true,
+      },
+      {
+        label: 'Tally',
+        href: '/tally',
+        icon: Scale,
+        hint: 'Date-wise statement: in, out and the running balance',
+        keywords: ['reconcile', 'reconciliation', 'statement', 'check', 'balance', 'bank',
+                   'day by day', 'in and out', 'audit'],
+        match: ['/tally'],
       },
       {
         label: 'Ledgers',

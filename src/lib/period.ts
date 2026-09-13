@@ -178,10 +178,10 @@ export function granularity(p: Period): 'day' | 'month' {
   return p.days > 92 ? 'month' : 'day';
 }
 
-/** Build a query string for a period link, dropping the keys it does not use. */
-export function periodHref(over: Record<string, string | undefined>): string {
+/** Build a period link for a page, dropping the keys that period does not use. */
+export function periodHref(base: string, over: Record<string, string | undefined>): string {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(over)) if (v) p.set(k, v);
   const s = p.toString();
-  return s ? `/spending?${s}` : '/spending';
+  return s ? `${base}?${s}` : base;
 }

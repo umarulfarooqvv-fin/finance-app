@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { comparisonFor, granularity, readPeriod } from '@/app/spending/period';
+import { comparisonFor, granularity, readPeriod } from '@/lib/period';
 
 /* ===========================================================================
    The stretch of time the Spending page describes.

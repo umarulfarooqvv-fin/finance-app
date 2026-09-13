@@ -7,7 +7,7 @@ import { formatMonth } from '@/lib/time';
 import { Button } from '@/components/ui/button';
 import { inputClass } from '@/components/ui/field';
 import { cx } from '@/components/ui/primitives';
-import { DAY_PRESETS, periodHref, presetLabel, type Period } from './period';
+import { DAY_PRESETS, periodHref, presetLabel, type Period } from '@/lib/period';
 
 /* ===========================================================================
    Choosing the stretch of time the page describes.
@@ -21,19 +21,24 @@ import { DAY_PRESETS, periodHref, presetLabel, type Period } from './period';
    =========================================================================== */
 
 export function PeriodPicker({
-  period, months, years,
+  period, months, years, base = '/spending', extra,
 }: {
   period: Period;
   /** Months and years the data actually covers, newest first. */
   months: string[];
   years: string[];
+  /** Which page the links point back at. */
+  base?: string;
+  /** Params this page needs kept across a period change, e.g. the account. */
+  extra?: Record<string, string | undefined>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState(period.kind === 'range' ? period.from : '');
   const [to, setTo] = useState(period.kind === 'range' ? period.to : '');
 
-  const go = (over: Record<string, string | undefined>) => router.push(periodHref(over));
+  const go = (over: Record<string, string | undefined>) =>
+    router.push(periodHref(base, { ...extra, ...over }));
 
   const quick: { key: string; label: string; active: boolean; href: Record<string, string | undefined> }[] = [
     { key: 'mtd', label: 'This month', active: period.kind === 'mtd', href: {} },

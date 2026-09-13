@@ -10,7 +10,7 @@ import { DailyColumns, RankedBars, TrendLine } from '@/components/charts/charts'
 import { delta, money } from '@/lib/format';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Badge, Empty, Panel, SectionTitle, Stat, StatGrid } from '@/components/ui/primitives';
-import { comparisonFor, granularity, readPeriod, type RawParams } from './period';
+import { comparisonFor, granularity, readPeriod, type RawParams } from '@/lib/period';
 import { PeriodPicker } from './period-picker';
 
 export const dynamic = 'force-dynamic';
