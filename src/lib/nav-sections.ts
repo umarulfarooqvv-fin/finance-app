@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, BookOpen, CreditCard, Home, LineChart,
+  ArrowLeftRight, BookOpen, Camera, CreditCard, Home, LineChart,
   MessageCircleQuestion, Scale, ScanLine, Search, Settings, TrendingUp, Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -135,6 +135,15 @@ export const NAV_SECTIONS: NavSection[] = [
         primary: true,
       },
 
+      {
+        label: 'Inbox',
+        href: '/inbox',
+        icon: Camera,
+        hint: 'Photos waiting to become entries',
+        keywords: ['photo', 'capture', 'camera', 'bill', 'receipt', 'later', 'pending',
+                   'shortcut', 'upload', 'image'],
+        match: ['/inbox'],
+      },
       {
         label: 'Check a statement',
         href: '/reconcile',

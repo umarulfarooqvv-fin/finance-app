@@ -1,0 +1,107 @@
+import 'server-only';
+
+/* ===========================================================================
+   Supabase Storage over the REST API, with global fetch.
+
+   No SDK, for the same reason the database client has none: the surface is
+   three calls and the service-role key must stay server-side.
+
+   THE BUCKET IS PRIVATE AND STAYS PRIVATE. A photo of a bill carries a card
+   number often enough that a public URL is not a trade worth making, and a
+   signed URL is still a handle that outlives the page it was minted for. Every
+   read is proxied by a session-guarded route instead, so the only way to see a
+   capture is to be logged into the app.
+   =========================================================================== */
+
+export const CAPTURE_BUCKET = 'captures';
+
+/** What the phone may send. HEIC is included because that is what iPhones produce. */
+export const ALLOWED_IMAGE_TYPES = [
+  'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+] as const;
+
+/** Matches the bucket's own limit and the database constraint. */
+export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+
+const baseUrl = () => (process.env.SUPABASE_URL ?? '').replace(/\/$/, '');
+const serviceKey = () => process.env.SUPABASE_SERVICE_KEY ?? '';
+
+export function storageConfigured(): boolean {
+  return Boolean(baseUrl() && serviceKey());
+}
+
+export function extensionFor(mime: string): string {
+  const map: Record<string, string> = {
+    'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
+    'image/heic': 'heic', 'image/heif': 'heif',
+  };
+  return map[mime] ?? 'bin';
+}
+
+export function isAllowedImage(mime: string): boolean {
+  return (ALLOWED_IMAGE_TYPES as readonly string[]).includes(mime);
+}
+
+/**
+ * Put an object in the bucket.
+ *
+ * `upsert` is off: the path carries the capture id, so a collision would mean
+ * two different photos claiming one id, and overwriting would destroy the
+ * first. A retry with the same bytes produces the same id and the same path,
+ * which the caller treats as already-stored rather than as an error.
+ */
+export async function putObject(
+  path: string,
+  body: ArrayBuffer | Uint8Array,
+  contentType: string,
+): Promise<void> {
+  if (!storageConfigured()) throw new Error('Storage is not configured.');
+
+  const res = await fetch(`${baseUrl()}/storage/v1/object/${CAPTURE_BUCKET}/${path}`, {
+    method: 'POST',
+    headers: {
+      apikey: serviceKey(),
+      Authorization: `Bearer ${serviceKey()}`,
+      'Content-Type': contentType,
+      'cache-control': 'max-age=31536000',
+    },
+    body: body as BodyInit,
+    cache: 'no-store',
+  });
+
+  if (res.status === 409) return; // already there, same id means same bytes
+  if (!res.ok) {
+    throw new Error(`Storage ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
+}
+
+/** Fetch an object's bytes. Used only by the proxying route. */
+export async function getObject(path: string): Promise<{ body: ArrayBuffer; type: string } | null> {
+  if (!storageConfigured()) return null;
+
+  const res = await fetch(`${baseUrl()}/storage/v1/object/${CAPTURE_BUCKET}/${path}`, {
+    headers: { apikey: serviceKey(), Authorization: `Bearer ${serviceKey()}` },
+    cache: 'no-store',
+  });
+  if (!res.ok) return null;
+  return {
+    body: await res.arrayBuffer(),
+    type: res.headers.get('content-type') ?? 'application/octet-stream',
+  };
+}
+
+/**
+ * Remove an object.
+ *
+ * Only called when a capture is discarded, and only after the row is marked —
+ * an orphaned row pointing at nothing is recoverable, whereas an image with no
+ * row is invisible and will sit in the bucket for ever.
+ */
+export async function deleteObject(path: string): Promise<void> {
+  if (!storageConfigured()) return;
+  await fetch(`${baseUrl()}/storage/v1/object/${CAPTURE_BUCKET}/${path}`, {
+    method: 'DELETE',
+    headers: { apikey: serviceKey(), Authorization: `Bearer ${serviceKey()}` },
+    cache: 'no-store',
+  }).catch(() => undefined);
+}

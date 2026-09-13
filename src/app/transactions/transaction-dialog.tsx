@@ -46,7 +46,9 @@ type Props = {
   editing?: EditableTransaction | null;
   /** IST "now", supplied by the server so a wrong device clock cannot date an entry. */
   defaultTs: string;
-  onSaved?: () => void;
+  /** The saved row's id, when a create produced one. The capture inbox uses
+      it to link a photo to the entry it became. */
+  onSaved?: (id?: string) => void;
 };
 
 const blank = (ts: string) => ({ amount: '', method: '', category: '', remarks: '', ts });
@@ -150,6 +152,8 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSa
     setErrors({});
 
     startTransition(async () => {
+      let savedId: string | undefined;
+
       // Kept as two branches rather than one ternary: only a create can come
       // back reporting that it resolved to an existing row, and the compiler
       // should enforce that rather than the reader remembering it.
@@ -174,10 +178,11 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSa
           'success',
           result.data.duplicate ? 'Already saved — no duplicate was created.' : 'Entry saved.',
         );
+        savedId = result.data.id;
       }
 
       onOpenChange(false);
-      onSaved?.();
+      onSaved?.(savedId);
     });
   }
 

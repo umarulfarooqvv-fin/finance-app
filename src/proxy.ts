@@ -27,6 +27,16 @@
     only other gate in front of the whole app. */
 const PUBLIC_PATHS = ['/lock', '/api/lock', '/api/alerts', '/api/entry', '/api/import'];
 
+/** Exempt at EXACTLY this path, and not below it.
+
+    /api/capture takes a photo from the Shortcut and checks INGEST_TOKEN, so it
+    belongs outside the PIN. /api/capture/<id> SERVES a photo back and is
+    guarded by the session instead — putting it in PUBLIC_PATHS would exempt
+    both, because that list matches children too. It would still be safe, since
+    the route checks the session itself, but relying on that is one refactor
+    away from an open image endpoint. */
+const PUBLIC_EXACT = ['/api/capture'];
+
 const COOKIE = 'app_session';
 const YEAR = 60 * 60 * 24 * 365;
 
@@ -90,6 +100,7 @@ export default async function proxy(req: Request): Promise<Response> {
   }
 
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return CONTINUE();
+  if (PUBLIC_EXACT.includes(pathname)) return CONTINUE();
 
   const token = await sessionToken(key);
   const cookie =

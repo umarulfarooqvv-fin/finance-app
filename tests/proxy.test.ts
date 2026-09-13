@@ -131,3 +131,18 @@ test('CONTRACT: the two implementations use the same cookie name and salt', () =
     assert.ok(authSrc.includes(needle), `auth.ts must contain the ${label}`);
   }
 });
+
+test('the capture upload is exempt, but serving a capture back is not', async () => {
+  process.env['APP_ACCESS_KEY'] = PIN;
+
+  // The Shortcut posts a photo here and proves itself with INGEST_TOKEN, so
+  // the PIN must not stand in front of it.
+  assert.ok(passedThrough(await proxy(req('/api/capture'))), 'upload must be reachable');
+
+  /* But /api/capture/<id> hands a photo BACK. It is guarded by the session,
+     and must not be exempted along with its parent — PUBLIC_PATHS matches
+     children, which is exactly the mistake this asserts against. */
+  const served = await proxy(req('/api/capture/cap-abc123'));
+  assert.ok(!passedThrough(served), 'serving an image must stay behind the lock');
+  assert.equal(served.status, 401);
+});
