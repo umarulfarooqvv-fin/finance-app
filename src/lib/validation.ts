@@ -152,3 +152,156 @@ export function validateIncome(input: IncomeInput, today: string): FieldErrors |
 
   return Object.keys(errors).length ? errors : null;
 }
+
+/* ===========================================================================
+   Settings.
+
+   These rules guard the numbers every OTHER number is computed from. A wrong
+   transaction is one wrong row; a wrong bill date silently reshuffles which
+   statement every charge on that card belongs to, for the whole history.
+
+   Signed amounts are allowed here, unlike on a transaction. An overpaid card
+   carries a negative balance and the engine depends on that being expressible
+   — see "totalDebtLive can be negative" in CLAUDE.md — and a bank account can
+   genuinely be overdrawn.
+   =========================================================================== */
+
+export type CardSettingsInput = {
+  name: string;
+  billDate: string | number;
+  dueDay: string | number | null;
+  dueCycle: string;
+  graceDays: string | number;
+  creditLimit: string | number | null | undefined;
+  openingBalance: string | number | null | undefined;
+  /** "YYYY-MM-DD", or '' for "use all history". */
+  openingDate: string;
+  statementBoundary: string;
+  active: boolean;
+};
+
+const DAY_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A whole number in [lo, hi], or null when it is not one. */
+function whole(v: string | number | null | undefined, lo: number, hi: number): number | null {
+  if (v === '' || v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= lo && n <= hi ? n : null;
+}
+
+/** A signed money figure, to the paisa, within the app's ceiling. */
+function signedAmount(v: string | number | null | undefined): { ok: true; value: number } | { ok: false; why: string } {
+  if (v === '' || v === null || v === undefined) return { ok: true, value: 0 };
+  const raw = String(v).replace(/[,\s₹]/g, '');
+  /* Decided on the STRING, not on the float. `Math.round(n * 100)` games are
+     how a figure ends up a paisa away from what was typed, and this is the
+     number every balance on the card is then derived from. */
+  const m = raw.match(/^(-?)(\d+)(?:\.(\d+))?$/);
+  if (!m) return { ok: false, why: 'That is not a number.' };
+  if ((m[3] ?? '').length > 2) return { ok: false, why: 'At most two decimals.' };
+
+  const paise = Number(m[2]) * 100 + Number((m[3] ?? '').padEnd(2, '0'));
+  if (!Number.isSafeInteger(paise)) return { ok: false, why: 'That number is too large.' };
+  const value = (m[1] === '-' ? -paise : paise) / 100;
+  if (Math.abs(value) > MAX_AMOUNT) {
+    return { ok: false, why: `Keep this under ₹${MAX_AMOUNT.toLocaleString('en-IN')}.` };
+  }
+  return { ok: true, value };
+}
+
+export function validateCardSettings(input: CardSettingsInput, today: string): FieldErrors | null {
+  const errors: FieldErrors = {};
+
+  if (!input.name?.trim()) errors['name'] = 'Missing card.';
+
+  /* 29, 30 and 31 are refused rather than clamped. A bill date of 31 has no
+     meaning in February, and silently treating it as the 28th would move a
+     month's worth of charges onto a different statement without saying so. */
+  if (whole(input.billDate, 1, 28) === null) {
+    errors['billDate'] = 'Bill date must be a day from 1 to 28.';
+  }
+
+  const due = input.dueDay === '' || input.dueDay === null ? null : whole(input.dueDay, 1, 28);
+  if (input.dueDay !== '' && input.dueDay !== null && due === null) {
+    errors['dueDay'] = 'Due day must be a day from 1 to 28, or left blank.';
+  }
+
+  if (input.dueCycle !== 'same' && input.dueCycle !== 'next') {
+    errors['dueCycle'] = 'Choose whether the due day is in the same month or the next.';
+  }
+
+  if (whole(input.graceDays, 0, 60) === null) {
+    errors['graceDays'] = 'Grace days must be a whole number from 0 to 60.';
+  }
+
+  const limit = signedAmount(input.creditLimit);
+  if (!limit.ok) errors['creditLimit'] = limit.why;
+  else if (limit.value < 0) errors['creditLimit'] = 'A credit limit cannot be negative.';
+
+  const opening = signedAmount(input.openingBalance);
+  if (!opening.ok) errors['openingBalance'] = opening.why;
+
+  const date = (input.openingDate ?? '').trim();
+  if (date) {
+    if (!DAY_ONLY.test(date) || !isValidInstant(`${date}T00:00:00`)) {
+      errors['openingDate'] = 'That is not a valid date.';
+    } else if (date < MIN_DATE) {
+      errors['openingDate'] = `Nothing is tracked before ${MIN_DATE}.`;
+    } else if (date > today) {
+      // Tracking cannot start in the future: every row would be skipped and
+      // the card would read as having no history at all.
+      errors['openingDate'] = 'Tracking cannot start in the future.';
+    }
+  }
+
+  if (input.statementBoundary !== 'inclusive' && input.statementBoundary !== 'exclusive') {
+    errors['statementBoundary'] = 'Choose how the bill date itself is treated.';
+  }
+
+  return Object.keys(errors).length ? errors : null;
+}
+
+export type AccountSettingsInput = {
+  name: string;
+  kind: string;
+  openingBalance: string | number | null | undefined;
+  /** "YYYY-MM-DD", or '' for "count all history". */
+  since: string;
+  active: boolean;
+};
+
+export function validateAccountSettings(input: AccountSettingsInput, today: string): FieldErrors | null {
+  const errors: FieldErrors = {};
+
+  if (!input.name?.trim()) errors['name'] = 'Missing account.';
+  if (input.kind !== 'bank' && input.kind !== 'cash') errors['kind'] = 'Choose bank or cash.';
+
+  const opening = signedAmount(input.openingBalance);
+  if (!opening.ok) errors['openingBalance'] = opening.why;
+
+  const date = (input.since ?? '').trim();
+  if (date) {
+    if (!DAY_ONLY.test(date) || !isValidInstant(`${date}T00:00:00`)) {
+      errors['since'] = 'That is not a valid date.';
+    } else if (date < MIN_DATE) {
+      errors['since'] = `Nothing is tracked before ${MIN_DATE}.`;
+    } else if (date > today) {
+      errors['since'] = 'Tracking cannot start in the future.';
+    }
+  }
+
+  return Object.keys(errors).length ? errors : null;
+}
+
+/** Both validators accept the same loose input the form produces; these
+    normalise it once the rules have passed. */
+export function normaliseAmount(v: string | number | null | undefined): number {
+  const r = signedAmount(v);
+  return r.ok ? r.value : 0;
+}
+
+export function normaliseWhole(v: string | number | null | undefined, fallback: number): number {
+  if (v === '' || v === null || v === undefined) return fallback;
+  const n = Number(v);
+  return Number.isInteger(n) ? n : fallback;
+}

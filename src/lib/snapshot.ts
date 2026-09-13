@@ -146,9 +146,29 @@ function mergeCards(stored: unknown): Card[] {
   return out;
 }
 
+/**
+ * Merge stored account settings over the defaults, BY NAME.
+ *
+ * This used to replace the list outright, which meant a stored config holding
+ * one account silently deleted the other three — and the settings screen had
+ * no way to save one account without rewriting all of them. Merging by name
+ * makes a partial config safe and matches how cards already behave.
+ */
 function mergeAccounts(stored: unknown): Account[] {
   if (!Array.isArray(stored) || !stored.length) return DEFAULT_ACCOUNTS;
-  return stored as Account[];
+  const byName = new Map(DEFAULT_ACCOUNTS.map((a) => [a.name, a]));
+  const out: Account[] = [];
+  for (const raw of stored as Partial<Account>[]) {
+    if (!raw?.name) continue;
+    const base = byName.get(raw.name) ?? {
+      name: raw.name, kind: 'bank' as const, openingBalance: 0, since: null, active: true,
+    };
+    out.push({ ...base, ...raw, name: raw.name });
+    byName.delete(raw.name);
+  }
+  // Any default account the stored config never mentioned still belongs.
+  out.push(...byName.values());
+  return out;
 }
 
 /** Read everything, in parallel. */

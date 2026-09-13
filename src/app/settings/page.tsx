@@ -1,17 +1,25 @@
 import { getSnapshot } from '@/lib/snapshot';
 import { cardColor } from '@/lib/statement';
-import { formatDay } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
-import { Dot, Money, Panel, SectionTitle, TableWrap, Td, Th } from '@/components/ui/primitives';
+import { Panel, SectionTitle } from '@/components/ui/primitives';
+import { AccountSettings, CardSettings } from './settings-client';
 
 export const dynamic = 'force-dynamic';
 
-/* Read-only for now: this shows exactly what the engine is using, which is
-   the thing you need when a number looks wrong. Editing writes to app_config
-   and is the next piece of work — see HANDOFF.md. */
+/* ===========================================================================
+   The configuration every other figure is computed from — now editable.
+
+   It was read-only, which made the Money page a dead end: it told you to set
+   an opening balance, linked here, and here showed you a number you could not
+   change. Writes go through guardedAction like every other mutation, so the
+   session check, validation, audit line and cache invalidation are the same
+   ones the transaction forms get.
+   =========================================================================== */
 
 export default async function SettingsPage() {
   const snap = await getSnapshot();
+  const needsReview = snap.transactions.filter((t) => t.needsReview).length;
+  const cards = snap.cards.map((c) => ({ ...c, color: cardColor(c.slot) }));
 
   return (
     <Page>
@@ -19,42 +27,21 @@ export default async function SettingsPage() {
 
       <Panel>
         <SectionTitle>Cards</SectionTitle>
-        <TableWrap>
-          <thead>
-            <tr>
-              <Th>Card</Th>
-              <Th align="right">Bills on</Th>
-              <Th align="right">Due</Th>
-              <Th align="right">Limit</Th>
-              <Th align="right">Opening balance</Th>
-              <Th>Tracked from</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {snap.cards.map((c) => (
-              <tr key={c.name}>
-                <Td>
-                  <span className="flex items-center gap-2 font-medium">
-                    <Dot color={cardColor(c.slot)} />
-                    {c.name}
-                  </span>
-                </Td>
-                <Td align="right" className="num text-xs">{c.billDate}</Td>
-                <Td align="right" className="num text-xs">
-                  {c.dueDay ? `${c.dueDay} (${c.dueCycle} month)` : `+${c.graceDays} days`}
-                </Td>
-                <Td align="right"><Money value={c.creditLimit} size="sm" tone="muted" /></Td>
-                <Td align="right"><Money value={c.openingBalance} size="sm" tone="muted" /></Td>
-                <Td className="whitespace-nowrap text-xs text-[var(--color-ink-3)]">
-                  {c.openingDate ? formatDay(c.openingDate) : 'All history'}
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </TableWrap>
+        <CardSettings cards={cards} />
         <p className="mt-3 text-[11px] text-[var(--color-ink-3)]">
-          The opening balance stands in for debt carried before tracking began. Rows older than
-          the tracked-from date are skipped so that history is not counted twice.
+          The opening balance stands in for debt carried before tracking began. Rows older than the
+          tracked-from date are skipped so that history is not counted twice.
+        </p>
+      </Panel>
+
+      <Panel className="mt-4">
+        <SectionTitle>Accounts</SectionTitle>
+        <AccountSettings accounts={snap.accounts} />
+        <p className="mt-3 text-[11px] text-[var(--color-ink-3)]">
+          There is no bank connection. A balance is reconstructed as the opening figure plus income
+          recorded since, minus everything paid out of the account since — so it is only as accurate
+          as the logging. Setting a recent date and the balance on that date is what makes the Money
+          page meaningful.
         </p>
       </Panel>
 
@@ -79,8 +66,8 @@ export default async function SettingsPage() {
           </div>
         </dl>
         <p className="mt-3 text-[11px] text-[var(--color-ink-3)]">
-          {snap.transactions.filter((t) => t.needsReview).length} rows could not be fully
-          classified — usually a blank amount or an unrecognised category.
+          {needsReview} {needsReview === 1 ? 'row' : 'rows'} could not be fully classified — usually a
+          blank amount or an unrecognised category.
         </p>
       </Panel>
     </Page>
