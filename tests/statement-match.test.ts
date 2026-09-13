@@ -1,0 +1,196 @@
+import assert from 'node:assert/strict';
+import { test } from 'vitest';
+import { reconcileStatement, subsetsSummingTo, type AppEntry } from '@/lib/statement-match';
+import type { StatementLine } from '@/lib/statement-parse';
+
+/* ===========================================================================
+   Matching a statement against what the app recorded.
+
+   The output that matters is `statementOnly`: a charge the bank made that has
+   no entry behind it. Everything here is really a test of one property — that
+   a real bank charge cannot be hidden by a coincidence of amounts.
+   =========================================================================== */
+
+let seq = 0;
+const line = (day: string, amount: number, description = 'SHOP', direction: 'debit' | 'credit' = 'debit'): StatementLine => ({
+  line: ++seq, raw: `${day} ${description} ${amount}`, day, description, amount, direction, ambiguousDate: false,
+});
+const entry = (day: string, amount: number, description = 'Shop', direction: 'debit' | 'credit' = 'debit'): AppEntry => ({
+  id: `tx-${++seq}`, ts: `${day}T12:00:00`, day, amount, description, direction, verified: false,
+});
+
+/* --- The straightforward cases -------------------------------------------- */
+
+test('same day, same amount', () => {
+  const r = reconcileStatement([line('2026-08-12', 450)], [entry('2026-08-12', 450)]);
+  assert.equal(r.matches.length, 1);
+  assert.equal(r.matches[0]?.kind, 'exact');
+  assert.equal(r.statementOnly.length, 0);
+  assert.equal(r.appOnly.length, 0);
+});
+
+test('a bank that posts a few days late still matches', () => {
+  const r = reconcileStatement([line('2026-08-15', 450)], [entry('2026-08-12', 450)]);
+  assert.equal(r.matches[0]?.kind, 'near');
+  assert.equal(r.matches[0]?.dayGap, 3);
+});
+
+test('beyond the tolerance it is two separate problems, not one match', () => {
+  const r = reconcileStatement([line('2026-08-30', 450)], [entry('2026-08-12', 450)], { tolerance: 4 });
+  assert.equal(r.matches.length, 0);
+  assert.equal(r.statementOnly.length, 1);
+  assert.equal(r.appOnly.length, 1);
+});
+
+test('a debit never matches a credit, whatever the amount', () => {
+  // A 5,000 refund and a 5,000 purchase are not the same event, and pairing
+  // them would cancel out both a real charge and a real credit.
+  const r = reconcileStatement(
+    [line('2026-08-12', 5000, 'REFUND', 'credit')],
+    [entry('2026-08-12', 5000, 'Purchase', 'debit')],
+  );
+  assert.equal(r.matches.length, 0);
+  assert.equal(r.statementOnly.length, 1);
+  assert.equal(r.appOnly.length, 1);
+});
+
+/* --- The case this page exists for ---------------------------------------- */
+
+test('a charge the bank made that was never recorded is reported', () => {
+  const r = reconcileStatement(
+    [line('2026-08-12', 450), line('2026-08-20', 590, 'ANNUAL FEE'), line('2026-08-20', 106.2, 'GST ON FEE')],
+    [entry('2026-08-12', 450)],
+  );
+  assert.equal(r.matches.length, 1);
+  assert.deepEqual(
+    r.statementOnly.map((l) => [l.description, l.amount]),
+    [['ANNUAL FEE', 590], ['GST ON FEE', 106.2]],
+  );
+  assert.equal(r.totals.debitDifference, 696.2, 'the bank charged this much more than was recorded');
+});
+
+test('something recorded that the bank never charged is reported too', () => {
+  const r = reconcileStatement([line('2026-08-12', 450)], [entry('2026-08-12', 450), entry('2026-08-13', 200)]);
+  assert.equal(r.appOnly.length, 1);
+  assert.equal(r.appOnly[0]?.amount, 200);
+  assert.equal(r.totals.debitDifference, -200);
+});
+
+/* --- Merged entries, which is the whole difficulty ------------------------ */
+
+test('two app entries summing to one statement line', () => {
+  // The bank prints the fuel and its surcharge as one charge; the app has two.
+  const r = reconcileStatement(
+    [line('2026-08-14', 2011.8, 'INDIAN OIL')],
+    [entry('2026-08-14', 2000, 'Petrol'), entry('2026-08-14', 11.8, 'Fuel surcharge')],
+  );
+  assert.equal(r.matches.length, 1);
+  assert.equal(r.matches[0]?.kind, 'grouped');
+  assert.equal(r.matches[0]?.app.length, 2);
+  assert.equal(r.statementOnly.length, 0);
+  assert.equal(r.appOnly.length, 0);
+});
+
+test('one app entry covering two statement lines', () => {
+  // Typed in as a single 750; the bank billed the meal and the tip separately.
+  const r = reconcileStatement(
+    [line('2026-08-12', 600, 'RESTAURANT'), line('2026-08-12', 150, 'TIP')],
+    [entry('2026-08-12', 750, 'Dinner')],
+  );
+  assert.equal(r.matches.length, 1);
+  assert.equal(r.matches[0]?.kind, 'grouped');
+  assert.equal(r.matches[0]?.statement.length, 2);
+  assert.equal(r.matches[0]?.app.length, 1);
+});
+
+test('a group still has to fall inside the date window', () => {
+  const r = reconcileStatement(
+    [line('2026-08-14', 2011.8)],
+    [entry('2026-08-14', 2000), entry('2026-07-02', 11.8)],
+    { tolerance: 4 },
+  );
+  assert.equal(r.matches.length, 0, 'a July row cannot be part of an August charge');
+  assert.equal(r.statementOnly.length, 1);
+});
+
+test('grouping does not swallow an unrelated charge that happens to fit', () => {
+  // 300 + 150 sums to 450, and so does the single 450. Two readings fit, so
+  // neither is chosen — otherwise a real extra charge disappears into a
+  // coincidence of arithmetic.
+  const r = reconcileStatement(
+    [line('2026-08-12', 450, 'A')],
+    [entry('2026-08-12', 450, 'X'), entry('2026-08-12', 300, 'Y'), entry('2026-08-12', 150, 'Z')],
+  );
+  assert.equal(r.matches.length, 1, 'the exact single match is taken first');
+  assert.equal(r.matches[0]?.kind, 'exact');
+  // The other two are left visible rather than folded away.
+  assert.equal(r.appOnly.length, 2);
+});
+
+/* --- Refusing to guess ---------------------------------------------------- */
+
+test('two equally good candidates are left unmatched, not picked at random', () => {
+  const r = reconcileStatement(
+    [line('2026-08-12', 100, 'TEA')],
+    [entry('2026-08-11', 100, 'Tea'), entry('2026-08-13', 100, 'Tea')],
+    { tolerance: 4 },
+  );
+  // Both are one day away. Choosing either would be a coin toss.
+  assert.equal(r.matches.length, 0);
+  assert.equal(r.statementOnly.length, 1);
+  assert.equal(r.appOnly.length, 2);
+});
+
+test('identical rows on the same day pair off one for one', () => {
+  // Two genuine 15-rupee teas is a real thing; they must not collapse into one.
+  const r = reconcileStatement(
+    [line('2026-08-12', 15, 'TEA'), line('2026-08-12', 15, 'TEA')],
+    [entry('2026-08-12', 15, 'Tea'), entry('2026-08-12', 15, 'Tea')],
+  );
+  assert.equal(r.matches.length, 2);
+  assert.equal(r.statementOnly.length, 0);
+  assert.equal(r.appOnly.length, 0);
+});
+
+/* --- Totals --------------------------------------------------------------- */
+
+test('totals are over everything, matched or not', () => {
+  const r = reconcileStatement(
+    [line('2026-08-12', 450), line('2026-08-20', 590, 'FEE'), line('2026-08-25', 5000, 'PAYMENT', 'credit')],
+    [entry('2026-08-12', 450), entry('2026-08-25', 5000, 'Cleared', 'credit')],
+  );
+  assert.equal(r.totals.statementDebit, 1040);
+  assert.equal(r.totals.appDebit, 450);
+  assert.equal(r.totals.debitDifference, 590);
+  assert.equal(r.totals.statementCredit, 5000);
+  assert.equal(r.totals.creditDifference, 0);
+});
+
+test('every row ends up somewhere: matched, statement-only or app-only', () => {
+  const lines = [line('2026-08-12', 450), line('2026-08-14', 2011.8), line('2026-08-20', 590, 'FEE')];
+  const entries = [entry('2026-08-12', 450), entry('2026-08-14', 2000), entry('2026-08-14', 11.8), entry('2026-08-28', 99)];
+  const r = reconcileStatement(lines, entries);
+
+  const accountedLines = r.matches.flatMap((m) => m.statement).length + r.statementOnly.length
+    + r.ambiguous.flatMap((a) => a.statement).length;
+  const accountedEntries = r.matches.flatMap((m) => m.app).length + r.appOnly.length
+    + r.ambiguous.flatMap((a) => a.app).length;
+  assert.equal(accountedLines, lines.length, 'no statement row may vanish');
+  assert.equal(accountedEntries, entries.length, 'no app row may vanish');
+});
+
+/* --- The combination search ----------------------------------------------- */
+
+test('subset search finds every exact combination and stops at the size limit', () => {
+  const items = [{ amount: 100 }, { amount: 200 }, { amount: 300 }, { amount: 400 }];
+  assert.equal(subsetsSummingTo(items, 30000, 2).length, 1, '100 + 200');
+  assert.equal(subsetsSummingTo(items, 60000, 3).length, 2, '200+400 and 100+200+300');
+  assert.equal(subsetsSummingTo(items, 60000, 2).length, 1, 'the three-item answer is out of range');
+  assert.equal(subsetsSummingTo(items, 99900, 4).length, 0);
+});
+
+test('combinations are exact to the paisa', () => {
+  // 0.1 + 0.2 is not 0.3 in floating point; in paise it is 10 + 20 = 30.
+  const items = [{ amount: 0.1 }, { amount: 0.2 }];
+  assert.equal(subsetsSummingTo(items, 30, 2).length, 1);
+});

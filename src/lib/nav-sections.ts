@@ -1,6 +1,7 @@
 import {
   ArrowLeftRight, BookOpen, CreditCard, Home, LineChart,
-  MessageCircleQuestion, Scale, Search, Settings, TrendingUp, Wallet, type LucideIcon,
+  MessageCircleQuestion, Scale, ScanLine, Search, Settings, TrendingUp, Wallet,
+  type LucideIcon,
 } from 'lucide-react';
 
 /* ===========================================================================
@@ -134,6 +135,15 @@ export const NAV_SECTIONS: NavSection[] = [
         primary: true,
       },
 
+      {
+        label: 'Check a statement',
+        href: '/reconcile',
+        icon: ScanLine,
+        hint: 'Paste a card statement and match it against your entries',
+        keywords: ['reconcile', 'statement', 'bank', 'credit card', 'match', 'paste',
+                   'extra charge', 'fee', 'compare', 'verify'],
+        match: ['/reconcile'],
+      },
       {
         label: 'Search',
         href: '/search',
