@@ -3,7 +3,7 @@ import { invalidateSnapshot } from '@/lib/snapshot';
 import { insert, logEvent } from '@/lib/supabase';
 import { normaliseEntry, toRow } from '@/lib/entry';
 import { buildIncomeRow, incomeIdFromContent } from '@/lib/income';
-import { validateIncome, type IncomeInput } from '@/lib/validation';
+import { isValidInstant, validateIncome, type IncomeInput } from '@/lib/validation';
 import { dayOf, nowIST } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
@@ -11,10 +11,10 @@ export const dynamic = 'force-dynamic';
 /* ===========================================================================
    Ingestion endpoint for the iPhone "Daily Spent" Shortcut.
 
-   Accepts form-encoded or JSON: amount, method, category, remarks, and an
-   optional type=income (which also accepts source/account as aliases, plus an
-   explicit ts). Exempt from the PIN lock (see src/proxy.ts) and guarded by
-   INGEST_TOKEN instead.
+   Accepts form-encoded or JSON: amount, method, category, remarks, an optional
+   ts, and an optional type=income (which also accepts source/account as
+   aliases for method/category). Exempt from the PIN lock (see src/proxy.ts)
+   and guarded by INGEST_TOKEN instead.
 
    Send the token as the x-token HEADER. The ?token= query form still works for
    older Shortcut versions, but query strings are recorded in Vercel's request
@@ -78,11 +78,19 @@ export async function POST(req: Request): Promise<Response> {
       return NextResponse.json({ ok: true, kind: 'income', id, amount: row.amount });
     }
 
+    /* An explicit `ts` is accepted here for the same reason it is on income:
+       an entry typed hours later — from a photo in the inbox, or from memory
+       on the way home — should be dated when the money was actually spent.
+       Income already took one; spending did not, and normaliseEntry has always
+       supported it. Anything malformed falls back to the server clock rather
+       than being stored as a date that drops the row out of every total. */
+    const explicitTs = (body['ts'] ?? '').trim();
     const entry = await normaliseEntry({
       amount: body['amount'],
       method: body['method'],
       category: body['category'],
       remarks: body['remarks'],
+      ts: isValidInstant(explicitTs) ? explicitTs : null,
     });
 
     if (entry.amount === null) {

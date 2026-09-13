@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { headers } from 'next/headers';
 import { getSnapshot } from '@/lib/snapshot';
 import { incomeBetween } from '@/lib/analytics';
@@ -7,7 +8,8 @@ import { dayOf, formatMonth, monthKey, monthStart, nowIST } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, SectionTitle, Stat, StatGrid } from '@/components/ui/primitives';
 import { IncomeClient, type MonthGroup, type Row } from './income-client';
-import { ShortcutSetup } from './shortcut-setup';
+import { ShortcutRecipe } from '@/components/shortcut-recipe';
+import { recipe } from '@/lib/shortcuts';
 import { UnattachedRepayments, type Unattached } from './unattached-client';
 
 export const dynamic = 'force-dynamic';
@@ -146,8 +148,13 @@ export default async function IncomePage({
       ) : null}
 
       <Panel className="mt-4">
-        <SectionTitle>Post income from your iPhone</SectionTitle>
-        <ShortcutSetup origin={origin} />
+        <SectionTitle>
+          Post income from your iPhone
+          <Link href="/shortcuts" className="ml-2 text-xs font-normal text-[var(--color-accent)]">
+            all Shortcuts
+          </Link>
+        </SectionTitle>
+        <ShortcutRecipe recipe={recipe('income')} origin={origin} />
       </Panel>
     </Page>
   );

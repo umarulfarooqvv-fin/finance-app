@@ -1,7 +1,7 @@
 import {
   ArrowLeftRight, BookOpen, Camera, CreditCard, Home, LineChart,
-  MessageCircleQuestion, Scale, ScanLine, Search, Settings, TrendingUp, Wallet,
-  type LucideIcon,
+  MessageCircleQuestion, Scale, ScanLine, Search, Settings, Smartphone, TrendingUp,
+  Wallet, type LucideIcon,
 } from 'lucide-react';
 
 /* ===========================================================================
@@ -159,6 +159,15 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: Search,
         hint: 'Find a transaction',
         keywords: ['find', 'lookup'],
+      },
+      {
+        label: 'Shortcuts',
+        href: '/shortcuts',
+        icon: Smartphone,
+        hint: 'Post a spend, income or a photo from your iPhone',
+        keywords: ['iphone', 'shortcut', 'siri', 'api', 'ingest', 'token', 'automation',
+                   'action button', 'quick add', 'post'],
+        match: ['/shortcuts'],
       },
       {
         label: 'Settings',

@@ -1,10 +1,12 @@
+import Link from 'next/link';
 import { headers } from 'next/headers';
 import { capturesReady, listCaptures } from '@/lib/captures';
 import { nowIST } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, SectionTitle } from '@/components/ui/primitives';
 import { InboxClient, type Capture } from './inbox-client';
-import { CaptureSetup } from './capture-setup';
+import { ShortcutRecipe } from '@/components/shortcut-recipe';
+import { recipe } from '@/lib/shortcuts';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,8 +72,13 @@ export default async function InboxPage() {
       )}
 
       <Panel className="mt-4">
-        <SectionTitle>Send a photo from your iPhone</SectionTitle>
-        <CaptureSetup origin={origin} />
+        <SectionTitle>
+          Send a photo from your iPhone
+          <Link href="/shortcuts" className="ml-2 text-xs font-normal text-[var(--color-accent)]">
+            all Shortcuts
+          </Link>
+        </SectionTitle>
+        <ShortcutRecipe recipe={recipe('photo')} origin={origin} />
       </Panel>
     </Page>
   );
