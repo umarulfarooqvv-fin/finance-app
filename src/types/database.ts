@@ -2,7 +2,7 @@
  *
  * Produced by scripts/gen-db-types.mjs from the live PostgREST schema.
  * Regenerate with:  npm run gen:types
- * Generated: 2026-08-22
+ * Generated: 2026-09-13
  */
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -36,6 +36,50 @@ export type Database = {
         Update: {
           key?: string;
           value?: number | null;
+        };
+      };
+      captures: {
+        Row: {
+          id: string; // primary key
+          ts: string;
+          path: string;
+          mime: string;
+          bytes: number;
+          note: string | null;
+          status: string;
+          transaction_id: string | null;
+          source: string | null;
+          created_at: string | null;
+          updated_at: string | null;
+          updated_by: string | null;
+        };
+        Insert: {
+          id: string;
+          ts: string;
+          path: string;
+          mime: string;
+          bytes: number;
+          note?: string | null;
+          status?: string;
+          transaction_id?: string | null;
+          source?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          ts?: string;
+          path?: string;
+          mime?: string;
+          bytes?: number;
+          note?: string | null;
+          status?: string;
+          transaction_id?: string | null;
+          source?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+          updated_by?: string | null;
         };
       };
       events: {

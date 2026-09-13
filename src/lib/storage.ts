@@ -69,10 +69,21 @@ export async function putObject(
     cache: 'no-store',
   });
 
-  if (res.status === 409) return; // already there, same id means same bytes
-  if (!res.ok) {
-    throw new Error(`Storage ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (res.ok) return;
+
+  /* Already there is SUCCESS, not failure. The path carries a SHA-256 of the
+     image, so the same path means the same bytes — a Shortcut retrying over
+     bad signal is re-sending the photo it already sent.
+
+     Supabase reports this as HTTP 400 with the real code buried in the body
+     ({"statusCode":"409","error":"Duplicate"}), not as an HTTP 409. Checking
+     the status alone silently never matched, and every retry came back to the
+     phone as an error — which is exactly when the user takes the photo again. */
+  const text = await res.text();
+  if (res.status === 409 || /KeyAlreadyExists|"statusCode"\s*:\s*"?409|Duplicate/i.test(text)) {
+    return;
   }
+  throw new Error(`Storage ${res.status}: ${text.slice(0, 200)}`);
 }
 
 /** Fetch an object's bytes. Used only by the proxying route. */
@@ -99,9 +110,22 @@ export async function getObject(path: string): Promise<{ body: ArrayBuffer; type
  */
 export async function deleteObject(path: string): Promise<void> {
   if (!storageConfigured()) return;
-  await fetch(`${baseUrl()}/storage/v1/object/${CAPTURE_BUCKET}/${path}`, {
-    method: 'DELETE',
-    headers: { apikey: serviceKey(), Authorization: `Bearer ${serviceKey()}` },
-    cache: 'no-store',
-  }).catch(() => undefined);
+  try {
+    const res = await fetch(`${baseUrl()}/storage/v1/object/${CAPTURE_BUCKET}/${path}`, {
+      method: 'DELETE',
+      // No Content-Type: this request has no body, and sending one makes the
+      // storage API reject the call with a 400.
+      headers: { apikey: serviceKey(), Authorization: `Bearer ${serviceKey()}` },
+      cache: 'no-store',
+    });
+    /* A failure here must not fail the user's action — the row is already
+       marked and that is the part that matters. But it must not be SILENT
+       either: the image is then exactly the invisible orphan this function
+       exists to prevent, and the server log is the only place it can surface. */
+    if (!res.ok && res.status !== 404) {
+      console.error('[storage] could not delete', path, res.status, (await res.text()).slice(0, 200));
+    }
+  } catch (err) {
+    console.error('[storage] could not delete', path, err instanceof Error ? err.message : err);
+  }
 }
