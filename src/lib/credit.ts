@@ -60,12 +60,47 @@ export type CreditLedger = {
   outstandingByCard: Record<string, number>;
   /** Per-lending outstanding, keyed by transaction id. */
   outstandingByTx: Record<string, number>;
+  /**
+   * Money that came in looking like a repayment but names nobody the ledger
+   * knows — so it settles nothing and the lending stays outstanding.
+   *
+   * Reported rather than dropped. Silently ignoring these is why a balance can
+   * read as unpaid years after the cash came back.
+   */
+  unattached: UnattachedRepayment[];
+};
+
+export type UnattachedRepayment = {
+  id: string;
+  ts: Instant;
+  amount: number;
+  source: string;
+  note: string;
+  via: 'income' | 'transaction';
+  /** Who the guess would have picked, when it picked anyone. */
+  guessed: string | null;
+  /** True when a person was chosen by hand rather than parsed. */
+  assigned: boolean;
 };
 
 /** Manual overrides stored in app_config: reassigns a row to a named person. */
 export type CreditConfig = {
   /** txId -> canonical person name, when the parsed name was wrong. */
   assign?: Record<string, string>;
+  /**
+   * Repayment id -> person, when the text did not say who paid you back.
+   *
+   * `matchPerson` can only find a debtor whose name appears in the row, so a
+   * repayment remarked "Visiting card aquafenix" attaches to nobody and the
+   * lending it settles stays outstanding for ever. This is the explicit
+   * answer, and it BEATS the guess — including when the guess was wrong, which
+   * the one-edit spelling rule makes possible: "Faris" and "Fayis" are one
+   * character apart and need not be one person.
+   *
+   * The empty string means "this is not a repayment at all", so a row that
+   * merely mentions a word like "settle" can be excluded by hand.
+   */
+  assignRepayment?: Record<string, string>;
   /** Repayments recorded by hand, for cash that never hit an account. */
   manual?: { id: string; person: string; ts: Instant; amount: number; note?: string }[];
   /** Person names to treat as the same ledger, e.g. ["Ashiq", "Ashiq sudu"]. */
@@ -163,12 +198,26 @@ export function creditLedger(snapshot: Snapshot, asOf?: Instant): CreditLedger {
 
   // --- Repayments ----------------------------------------------------------
   const repayments: Repayment[] = [];
+  const unattached: UnattachedRepayment[] = [];
+
+  const assignedRepayment = cfg.assignRepayment ?? {};
 
   for (const inc of snapshot.income) {
     if (inc.deleted || !within(inc.ts) || inc.amount == null || inc.amount <= 0) continue;
-    if (!isCreditReturn(inc)) continue;
-    const who = matchPerson(`${inc.source} ${inc.remarks}`, lendings, aliases);
-    if (!who) continue;
+    const explicit = assignedRepayment[inc.id];
+    // '' is a deliberate "not a repayment", and must not fall through to the guess.
+    if (explicit === '') continue;
+    if (explicit === undefined && !isCreditReturn(inc)) continue;
+    const who = explicit
+      ? canonical(explicit, aliases)
+      : matchPerson(`${inc.source} ${inc.remarks}`, lendings, aliases);
+    if (!who) {
+      unattached.push({
+        id: inc.id, ts: inc.ts, amount: inc.amount, source: inc.source,
+        note: inc.remarks, via: 'income', guessed: null, assigned: false,
+      });
+      continue;
+    }
     repayments.push({
       id: inc.id, person: who, ts: inc.ts, amount: inc.amount,
       via: 'income', note: inc.remarks || inc.source,
@@ -177,10 +226,20 @@ export function creditLedger(snapshot: Snapshot, asOf?: Instant): CreditLedger {
 
   for (const t of snapshot.transactions) {
     if (t.deleted || !within(t.ts) || t.amount == null || t.amount <= 0) continue;
+    const explicitTx = assignedRepayment[t.id];
+    if (explicitTx === '') continue;
     // A "Credit Return" category row is money coming back in.
-    if (t.category !== 'Credit Return') continue;
-    const who = matchPerson(t.remarks, lendings, aliases);
-    if (!who) continue;
+    if (explicitTx === undefined && t.category !== 'Credit Return') continue;
+    const who = explicitTx
+      ? canonical(explicitTx, aliases)
+      : matchPerson(t.remarks, lendings, aliases);
+    if (!who) {
+      unattached.push({
+        id: t.id, ts: t.ts, amount: t.amount, source: t.category,
+        note: t.remarks, via: 'transaction', guessed: null, assigned: false,
+      });
+      continue;
+    }
     repayments.push({
       id: t.id, person: who, ts: t.ts, amount: t.amount,
       via: 'transaction', note: t.remarks,
@@ -268,6 +327,7 @@ export function creditLedger(snapshot: Snapshot, asOf?: Instant): CreditLedger {
     totalOutstanding: round2(people.reduce((a, p) => a + p.outstanding, 0)),
     outstandingByCard,
     outstandingByTx,
+    unattached: unattached.sort((a, b) => (a.ts < b.ts ? 1 : -1)),
   };
 }
 

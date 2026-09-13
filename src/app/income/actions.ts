@@ -3,6 +3,7 @@
 import { guardedAction, MONEY_PATHS } from '@/lib/actions';
 import { currentSnapshot } from '@/lib/views';
 import { createIncome, deleteIncome, restoreIncome, updateIncome } from '@/lib/income';
+import { assignRepayment } from '@/lib/credit-config';
 import { validateIncome, type IncomeInput } from '@/lib/validation';
 
 /* ===========================================================================
@@ -57,4 +58,21 @@ export const deleteIncomeAction = guardedAction(
 export const restoreIncomeAction = guardedAction(
   { name: 'income.restore', revalidate: REVALIDATE },
   async (input: { id: string }, ctx) => restoreIncome(input.id, ctx),
+);
+
+/**
+ * Record who a repayment came from, overriding what the ledger guessed.
+ *
+ * Also revalidates /ledgers: attributing a repayment changes an outstanding
+ * balance there, and leaving that page stale would show money as still owed
+ * immediately after it was marked received.
+ */
+export const assignRepaymentAction = guardedAction(
+  {
+    name: 'credit.assign-repayment',
+    revalidate: [...REVALIDATE, '/ledgers'],
+    validate: (input: { id: string; person: string }) =>
+      input.id?.trim() ? null : { id: 'Missing entry.' },
+  },
+  async (input, ctx) => assignRepayment(input.id, input.person, ctx),
 );

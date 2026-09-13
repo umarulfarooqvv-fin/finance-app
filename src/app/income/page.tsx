@@ -1,12 +1,14 @@
 import { headers } from 'next/headers';
 import { getSnapshot } from '@/lib/snapshot';
 import { incomeBetween } from '@/lib/analytics';
+import { creditLedger } from '@/lib/credit';
 import { round2 } from '@/lib/money';
 import { dayOf, formatMonth, monthKey, monthStart, nowIST } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, SectionTitle, Stat, StatGrid } from '@/components/ui/primitives';
 import { IncomeClient, type MonthGroup, type Row } from './income-client';
 import { ShortcutSetup } from './shortcut-setup';
+import { UnattachedRepayments, type Unattached } from './unattached-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,6 +71,22 @@ export default async function IncomePage({
     } satisfies Row);
   }
 
+  /* Who still owes money, and what came back without settling anything.
+     Offered in the form so a return can name its debtor when it is recorded,
+     rather than being guessed from the remarks afterwards. */
+  const credit = creditLedger(snap);
+  const debtors = credit.people
+    .filter((p) => !p.settled)
+    .map((p) => ({ person: p.person, outstanding: p.outstanding }));
+  const unattached: Unattached[] = credit.unattached.map((u) => ({
+    id: u.id,
+    day: u.ts.slice(0, 10),
+    amount: u.amount,
+    source: u.source,
+    note: u.note,
+    via: u.via,
+  }));
+
   const monthTotal = incomeBetween(snap, monthStart(thisMonth), today);
   const yearTotal = incomeBetween(snap, yearStart, today);
   const allTime = round2(
@@ -96,9 +114,36 @@ export default async function IncomePage({
 
       <Panel padded={false}>
         <div className="p-4 sm:p-5">
-          <IncomeClient groups={groups} defaultTs={nowIST()} />
+          <IncomeClient groups={groups} defaultTs={nowIST()} debtors={debtors} />
         </div>
       </Panel>
+
+      <Panel className="mt-4">
+        <SectionTitle>Money lent out</SectionTitle>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <Stat label="Still owed to you" value={credit.totalOutstanding} />
+          <Stat label="Come back so far" value={credit.totalRepaid} tone="credit" />
+          <Stat label="People" value={debtors.length.toLocaleString('en-IN')} hint="with a balance" />
+        </div>
+        <p className="mt-3 text-[11px] text-[var(--color-ink-3)]">
+          Record a return with the source <strong>Credit Return</strong> and name who paid, and it
+          settles their oldest lending first. A balance here means <em>not recorded as repaid</em> —
+          cash handed back without being logged still reads as outstanding.
+        </p>
+      </Panel>
+
+      {unattached.length > 0 ? (
+        <Panel className="mt-4">
+          <SectionTitle>
+            Came back, but settled nothing &middot; {unattached.length}
+          </SectionTitle>
+          <p className="mb-3 text-xs text-[var(--color-ink-2)]">
+            These look like repayments, but name nobody the ledger recognises — so they have not
+            reduced anyone&rsquo;s balance. Say who paid and they will.
+          </p>
+          <UnattachedRepayments rows={unattached} people={debtors} />
+        </Panel>
+      ) : null}
 
       <Panel className="mt-4">
         <SectionTitle>Post income from your iPhone</SectionTitle>

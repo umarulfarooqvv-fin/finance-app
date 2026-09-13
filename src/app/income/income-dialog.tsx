@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, inputClass } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
-import { createIncomeAction, updateIncomeAction } from './actions';
+import { assignRepaymentAction, createIncomeAction, updateIncomeAction } from './actions';
 
 /* ===========================================================================
    Adding or correcting one income entry.
@@ -30,30 +30,44 @@ export type EditableIncome = {
   remarks: string;
 };
 
+/** Someone who still owes money, offered when recording a return. */
+export type Debtor = { person: string; outstanding: number };
+
+/* Three states, and the select must keep them apart:
+     ''            no decision - let the ledger read the remarks
+     a person      this repayment is from them
+     NOT_A_RETURN  it only looks like a repayment; ignore it
+   The last is sent to the server as an empty person, which is what the ledger
+   reads as "excluded on purpose". */
+const NOT_A_RETURN = '__not_a_repayment__';
+
 const blank = (defaultTs: string) => ({
   amount: '', source: '', account: 'Fi', remarks: '', ts: defaultTs,
 });
 
 export function IncomeDialog({
-  open, onOpenChange, editing, defaultTs, onSaved,
+  open, onOpenChange, editing, defaultTs, onSaved, debtors,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editing: EditableIncome | null;
   defaultTs: string;
   onSaved: () => void;
+  debtors: Debtor[];
 }) {
   const { notify } = useToast();
   const [pending, startTransition] = useTransition();
   const [form, setForm] = useState(blank(defaultTs));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [clientKey, setClientKey] = useState('');
+  const [person, setPerson] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setErrors({});
     // One key per opening. Minting it on submit would defeat the point.
     setClientKey(`${nowIST()}-${Math.random().toString(36).slice(2, 10)}`);
+    setPerson('');
     setForm(
       editing
         ? {
@@ -66,6 +80,11 @@ export function IncomeDialog({
         : blank(defaultTs),
     );
   }, [open, editing, defaultTs]);
+
+  /* "Credit Return" is the source the ledger already treats as money coming
+     back; naming the person turns a guess into a fact. */
+  const isReturn = /credit\s*return|repay|returned|paid\s*back/i.test(form.source);
+  const owed = debtors.find((d) => d.person === person) ?? null;
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -81,6 +100,17 @@ export function IncomeDialog({
         setErrors(result.fieldErrors ?? {});
         notify('error', result.error);
         return;
+      }
+
+      /* Record WHO paid, rather than hoping the ledger reads it out of the
+         remarks. Matching on text is what leaves a repayment attached to
+         nobody, and a lending outstanding years after the cash came back. */
+      if (isReturn && person) {
+        const assigned = await assignRepaymentAction({
+          id: result.data.id,
+          person: person === NOT_A_RETURN ? '' : person,
+        });
+        if (!assigned.ok) notify('error', `Saved, but not linked: ${assigned.error}`);
       }
       if (!editing && 'duplicate' in result.data && result.data.duplicate) {
         notify('success', 'Already saved — this was the same entry.');
@@ -149,6 +179,31 @@ export function IncomeDialog({
             {INCOME_ACCOUNTS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </Field>
+
+        {isReturn ? (
+          <Field
+            label="Returned by"
+            htmlFor="inc-person"
+            hint={
+              owed
+                ? `${owed.person} still has ${owed.outstanding.toLocaleString('en-IN', { minimumFractionDigits: 2 })} outstanding.`
+                : 'Who paid you back. This links the entry to what they owe.'
+            }
+          >
+            <select
+              id="inc-person"
+              value={person}
+              onChange={(e) => setPerson(e.target.value)}
+              className={inputClass()}
+            >
+              <option value="">Work it out from the remarks</option>
+              {debtors.map((d) => (
+                <option key={d.person} value={d.person}>{d.person}</option>
+              ))}
+              <option value={NOT_A_RETURN}>Not a repayment</option>
+            </select>
+          </Field>
+        ) : null}
 
         <Field label="When" htmlFor="inc-ts" error={errors['ts']}>
           <input

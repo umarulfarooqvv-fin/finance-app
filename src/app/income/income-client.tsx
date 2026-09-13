@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { Badge, cx, Empty, Money } from '@/components/ui/primitives';
-import { IncomeDialog, type EditableIncome } from './income-dialog';
+import { IncomeDialog, type Debtor, type EditableIncome } from './income-dialog';
 import { deleteIncomeAction, restoreIncomeAction } from './actions';
 
 /* ===========================================================================
@@ -23,10 +23,12 @@ export type Row = EditableIncome & { needsReview: boolean; deleted: boolean };
 export type MonthGroup = { month: string; label: string; total: number; rows: Row[] };
 
 export function IncomeClient({
-  groups, defaultTs,
+  groups, defaultTs, debtors,
 }: {
   groups: MonthGroup[];
   defaultTs: string;
+  /** People who still owe money, offered when recording a return. */
+  debtors: Debtor[];
 }) {
   const router = useRouter();
   const { notify } = useToast();
@@ -155,6 +157,7 @@ export function IncomeClient({
         onOpenChange={setFormOpen}
         editing={editing}
         defaultTs={defaultTs}
+        debtors={debtors}
         onSaved={() => router.refresh()}
       />
 
