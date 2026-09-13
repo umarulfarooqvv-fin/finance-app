@@ -27,6 +27,19 @@ export const SPEND_CATEGORIES = [
 /** Categories that move money without being consumption. */
 export const TRANSFER_CATEGORIES = ['Credit Given', 'Credit Card', 'Investment', 'Savings'] as const;
 
+/* Where income has actually come from. Taken from the 30 recorded rows rather
+   than invented: these are suggestions in the form, not a closed list, because
+   the Shortcut can post a source nobody thought of and refusing it would lose
+   the entry. */
+export const INCOME_SOURCES = [
+  'Salary', 'Freelance', 'Commissions', 'Credit Return', 'Credit Taken',
+  'Contributions', 'Investment Return',
+] as const;
+
+/** Where income lands. "None" is real: a repayment taken in kind never
+    reached an account, and forcing it into one would overstate a balance. */
+export const INCOME_ACCOUNTS = [...BANK_METHODS, 'None'] as const;
+
 export const ALL_CATEGORIES = [...SPEND_CATEGORIES, 'Credit Given', ...CARD_NAMES] as const;
 export const ALL_METHODS = [...BANK_METHODS, ...CARD_NAMES] as const;
 

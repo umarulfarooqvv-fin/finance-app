@@ -1,6 +1,6 @@
 import {
   ArrowLeftRight, BookOpen, CreditCard, Home, LineChart,
-  MessageCircleQuestion, Search, Settings, Wallet, type LucideIcon,
+  MessageCircleQuestion, Search, Settings, TrendingUp, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 /* ===========================================================================
@@ -81,6 +81,15 @@ export const NAV_SECTIONS: NavSection[] = [
         keywords: ['expenses', 'categories', 'trend', 'analytics', 'charts', 'monthly'],
         match: ['/spending'],
         primary: true,
+      },
+      {
+        label: 'Income',
+        href: '/income',
+        icon: TrendingUp,
+        hint: 'Money coming in, and how to post it from the Shortcut',
+        keywords: ['inflow', 'salary', 'freelance', 'earnings', 'received', 'credit return',
+                   'paid to me', 'revenue'],
+        match: ['/income'],
       },
       {
         label: 'Money',
