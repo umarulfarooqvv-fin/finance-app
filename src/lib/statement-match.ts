@@ -282,3 +282,147 @@ export function subsetsSummingTo<T extends { amount: number }>(
   walk(0, goal);
   return out;
 }
+
+/* ===========================================================================
+   Reading a statement line for what it IS, not just what it costs.
+
+   An unmatched line has two very different meanings. "SWIGGY 450" with no
+   entry behind it is a purchase somebody forgot to log. "ANNUAL MEMBERSHIP
+   FEE 590" with no entry behind it is the bank charging for something, and
+   that is the line worth arguing about.
+
+   Both are unmatched; only one is a finding. So the unmatched list is split
+   by what the description says it is, rather than being left as one pile to
+   read through.
+   =========================================================================== */
+
+export type ChargeKind = 'fee' | 'tax' | 'interest' | 'emi' | 'reversal' | null;
+
+export type ChargeFlag = { kind: Exclude<ChargeKind, null>; label: string };
+
+/* Ordered: the first pattern that matches wins.
+
+   Reversal leads, because it INVERTS everything after it — "REVERSAL OF LATE
+   FEE" and "ANNUAL FEE WAIVED" are the bank giving money back, and reading
+   either as a fee would list a refund among the charges to dispute.
+
+   Tax comes next, so "GST ON LATE FEE" reads as tax rather than fee: the tax
+   is the part the bank added on top, and which half is which matters. */
+const CHARGE_PATTERNS: { kind: Exclude<ChargeKind, null>; label: string; re: RegExp }[] = [
+  {
+    kind: 'reversal',
+    label: 'Reversal',
+    re: /\b(?:reversal|revers\w*|refund\w*|cashback|waiver|waived|credited\s*back)\b/i,
+  },
+  { kind: 'tax', label: 'Tax', re: /\b(?:i?gst|cgst|sgst|utgst|service\s*tax|vat|cess)\b/i },
+  { kind: 'interest', label: 'Interest', re: /\b(?:interest|finance\s*charge|revolv\w*|carry\s*forward)\b/i },
+  {
+    kind: 'fee',
+    label: 'Fee',
+    re: /\b(?:annual|joining|renewal|membership|late\s*(?:payment|fee)|over\s*limit|overlimit|cash\s*advance|convenience|processing|handling|surcharge|markup|mark-?up|penalt\w*|charge[sd]?|fee[s]?)\b/i,
+  },
+  { kind: 'emi', label: 'EMI', re: /\b(?:emi|instal?ment|instalment)\b/i },
+];
+
+/** What kind of line this is, judged from its description. Null = ordinary spend. */
+export function chargeFlag(description: string): ChargeFlag | null {
+  const text = description ?? '';
+  for (const p of CHARGE_PATTERNS) {
+    if (p.re.test(text)) return { kind: p.kind, label: p.label };
+  }
+  return null;
+}
+
+/** True for the kinds that mean "the bank added this", not "you bought this". */
+export function isBankCharge(description: string): boolean {
+  const flag = chargeFlag(description);
+  return flag !== null && flag.kind !== 'emi' && flag.kind !== 'reversal';
+}
+
+/* ===========================================================================
+   Suggesting what an unmatched line might pair with.
+
+   Automatic matching deliberately refuses anything it is not certain of. That
+   leaves a pile the person has to resolve by hand, and hunting for "which of
+   these forty rows adds up to 2,620.20" is the tedious part. These are the
+   candidates worth looking at first — ranked, with the reason stated, so the
+   suggestion can be judged rather than trusted.
+   =========================================================================== */
+
+export type Suggestion = {
+  app: AppEntry[];
+  /** Summed amount of the suggested side. */
+  total: number;
+  /** statement amount − suggested total. Zero means it reconciles exactly. */
+  difference: number;
+  /** Days between the statement line and the nearest entry suggested. */
+  dayGap: number;
+  reason: string;
+};
+
+/**
+ * Candidates for one unmatched statement line, best first.
+ *
+ * Looks for an exact single match first, then combinations that sum to it,
+ * then near-misses — a near-miss is worth showing because a 2-rupee gap
+ * usually means a rounding difference or a tip, not a different transaction.
+ */
+export function suggestFor(
+  line: StatementLine,
+  candidates: AppEntry[],
+  opts: { tolerance?: number; maxGroup?: number; limit?: number } = {},
+): Suggestion[] {
+  const tolerance = opts.tolerance ?? 7;
+  const maxGroup = Math.max(2, Math.min(opts.maxGroup ?? 3, 4));
+  const limit = opts.limit ?? 5;
+
+  const gap = (e: AppEntry) => Math.abs(daysBetween(e.day, line.day));
+  const inWindow = candidates.filter((e) => e.direction === line.direction && gap(e) <= tolerance);
+  const target = paise(line.amount);
+  const out: Suggestion[] = [];
+
+  // 1. One entry, exactly the same amount.
+  for (const e of inWindow) {
+    if (paise(e.amount) === target) {
+      out.push({
+        app: [e], total: round2(e.amount), difference: 0, dayGap: gap(e),
+        reason: gap(e) === 0 ? 'same amount, same day' : `same amount, ${gap(e)}d apart`,
+      });
+    }
+  }
+
+  // 2. Several entries summing to it — the split case.
+  for (const group of subsetsSummingTo(inWindow, target, maxGroup)) {
+    out.push({
+      app: group,
+      total: round2(group.reduce((a, e) => a + e.amount, 0)),
+      difference: 0,
+      dayGap: Math.max(...group.map(gap)),
+      reason: `${group.length} entries adding up exactly`,
+    });
+  }
+
+  /* 3. Near misses, but only when nothing exact was found. Offering a
+        2-rupee-off row beside a perfect match would invite the wrong pick. */
+  if (out.length === 0) {
+    const near = inWindow
+      .map((e) => ({ e, diff: round2(line.amount - e.amount) }))
+      .filter((x) => Math.abs(x.diff) > 0 && Math.abs(x.diff) <= Math.max(5, line.amount * 0.02))
+      .sort((a, b) => Math.abs(a.diff) - Math.abs(b.diff));
+
+    for (const { e, diff } of near) {
+      out.push({
+        app: [e], total: round2(e.amount), difference: diff, dayGap: gap(e),
+        reason: `${diff > 0 ? 'short by' : 'over by'} ${Math.abs(diff).toFixed(2)}`,
+      });
+    }
+  }
+
+  // Closest in time first among equally exact answers; fewer rows beats more.
+  return out
+    .sort((a, b) =>
+      Math.abs(a.difference) - Math.abs(b.difference) ||
+      a.app.length - b.app.length ||
+      a.dayGap - b.dayGap)
+    .slice(0, limit);
+}

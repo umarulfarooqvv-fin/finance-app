@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { reconcileStatement, subsetsSummingTo, type AppEntry } from '@/lib/statement-match';
+import {
+  chargeFlag, isBankCharge, reconcileStatement, subsetsSummingTo, suggestFor, type AppEntry,
+} from '@/lib/statement-match';
 import type { StatementLine } from '@/lib/statement-parse';
 
 /* ===========================================================================
@@ -193,4 +195,99 @@ test('combinations are exact to the paisa', () => {
   // 0.1 + 0.2 is not 0.3 in floating point; in paise it is 10 + 20 = 30.
   const items = [{ amount: 0.1 }, { amount: 0.2 }];
   assert.equal(subsetsSummingTo(items, 30, 2).length, 1);
+});
+
+/* --- Reading a line for what it is --------------------------------------- */
+
+test('a bank charge is told apart from a purchase', () => {
+  // Both are unmatched; only one is a finding worth acting on.
+  for (const fee of [
+    'ANNUAL MEMBERSHIP FEE', 'JOINING FEE', 'LATE PAYMENT CHARGES', 'OVER LIMIT FEE',
+    'CASH ADVANCE FEE', 'FUEL SURCHARGE', 'FOREIGN CURRENCY MARKUP', 'PROCESSING FEE',
+  ]) {
+    assert.equal(isBankCharge(fee), true, fee);
+  }
+  for (const purchase of ['SWIGGY BANGALORE', 'INDIAN OIL PETROL', 'AMAZON RETAIL', 'UBER TRIP']) {
+    assert.equal(isBankCharge(purchase), false, purchase);
+  }
+});
+
+test('tax is read as tax, even when it sits on top of a fee', () => {
+  // "GST ON LATE FEE" is the bank adding tax to a charge; calling it a fee
+  // would hide which half is the tax.
+  assert.equal(chargeFlag('IGST @18%')?.kind, 'tax');
+  assert.equal(chargeFlag('GST ON LATE FEE')?.kind, 'tax');
+  assert.equal(chargeFlag('CGST 9%')?.kind, 'tax');
+});
+
+test('interest and instalments are separated from fees', () => {
+  assert.equal(chargeFlag('INTEREST CHARGES')?.kind, 'interest');
+  assert.equal(chargeFlag('FINANCE CHARGE')?.kind, 'interest');
+  assert.equal(chargeFlag('APPLE INDIA EMI 18/24')?.kind, 'emi');
+  // An EMI instalment is a real purchase being repaid, not a charge to dispute.
+  assert.equal(isBankCharge('APPLE INDIA EMI 18/24'), false);
+});
+
+test('a refund is not a charge', () => {
+  assert.equal(chargeFlag('REVERSAL OF LATE FEE')?.kind, 'reversal');
+  assert.equal(isBankCharge('REVERSAL OF LATE FEE'), false);
+  assert.equal(chargeFlag('ANNUAL FEE WAIVED')?.kind, 'reversal');
+});
+
+/* --- Suggestions ---------------------------------------------------------- */
+
+test('an exact single match is suggested first', () => {
+  const l = line('2026-08-12', 450, 'SWIGGY');
+  const s = suggestFor(l, [entry('2026-08-12', 450, 'Lunch'), entry('2026-08-12', 300, 'Other')]);
+  assert.equal(s[0]?.app.length, 1);
+  assert.equal(s[0]?.app[0]?.description, 'Lunch');
+  assert.equal(s[0]?.difference, 0);
+});
+
+test('a split is suggested as one combination', () => {
+  const l = line('2026-08-14', 2620.2, 'APPLE INDIA EMI');
+  const s = suggestFor(l, [
+    entry('2026-08-14', 2350.88, 'Ipad'),
+    entry('2026-08-14', 228.24, 'Ipad Charge'),
+    entry('2026-08-14', 41.08, 'Ipad Tax'),
+  ]);
+  assert.equal(s[0]?.app.length, 3);
+  assert.equal(s[0]?.total, 2620.2);
+  assert.equal(s[0]?.difference, 0);
+  assert.match(s[0]?.reason ?? '', /adding up exactly/);
+});
+
+test('a near miss is offered only when nothing matches exactly', () => {
+  // A 2-rupee gap is usually rounding or a tip, and worth showing — but never
+  // beside a perfect match, where it would invite the wrong pick.
+  const withExact = suggestFor(line('2026-08-12', 450), [
+    entry('2026-08-12', 450, 'Exact'),
+    entry('2026-08-12', 448, 'Close'),
+  ]);
+  assert.equal(withExact.length, 1, 'the near miss is withheld');
+  assert.equal(withExact[0]?.app[0]?.description, 'Exact');
+
+  const withoutExact = suggestFor(line('2026-08-12', 450), [entry('2026-08-12', 448, 'Close')]);
+  assert.equal(withoutExact.length, 1);
+  assert.equal(withoutExact[0]?.difference, 2);
+  assert.match(withoutExact[0]?.reason ?? '', /short by 2/);
+});
+
+test('suggestions never cross direction, and stay inside the window', () => {
+  const l = line('2026-08-12', 500, 'SHOP');
+  const s = suggestFor(l, [
+    entry('2026-08-12', 500, 'Refund', 'credit'),   // wrong direction
+    entry('2026-06-01', 500, 'Months earlier'),      // outside the window
+  ], { tolerance: 7 });
+  assert.equal(s.length, 0, 'neither is a plausible pairing');
+});
+
+test('fewer rows and closer dates rank higher', () => {
+  const l = line('2026-08-12', 300, 'SHOP');
+  const s = suggestFor(l, [
+    entry('2026-08-12', 100, 'A'), entry('2026-08-12', 200, 'B'),
+    entry('2026-08-14', 300, 'Single'),
+  ]);
+  assert.equal(s[0]?.app.length, 1, 'one exact row beats a two-row combination');
+  assert.equal(s[0]?.app[0]?.description, 'Single');
 });
