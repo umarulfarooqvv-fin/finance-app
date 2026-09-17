@@ -123,6 +123,32 @@ export function ReconcileClient({
   const remaining = round2(signed(openLines) - signed(openApp));
   const started = round2(signed(auto.statementOnly) - signed(auto.appOnly));
 
+  /* THE GROSS COMPARISON: what the bank says this cycle cost, what the app has
+     against the card, and the gap. Before any matching, over every row on both
+     sides — which is why it is NOT the same number as `remaining`, and why the
+     two are labelled differently and reconciled in words below.
+
+     Charges and repayments are compared SEPARATELY. Netting them would let a
+     missing 5,000 charge and a missing 5,000 payment cancel out and report a
+     cycle that balances, which is the one thing this page exists to catch. */
+  const chargeGap = auto.totals.debitDifference;   // bank - app, charges
+  const creditGap = auto.totals.creditDifference;  // bank - app, payments in
+  const hasCredits = auto.totals.statementCredit > 0.005 || auto.totals.appCredit > 0.005;
+  const countBy = (xs: { direction: string }[], d: string) =>
+    xs.filter((x) => x.direction === d).length;
+
+  /* The gross gap and the working figure agree when every pairing is exact and
+     nothing was refunded, and part company otherwise. Two totals on one screen
+     that look like they should match and do not is worse than either alone, so
+     when they differ the page says why rather than leaving it to be noticed. */
+  const gapsDiffer = Math.abs(chargeGap - remaining) > 0.005;
+  /* Only blame repayments when an unmatched one is actually contributing. A
+     repayment that matched is in neither open pile and moves neither figure,
+     so naming it as a cause would send the reader looking for something that
+     is not there. */
+  const creditsOpen =
+    countBy(openLines, 'credit') + countBy(openApp, 'credit') > 0;
+
   /* Entries filed elsewhere that are not already paired off by hand. The
      matcher never sees these — auto-matching must only ever consider entries
      actually on this card — but the list and the selection do. */
@@ -297,11 +323,71 @@ export function ReconcileClient({
               )}
             </p>
 
-            <div className="mt-3 grid grid-cols-2 gap-3 border-t border-[var(--color-line)] pt-3 sm:grid-cols-4">
-              <Figure label="Statement charges" value={auto.totals.statementDebit} />
-              <Figure label="Recorded here" value={auto.totals.appDebit} />
-              <Figure label="Matched automatically" value={String(auto.matches.length)} plain />
-              <Figure label="Payments &amp; refunds" value={auto.totals.statementCredit} tone="credit" />
+            {/* ---- What the bank says, what the app says, and the gap ---- */}
+            <div className="mt-3 border-t border-[var(--color-line)] pt-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-3)]">
+                  Charges &middot; the bank against this app
+                </span>
+                <span className="text-[11px] text-[var(--color-ink-3)]">
+                  {auto.matches.length} matched automatically
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <Tile
+                  label="The bank charged"
+                  value={auto.totals.statementDebit}
+                  note={`${countBy(parsed.lines, 'debit')} on the statement`}
+                />
+                <Tile
+                  label={`Recorded on ${card}`}
+                  value={auto.totals.appDebit}
+                  note={`${countBy(entries, 'debit')} in the app`}
+                />
+                <Tile
+                  label="Difference"
+                  value={Math.abs(chargeGap)}
+                  tone={Math.abs(chargeGap) < 0.005 ? 'credit' : 'debt'}
+                  flag={Math.abs(chargeGap) >= 0.005}
+                  note={
+                    Math.abs(chargeGap) < 0.005
+                      ? 'the totals agree'
+                      : chargeGap > 0
+                        ? 'the bank charged more'
+                        : 'more recorded than billed'
+                  }
+                />
+              </div>
+
+              {hasCredits ? (
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--radius-field)] border border-[var(--color-line)] px-2.5 py-2 text-[11px] text-[var(--color-ink-3)]">
+                  <span className="font-medium uppercase tracking-wider">Payments &amp; refunds</span>
+                  <span>
+                    bank <Money value={auto.totals.statementCredit} size="sm" tone="credit" />
+                  </span>
+                  <span>
+                    app <Money value={auto.totals.appCredit} size="sm" tone="credit" />
+                  </span>
+                  <span>
+                    difference{' '}
+                    <Money
+                      value={Math.abs(creditGap)}
+                      size="sm"
+                      tone={Math.abs(creditGap) < 0.005 ? 'credit' : 'debt'}
+                    />
+                  </span>
+                </div>
+              ) : null}
+
+              {gapsDiffer ? (
+                <p className="mt-2 text-[11px] text-[var(--color-ink-3)]">
+                  Still unexplained is{' '}
+                  <Money value={Math.abs(remaining)} size="sm" tone="muted" /> rather than this,
+                  because pairing settles rows that are not identical to the rupee
+                  {creditsOpen ? ', and repayments are netted off there but counted apart here' : ''}.
+                </p>
+              ) : null}
             </div>
 
             {parsed.ambiguousDates > 0 ? (
@@ -683,21 +769,46 @@ function Side({ title, empty, children }: { title: string; empty: string; childr
   );
 }
 
-function Figure({
-  label, value, tone = 'neutral', plain = false,
+/** One figure in the bank-against-app comparison. */
+function Tile({
+  label, value, note, tone = 'neutral', flag = false,
 }: {
   label: string;
-  value: number | string;
+  value: number;
+  note: string;
   tone?: 'neutral' | 'debt' | 'credit' | 'muted';
-  plain?: boolean;
+  /** Draw attention: the two sides do not agree. */
+  flag?: boolean;
 }) {
   return (
-    <div className="min-w-0">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-ink-3)]">{label}</div>
-      <div className="mt-1">
-        {plain
-          ? <span className="num text-lg font-semibold tracking-tight">{value}</span>
-          : <Money value={value as number} tone={tone} size="lg" />}
+    <div
+      className={cx(
+        'min-w-0 rounded-[var(--radius-field)] border px-2.5 py-2',
+        flag
+          ? 'border-[var(--color-warn)] bg-[var(--color-warn-soft)]'
+          : 'border-[var(--color-line)] bg-[var(--color-canvas)]',
+      )}
+    >
+      {/* The flagged tile's amber fill eats contrast: ink-3 falls to 3.2:1 on
+          it, against 3.5:1 elsewhere. ink-2 puts it back to 5.7:1 — better
+          than the muted text anywhere else on the page, on the one tile that
+          most needs reading. */}
+      <div
+        className={cx(
+          'truncate text-[10px] font-semibold uppercase tracking-wider',
+          flag ? 'text-[var(--color-ink-2)]' : 'text-[var(--color-ink-3)]',
+        )}
+      >
+        {label}
+      </div>
+      <div className="mt-1"><Money value={value} tone={tone} size="lg" /></div>
+      <div
+        className={cx(
+          'mt-0.5 text-[11px] leading-tight',
+          flag ? 'text-[var(--color-ink-2)]' : 'text-[var(--color-ink-3)]',
+        )}
+      >
+        {note}
       </div>
     </div>
   );
