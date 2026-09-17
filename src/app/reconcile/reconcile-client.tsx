@@ -81,6 +81,15 @@ export function ReconcileClient({
   const [pickedLines, setPickedLines] = useState<Set<number>>(new Set());
   const [pickedApp, setPickedApp] = useState<Set<string>>(new Set());
   const [suggestFor_, setSuggestFor] = useState<number | null>(null);
+  /* Whether the right-hand column lists only what is already on this card, or
+     EVERY entry in the billing period whatever it was filed against.
+
+     "All methods" is the view that matches how the mistake actually happens:
+     the spend was made on this card and typed against another, so it is not in
+     the card's own list to be found. Seeing the whole period side by side with
+     the statement is the only way to spot it. */
+  const [showAll, setShowAll] = useState(false);
+  const [bulkMoving, setBulkMoving] = useState(false);
 
   const parsed = useMemo(
     () => parseStatement(submitted, { dateOrder, assumeYear: periodYear }),
@@ -114,8 +123,37 @@ export function ReconcileClient({
   const remaining = round2(signed(openLines) - signed(openApp));
   const started = round2(signed(auto.statementOnly) - signed(auto.appOnly));
 
+  /* Entries filed elsewhere that are not already paired off by hand. The
+     matcher never sees these — auto-matching must only ever consider entries
+     actually on this card — but the list and the selection do. */
+  const openElsewhere = elsewhere.filter((e) => !linkedApp.has(e.id));
+  const pool: (AppEntry & { method?: string })[] = showAll
+    ? [...openApp, ...openElsewhere].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0))
+    : openApp;
+
   const selectedLines = openLines.filter((l) => pickedLines.has(l.line));
   const selectedApp = openApp.filter((e) => pickedApp.has(e.id));
+  /* Selected rows that are filed against something else. These cannot simply
+     be "linked" — they have to be moved onto this card first, or the pairing
+     would claim a charge this card never carried. */
+  const selectedElsewhere = openElsewhere.filter((e) => pickedApp.has(e.id));
+
+  async function moveSelected() {
+    if (selectedElsewhere.length === 0) return;
+    setBulkMoving(true);
+    let moved = 0;
+    for (const e of selectedElsewhere) {
+      const result = await reassignMethodAction({ id: e.id, method: card });
+      if (result.ok) moved++;
+      else notify('error', `${e.description}: ${result.error}`);
+    }
+    setBulkMoving(false);
+    setPickedApp(new Set());
+    if (moved > 0) {
+      notify('success', `${moved} ${moved === 1 ? 'entry' : 'entries'} moved to ${card}.`);
+      router.refresh();
+    }
+  }
   const selectionGap = round2(sum(selectedLines) - sum(selectedApp));
   const canLink = selectedLines.length > 0 && selectedApp.length > 0;
 
@@ -451,42 +489,100 @@ export function ReconcileClient({
                     })}
                   </Side>
 
-                  <Side
-                    title={`Recorded here · ${openApp.length}`}
-                    empty="Every entry is accounted for."
-                  >
-                    {openApp.map((e) => (
-                      <li key={e.id} className="flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 last:border-b-0">
-                        <input
-                          type="checkbox"
-                          checked={pickedApp.has(e.id)}
-                          onChange={() => toggle(pickedApp, e.id, setPickedApp)}
-                          aria-label={`Select ${e.description}`}
-                          className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-                        />
-                        <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
-                          {formatDayShort(e.day)}
+                  <div className="min-w-0">
+                    <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-3)]">
+                        {showAll ? `Everything this period · ${pool.length}` : `On ${card} · ${openApp.length}`}
+                      </span>
+                      {/* The whole period, whatever each entry was filed against.
+                          A spend made on this card but typed against another is
+                          not in this card's own list — this is where it shows up. */}
+                      <button
+                        type="button"
+                        onClick={() => setShowAll((v) => !v)}
+                        className="text-[11px] font-medium text-[var(--color-accent)]"
+                      >
+                        {showAll ? `Show only ${card}` : `Show all methods (${openApp.length + openElsewhere.length})`}
+                      </button>
+                    </div>
+
+                    {selectedElsewhere.length > 0 ? (
+                      <div className="mb-2 flex flex-wrap items-center gap-2 rounded-[var(--radius-field)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-2.5 py-2">
+                        <CreditCard className="h-3.5 w-3.5 shrink-0 text-[var(--color-warn)]" aria-hidden="true" />
+                        <span className="min-w-0 flex-1 text-[11px] text-[var(--color-ink-2)]">
+                          {selectedElsewhere.length}{' '}
+                          {selectedElsewhere.length === 1 ? 'entry is' : 'entries are'} filed
+                          elsewhere, totalling{' '}
+                          <span className="sensitive num font-semibold">
+                            {sum(selectedElsewhere).toFixed(2)}
+                          </span>
                         </span>
-                        <span className="min-w-0 flex-1 truncate text-sm">{e.description}</span>
-                        <Money value={e.amount} size="sm" tone={e.direction === 'credit' ? 'credit' : 'debt'} />
-                        {/* Not on this statement? It may be on the wrong card.
-                            Changing the method here re-files it, and it drops out
-                            of this reconciliation on the next render. */}
-                        <select
-                          value=""
-                          disabled={moving === e.id}
-                          aria-label={`Move ${e.description} to another payment method`}
-                          onChange={(ev) => ev.target.value && move(e.id, ev.target.value, e.description)}
-                          className={cx(inputClass(), 'w-[6.5rem] shrink-0 text-[11px]')}
-                        >
-                          <option value="">Move to…</option>
-                          {methods.filter((m) => m !== card).map((m) => (
-                            <option key={m} value={m}>{m}</option>
-                          ))}
-                        </select>
-                      </li>
-                    ))}
-                  </Side>
+                        <Button size="sm" pending={bulkMoving} onClick={moveSelected}>
+                          Mark as {card}
+                        </Button>
+                      </div>
+                    ) : null}
+
+                    {pool.length === 0 ? (
+                      <p className="py-3 text-[11px] text-[var(--color-ink-3)]">
+                        Every entry is accounted for.
+                      </p>
+                    ) : (
+                      <ul className="flex flex-col">
+                        {pool.map((e) => {
+                          const filedElsewhere = Boolean(e.method && e.method !== card);
+                          return (
+                            <li
+                              key={e.id}
+                              className={cx(
+                                'flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 last:border-b-0',
+                                filedElsewhere && 'bg-[var(--color-raised)]',
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={pickedApp.has(e.id)}
+                                onChange={() => toggle(pickedApp, e.id, setPickedApp)}
+                                aria-label={`Select ${e.description}`}
+                                className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
+                              />
+                              <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
+                                {formatDayShort(e.day)}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate text-sm">{e.description}</span>
+                              {filedElsewhere ? <Badge tone="warn">{e.method}</Badge> : null}
+                              <Money
+                                value={e.amount}
+                                size="sm"
+                                tone={e.direction === 'credit' ? 'credit' : 'debt'}
+                              />
+                              {!filedElsewhere ? (
+                                <select
+                                  value=""
+                                  disabled={moving === e.id}
+                                  aria-label={`Move ${e.description} to another payment method`}
+                                  onChange={(ev) => ev.target.value && move(e.id, ev.target.value, e.description)}
+                                  className={cx(inputClass(), 'w-[6.5rem] shrink-0 text-[11px]')}
+                                >
+                                  <option value="">Move to…</option>
+                                  {methods.filter((m) => m !== card).map((m) => (
+                                    <option key={m} value={m}>{m}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <Button
+                                  size="sm" variant="secondary" disabled={moving === e.id}
+                                  onClick={() => move(e.id, card, e.description)}
+                                >
+                                  Mark as {card}
+                                </Button>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
                 </div>
               </>
             )}
