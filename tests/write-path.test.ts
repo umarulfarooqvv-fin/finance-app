@@ -3,6 +3,7 @@ import { test } from 'vitest';
 import { isValidInstant, validateIncome, validateTransaction, MAX_REMARKS } from '@/lib/validation';
 import { buildRow, idFromKey } from '@/lib/transactions';
 import { MAX_AMOUNT } from '@/lib/money';
+import { ALL_METHODS } from '@/lib/types';
 
 /* ===========================================================================
    The write path.
@@ -170,4 +171,14 @@ test('income validation mirrors the transaction rules', () => {
   assert.ok(validateIncome({ ...good, source: '' }, TODAY)?.['source']);
   assert.ok(validateIncome({ ...good, account: '' }, TODAY)?.['account']);
   assert.ok(validateIncome({ ...good, ts: '2026-02-31T10:00:00' }, TODAY)?.['ts']);
+});
+
+test('reassigning the method only accepts a method the app knows', () => {
+  // A typo here does not merely mislabel the row — it moves the debt onto a
+  // card that does not exist, and the balance it left behind never comes back.
+  const known = ALL_METHODS as readonly string[];
+  for (const good of ['Fi', 'Coral', 'Scapia', 'Cash']) assert.ok(known.includes(good), good);
+  for (const bad of ['Corral', 'fi', 'HDFC', '', 'Coral ']) {
+    assert.ok(!known.includes(bad), `${JSON.stringify(bad)} must not be accepted`);
+  }
 });

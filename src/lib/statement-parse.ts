@@ -173,16 +173,87 @@ function looksLikeHeader(text: string): boolean {
   return hits.size >= 2;
 }
 
+/* ===========================================================================
+   Statements that put one transaction across several lines.
+
+   A real Rupay statement prints each row as three:
+
+       06 Aug 26
+       03:53 pm
+       VODAFONE IDEA LIMITED Rs. 179.00
+
+   Read line by line every one of those fails on its own — the first has a date
+   and no amount, the other two have no date at all — so a whole statement
+   parsed to nothing and reported 88 unreadable lines. The pieces have to be
+   stitched back together before anything else looks at them.
+
+   The rule is narrow on purpose: a line carrying a DATE BUT NO AMOUNT may
+   absorb the following lines until one supplies an amount, and it stops at the
+   first line that starts a new record or after three tries. Anything greedier
+   would swallow a genuinely unreadable row into its neighbour, which is the
+   one outcome worse than reporting it.
+   =========================================================================== */
+
+/** Would the main parser find an amount on this line? */
+function hasAmount(text: string): boolean {
+  const cells = splitCells(text).filter((c) => c !== '');
+  if (cells.some((c) => readAmountCell(c) !== null)) return true;
+  return [...text.matchAll(AMOUNT_ANYWHERE)].some((m) => /\d/.test(m[0]));
+}
+
+const tidy = (raw: string) => raw.trim().replace(/^\||\|$/g, '').trim();
+
+type LogicalRow = { line: number; raw: string; text: string };
+
+/** Fold wrapped rows into one logical row each, keeping the original line number. */
+export function joinWrappedRows(rawLines: string[], opts: ParseOptions): LogicalRow[] {
+  const out: LogicalRow[] = [];
+
+  for (let i = 0; i < rawLines.length; ) {
+    const trimmed = tidy(rawLines[i] ?? '');
+    if (!trimmed || /^[\s|:-]+$/.test(trimmed)) { i++; continue; }
+
+    const startsRecord = findDate(trimmed, opts) !== null;
+
+    if (startsRecord && !hasAmount(trimmed)) {
+      const parts = [trimmed];
+      let j = i + 1;
+      let complete = false;
+
+      while (j < rawLines.length && parts.length <= 3) {
+        const next = tidy(rawLines[j] ?? '');
+        if (!next) { j++; continue; }
+        // A line with its own date is the next transaction, not a continuation.
+        if (findDate(next, opts) !== null) break;
+        parts.push(next);
+        j++;
+        if (hasAmount(next)) { complete = true; break; }
+      }
+
+      if (complete) {
+        out.push({ line: i + 1, raw: parts.join(' '), text: parts.join('  ') });
+        i = j;
+        continue;
+      }
+      // Nothing completed it — report the original line as it stands.
+    }
+
+    out.push({ line: i + 1, raw: trimmed, text: trimmed });
+    i++;
+  }
+
+  return out;
+}
+
 export function parseStatement(text: string, opts: ParseOptions = {}): ParseResult {
   const out: StatementLine[] = [];
   const skipped: ParseResult['skipped'] = [];
   let ambiguousDates = 0;
 
-  text.split(/\r?\n/).forEach((rawLine, i) => {
-    const line = i + 1;
-    const trimmed = rawLine.trim().replace(/^\||\|$/g, '').trim();
-    if (!trimmed) return;
-    if (/^[\s|:-]+$/.test(trimmed)) return; // a markdown rule
+  joinWrappedRows(text.split(/\r?\n/), opts).forEach((row) => {
+    const { line } = row;
+    const trimmed = row.text;
+    const rawLine = row.raw;
 
     const cells = splitCells(trimmed).filter((c) => c !== '');
     const flat = cells.join('  ');
@@ -190,7 +261,7 @@ export function parseStatement(text: string, opts: ParseOptions = {}): ParseResu
     const date = findDate(flat, opts);
     if (!date) {
       if (looksLikeHeader(flat)) return;
-      skipped.push({ line, raw: rawLine.trim(), why: 'no date found' });
+      skipped.push({ line, raw: rawLine, why: 'no date found' });
       return;
     }
 
@@ -206,6 +277,11 @@ export function parseStatement(text: string, opts: ParseOptions = {}): ParseResu
 
     let found: { amount: number; credit: boolean } | null = null;
     let usedIndex = -1;
+    /* The token the loose scan consumed. When a row has no column structure the
+       amount sits inside the same cell as the merchant name, so the description
+       has to have that exact text removed or it reads
+       "VODAFONE IDEA LIMITED Rs. 179.00". */
+    let usedToken = '';
 
     if (amountCells.length > 0) {
       found = amountCells[0]!.value;
@@ -224,16 +300,17 @@ export function parseStatement(text: string, opts: ParseOptions = {}): ParseResu
         const n = Number(token.replace(/[\u20b9,()\s]|rs\.?|inr/gi, ''));
         if (Number.isFinite(n)) {
           found = { amount: Math.abs(Math.round(n * 100) / 100), credit: token.startsWith('-') || token.includes('(') };
+          usedToken = token;
         }
       }
     }
 
     if (found === null) {
-      skipped.push({ line, raw: rawLine.trim(), why: 'no amount found' });
+      skipped.push({ line, raw: rawLine, why: 'no amount found' });
       return;
     }
     if (found.amount === 0) {
-      skipped.push({ line, raw: rawLine.trim(), why: 'amount is zero' });
+      skipped.push({ line, raw: rawLine, why: 'amount is zero' });
       return;
     }
     const amount = found.amount;
@@ -243,7 +320,17 @@ export function parseStatement(text: string, opts: ParseOptions = {}): ParseResu
       .filter((c, idx) => idx !== usedIndex && !(date.consumed && c.includes(date.consumed)) && readAmountCell(c) === null)
       .join(' ')
       .replace(new RegExp(date.consumed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), ' ')
+      .replace(
+        usedToken ? new RegExp(usedToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g') : /(?!)/g,
+        ' ',
+      )
+      // The currency word left behind once its number is gone.
+      .replace(/\b(?:rs|inr)\b\.?/gi, ' ')
       .replace(/\b(?:dr|cr|db)\b\.?/gi, ' ')
+      /* A statement that wraps its rows puts the transaction TIME on its own
+         line, which ends up glued to the front of the description once the
+         row is stitched back together. It is not part of the merchant name. */
+      .replace(/^\s*\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm)?\s*/i, '')
       .replace(/\s{2,}/g, ' ')
       .replace(/^[\s,|-]+|[\s,|-]+$/g, '')
       .trim();
@@ -253,7 +340,7 @@ export function parseStatement(text: string, opts: ParseOptions = {}): ParseResu
 
     out.push({
       line,
-      raw: rawLine.trim(),
+      raw: rawLine,
       day: date.day,
       description,
       amount,

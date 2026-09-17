@@ -5,7 +5,8 @@ import { dayOf, endOfDay, formatDay, startOfDay } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, cx } from '@/components/ui/primitives';
 import type { AppEntry } from '@/lib/statement-match';
-import { ReconcileClient } from './reconcile-client';
+import { ALL_METHODS } from '@/lib/types';
+import { ReconcileClient, type MisfiledCandidate } from './reconcile-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +69,32 @@ export default async function ReconcilePage({
     }))
     .sort((a, b) => (a.ts < b.ts ? -1 : 1));
 
+  /* Entries in the same window that are NOT on this card.
+
+     A spend put on the wrong card is invisible exactly where you would notice
+     it: it never shows on the statement you are checking, because this view
+     filters by the card it was filed under. Handing the reconciler those rows
+     lets an unexplained charge be matched against the entry that was misfiled,
+     and moved across in one click. */
+  const elsewhere: MisfiledCandidate[] = snap.transactions
+    .filter(
+      (t) =>
+        !t.deleted && t.ts && t.amount != null &&
+        t.method !== card.name &&
+        t.ts >= lo && t.ts <= hi,
+    )
+    .map((t) => ({
+      id: t.id,
+      ts: t.ts!,
+      day: t.ts!.slice(0, 10),
+      amount: t.amount ?? 0,
+      description: t.remarks || t.category,
+      direction: t.cardDirection === 'debt-' ? ('credit' as const) : ('debit' as const),
+      verified: t.verified,
+      method: t.method,
+    }))
+    .sort((a, b) => (a.ts < b.ts ? -1 : 1));
+
   const href = (over: { card?: string; cycle?: string }) => {
     const p = new URLSearchParams({ card: card.name, cycle: cycle.statementEnd, ...over });
     return `/reconcile?${p.toString()}`;
@@ -125,6 +152,8 @@ export default async function ReconcilePage({
 
       <ReconcileClient
         entries={entries}
+        elsewhere={elsewhere}
+        methods={[...ALL_METHODS]}
         card={card.name}
         periodYear={Number(cycle.periodEnd.slice(0, 4))}
       />

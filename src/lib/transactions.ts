@@ -194,3 +194,57 @@ export async function setVerified(
 export function defaultEntryTimestamp(): string {
   return nowIST();
 }
+
+/* ===========================================================================
+   Moving an entry to a different payment method.
+
+   A spend put on the wrong card is invisible in the only place you would
+   notice it: it never appears on the statement you are checking, because that
+   view filters by the card it was filed under. So the correction has to be
+   available from the reconciler, where the mismatch is actually staring at
+   you, rather than requiring a hunt through the entry list.
+
+   Only the METHOD moves. The amount, the date, the category and the remarks
+   are what the entry says happened; which card it came off is the part that
+   was wrong. Everything derived from the method — kind, which card it
+   affects, which way it moves that balance, the tags — is recomputed, because
+   leaving those behind is how a row ends up counted against two cards at once.
+   =========================================================================== */
+
+export async function reassignMethod(
+  id: string,
+  method: string,
+  ctx: Actor,
+): Promise<{ id: string; from: string; to: string }> {
+  const before = await fetchRow(id);
+  if (!before) throw new Error('That entry no longer exists.');
+  if (before.deleted) throw new Error('That entry has been deleted.');
+
+  const next = method.trim();
+  if (!next) throw new Error('Choose a payment method.');
+  if (next === before.method) return { id, from: before.method ?? '', to: next };
+
+  const cls = classify({
+    method: next,
+    category: before.category ?? '',
+    remarks: before.remarks ?? '',
+  });
+
+  await update('transactions', { id: `eq.${id}` }, {
+    method: next,
+    kind: cls.kind,
+    card_affected: cls.cardAffected,
+    card_direction: cls.cardDirection,
+    tags: cls.tags as TablesInsert<'transactions'>['tags'],
+    needs_review: cls.kind === 'unknown',
+    /* The row is no longer the one that was reconciled against a statement —
+       it is now claimed to be on a different card entirely. */
+    verified: false,
+    updated_by: ctx.actor,
+  });
+
+  await logEvent('transaction.reassign-method', {
+    id, from: before.method, to: next, by: ctx.actor, via: ctx.via,
+  });
+  return { id, from: before.method ?? '', to: next };
+}

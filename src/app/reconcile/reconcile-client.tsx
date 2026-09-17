@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from 'react';
 import {
-  AlertTriangle, ArrowRight, CheckCircle2, CircleHelp, FileWarning, Link2, Undo2, Wand2,
+  AlertTriangle, ArrowRight, CheckCircle2, CircleHelp, CreditCard, FileWarning, Link2,
+  Undo2, Wand2,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { parseStatement, type StatementLine } from '@/lib/statement-parse';
 import {
   chargeFlag, isBankCharge, reconcileStatement, suggestFor,
@@ -14,6 +16,8 @@ import { round2 } from '@/lib/money';
 import { Button } from '@/components/ui/button';
 import { inputClass } from '@/components/ui/field';
 import { Badge, Empty, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
+import { useToast } from '@/components/ui/toast';
+import { reassignMethodAction } from './actions';
 
 /* ===========================================================================
    Reconciling a pasted statement, line by line.
@@ -39,13 +43,35 @@ const PLACEHOLDER = `Paste the statement rows. Anything works — copy straight 
 /** A pairing made by hand. Statement lines and entries are held by identity. */
 type ManualLink = { id: string; statement: StatementLine[]; app: AppEntry[] };
 
+/** An entry in this window that is filed against some OTHER payment method. */
+export type MisfiledCandidate = AppEntry & { method: string };
+
 export function ReconcileClient({
-  entries, card, periodYear,
+  entries, elsewhere, methods, card, periodYear,
 }: {
   entries: AppEntry[];
+  /** Entries in the same window filed against a different method. */
+  elsewhere: MisfiledCandidate[];
+  methods: string[];
   card: string;
   periodYear: number;
 }) {
+  const router = useRouter();
+  const { notify } = useToast();
+  const [moving, setMoving] = useState<string | null>(null);
+
+  /* Move an entry onto (or off) this card. The page then re-reads, so a row
+     that was misfiled simply matches on the next render rather than needing
+     to be paired by hand. */
+  function move(id: string, method: string, label: string) {
+    setMoving(id);
+    void reassignMethodAction({ id, method }).then((result) => {
+      setMoving(null);
+      if (!result.ok) { notify('error', result.error); return; }
+      notify('success', `${label} moved to ${method}.`);
+      router.refresh();
+    });
+  }
   const [text, setText] = useState('');
   const [dateOrder, setDateOrder] = useState<'dmy' | 'mdy'>('dmy');
   const [tolerance, setTolerance] = useState(4);
@@ -329,6 +355,21 @@ export function ReconcileClient({
                       const flag = chargeFlag(l.description);
                       const open = suggestFor_ === l.line;
                       const ideas = open ? suggestFor(l, openApp, { tolerance: Math.max(tolerance, 7) }) : [];
+                      /* Exact-amount, same-direction, nearby — a strong signal the
+                         entry exists but went onto the wrong card. Deliberately
+                         stricter than the general suggestions: moving money between
+                         cards on a loose guess is worse than not offering it. */
+                      const misfiled = open
+                        ? elsewhere.filter(
+                            (m) =>
+                              m.direction === l.direction &&
+                              Math.round(m.amount * 100) === Math.round(l.amount * 100) &&
+                              Math.abs(
+                                (new Date(`${m.day}T00:00:00Z`).getTime() -
+                                  new Date(`${l.day}T00:00:00Z`).getTime()) / 86400000,
+                              ) <= Math.max(tolerance, 7),
+                          )
+                        : [];
                       return (
                         <li key={l.line} className="border-b border-[var(--color-line)] last:border-b-0">
                           <div className="flex flex-wrap items-center gap-2 py-2">
@@ -355,12 +396,39 @@ export function ReconcileClient({
                           </div>
 
                           {open ? (
-                            <div className="pb-2 pl-6">
-                              {ideas.length === 0 ? (
+                            <div className="flex flex-col gap-2 pb-2 pl-6">
+                              {/* Filed against a different card. This is the case where
+                                  the entry exists but was put on the wrong method, so it
+                                  never appears on the statement being checked. */}
+                              {misfiled.length > 0 ? (
+                                <div className="rounded-[var(--radius-field)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-2.5 py-2">
+                                  <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--color-warn)]">
+                                    <CreditCard className="h-3 w-3" aria-hidden="true" />
+                                    Same amount, filed on another card
+                                  </div>
+                                  <ul className="flex flex-col gap-1">
+                                    {misfiled.map((m) => (
+                                      <li key={m.id} className="flex flex-wrap items-center gap-2 text-[11px]">
+                                        <span className="min-w-0 flex-1 truncate">{m.description}</span>
+                                        <Badge tone="neutral">on {m.method}</Badge>
+                                        <Money value={m.amount} size="sm" />
+                                        <Button
+                                          size="sm" variant="secondary" disabled={moving === m.id}
+                                          onClick={() => move(m.id, card, m.description)}
+                                        >
+                                          Move to {card}
+                                        </Button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+
+                              {ideas.length === 0 && misfiled.length === 0 ? (
                                 <p className="text-[11px] text-[var(--color-ink-3)]">
                                   Nothing here comes close. It is probably a charge the bank added.
                                 </p>
-                              ) : (
+                              ) : ideas.length === 0 ? null : (
                                 <ul className="flex flex-col gap-1">
                                   {ideas.map((s, i) => (
                                     <li key={i} className="flex flex-wrap items-center gap-2 text-[11px]">
@@ -401,6 +469,21 @@ export function ReconcileClient({
                         </span>
                         <span className="min-w-0 flex-1 truncate text-sm">{e.description}</span>
                         <Money value={e.amount} size="sm" tone={e.direction === 'credit' ? 'credit' : 'debt'} />
+                        {/* Not on this statement? It may be on the wrong card.
+                            Changing the method here re-files it, and it drops out
+                            of this reconciliation on the next render. */}
+                        <select
+                          value=""
+                          disabled={moving === e.id}
+                          aria-label={`Move ${e.description} to another payment method`}
+                          onChange={(ev) => ev.target.value && move(e.id, ev.target.value, e.description)}
+                          className={cx(inputClass(), 'w-[6.5rem] shrink-0 text-[11px]')}
+                        >
+                          <option value="">Move to…</option>
+                          {methods.filter((m) => m !== card).map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
                       </li>
                     ))}
                   </Side>

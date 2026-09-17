@@ -153,3 +153,60 @@ test('the same paste always parses the same way', () => {
   const first = parseStatement(text);
   for (let i = 0; i < 10; i++) assert.deepEqual(parseStatement(text), first);
 });
+
+test('a statement that wraps each row across three lines', () => {
+  /* A real Rupay statement, verbatim. Read line by line every row fails —
+     the date line has no amount, the time and description lines have no date —
+     and a whole statement parsed to nothing while reporting every line as
+     unreadable. The pieces have to be stitched before anything else sees them. */
+  const r = parseStatement(
+    [
+      '06 Aug 26 ',
+      '03:53 pm',
+      'VODAFONE IDEA LIMITED Rs. 179.00',
+      '20 Aug 26 ',
+      '08:00 pm',
+      'Repayment - Thank You Rs. 1,553.42',
+      '22 Aug 26 ',
+      '03:06 pm',
+      'Max Retail 4617 Rs. 1,799',
+    ].join('\n'),
+    { dateOrder: 'dmy', assumeYear: 2026 },
+  );
+
+  assert.equal(r.lines.length, 3);
+  assert.equal(r.skipped.length, 0);
+
+  assert.deepEqual(
+    r.lines.map((l) => [l.day, l.amount, l.direction, l.description]),
+    [
+      ['2026-08-06', 179, 'debit', 'VODAFONE IDEA LIMITED'],
+      ['2026-08-20', 1553.42, 'credit', 'Repayment - Thank You'],
+      ['2026-08-22', 1799, 'debit', 'Max Retail 4617'],
+    ],
+  );
+});
+
+test('stitching stops at the next record rather than swallowing it', () => {
+  // Two date lines in a row: the first never finds an amount, and must be
+  // reported rather than absorbing the transaction that follows it.
+  const r = parseStatement(
+    ['06 Aug 26', '07 Aug 26', '03:53 pm', 'SHOP Rs. 100.00'].join('\n'),
+    { dateOrder: 'dmy', assumeYear: 2026 },
+  );
+  assert.equal(r.lines.length, 1);
+  assert.equal(r.lines[0]?.day, '2026-08-07', 'the amount belongs to the SECOND date');
+  assert.equal(r.skipped.length, 1);
+  assert.equal(r.skipped[0]?.raw, '06 Aug 26');
+});
+
+test('stitching gives up rather than reaching indefinitely', () => {
+  // A date line followed by junk must not hoover up the whole file looking
+  // for an amount.
+  const r = parseStatement(
+    ['06 Aug 26', 'noise', 'more noise', 'yet more', 'and more', 'SHOP Rs. 100.00'].join('\n'),
+    { dateOrder: 'dmy', assumeYear: 2026 },
+  );
+  assert.equal(r.lines.length, 0, 'the amount was too far away to belong to that date');
+  assert.ok(r.skipped.length > 0);
+});
