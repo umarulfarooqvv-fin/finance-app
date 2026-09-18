@@ -1,0 +1,271 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { ChevronDown, Search, WalletCards } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { formatDayShort } from '@/lib/time';
+import { round2 } from '@/lib/money';
+import { Button } from '@/components/ui/button';
+import { inputClass } from '@/components/ui/field';
+import { Badge, Money, Panel, cx } from '@/components/ui/primitives';
+import { useToast } from '@/components/ui/toast';
+import { reassignMethodAction } from './actions';
+import type { MisfiledCandidate } from './reconcile-client';
+
+/* ===========================================================================
+   Everything this cycle that was paid with something else.
+
+   The statement reconciler answers "does this bill add up", and needs a bill
+   to be pasted before it can say anything. This answers a different question
+   that does not need one: WHAT ELSE HAPPENED IN THIS PERIOD, and was any of it
+   actually on this card?
+
+   That is the question worth asking, because the mistake it catches cannot be
+   seen anywhere else. An entry typed against Fi that was really swiped on Edge
+   is correct-looking on every screen in the app — it is only wrong relative to
+   a card whose list it is missing from.
+
+   MOST OF THESE ROWS BELONG EXACTLY WHERE THEY ARE. Ninety-odd entries a cycle
+   are on other methods for the ordinary reason that they were paid with other
+   methods. The panel is a place to look, not a list of errors, and it says so
+   rather than implying a hundred things need fixing. Hence collapsed by
+   default, and filtered by method first: the question in practice is never
+   "which of these 96" but "what went on Fi during the Bangalore trip".
+   =========================================================================== */
+
+export function MisfiledPanel({
+  candidates,
+  card,
+}: {
+  candidates: MisfiledCandidate[];
+  card: string;
+}) {
+  const router = useRouter();
+  const { notify } = useToast();
+
+  const [open, setOpen] = useState(false);
+  const [method, setMethod] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [moving, setMoving] = useState<string | null>(null);
+  const [bulk, setBulk] = useState(false);
+
+  /* One chip per method actually present, biggest first — the order in which
+     they are worth looking through. */
+  const byMethod = useMemo(() => {
+    const counts = new Map<string, { n: number; total: number }>();
+    for (const c of candidates) {
+      const at = counts.get(c.method) ?? { n: 0, total: 0 };
+      counts.set(c.method, { n: at.n + 1, total: round2(at.total + c.amount) });
+    }
+    return [...counts.entries()]
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => b.n - a.n);
+  }, [candidates]);
+
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return candidates.filter(
+      (c) =>
+        (method === null || c.method === method) &&
+        (needle === '' ||
+          c.description.toLowerCase().includes(needle) ||
+          c.category.toLowerCase().includes(needle)),
+    );
+  }, [candidates, method, q]);
+
+  const total = round2(candidates.reduce((a, c) => a + c.amount, 0));
+  const shownTotal = round2(shown.reduce((a, c) => a + c.amount, 0));
+  const selected = shown.filter((c) => picked.has(c.id));
+
+  function toggle(id: string) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function moveOne(c: MisfiledCandidate) {
+    setMoving(c.id);
+    void reassignMethodAction({ id: c.id, method: card }).then((r) => {
+      setMoving(null);
+      if (!r.ok) { notify('error', r.error); return; }
+      notify('success', `${c.description} moved to ${card}.`);
+      router.refresh();
+    });
+  }
+
+  async function moveSelected() {
+    if (selected.length === 0) return;
+    setBulk(true);
+    let moved = 0;
+    for (const c of selected) {
+      const r = await reassignMethodAction({ id: c.id, method: card });
+      if (r.ok) moved++;
+      else notify('error', `${c.description}: ${r.error}`);
+    }
+    setBulk(false);
+    setPicked(new Set());
+    if (moved > 0) {
+      notify('success', `${moved} ${moved === 1 ? 'entry' : 'entries'} moved to ${card}.`);
+      router.refresh();
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  return (
+    <Panel className="mb-4">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2.5 text-left"
+      >
+        <WalletCards className="h-4 w-4 shrink-0 text-[var(--color-ink-3)]" aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium">Paid with something else this cycle</span>
+          <span className="block text-[11px] text-[var(--color-ink-3)]">
+            {candidates.length} {candidates.length === 1 ? 'entry' : 'entries'} totalling{' '}
+            <span className="sensitive num">
+              {total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </span>
+            {' — '}move any that were really on {card}.
+          </span>
+        </span>
+        <ChevronDown
+          className={cx(
+            'h-4 w-4 shrink-0 text-[var(--color-ink-3)] transition-transform',
+            open && 'rotate-180',
+          )}
+          aria-hidden="true"
+        />
+      </button>
+
+      {!open ? null : (
+        <div className="mt-3 border-t border-[var(--color-line)] pt-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Chip active={method === null} onClick={() => setMethod(null)}>
+              All {candidates.length}
+            </Chip>
+            {byMethod.map((m) => (
+              <Chip key={m.name} active={method === m.name} onClick={() => setMethod(m.name)}>
+                {m.name} {m.n}
+              </Chip>
+            ))}
+          </div>
+
+          <label className="mt-2.5 flex items-center gap-2">
+            <Search className="h-3.5 w-3.5 shrink-0 text-[var(--color-ink-3)]" aria-hidden="true" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Filter by description or category…"
+              aria-label="Filter entries"
+              className={cx(inputClass(), 'text-xs')}
+            />
+          </label>
+
+          {selected.length > 0 ? (
+            <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-[var(--radius-field)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-2.5 py-2">
+              <span className="min-w-0 flex-1 text-[11px] text-[var(--color-ink-2)]">
+                {selected.length} selected, totalling{' '}
+                <span className="sensitive num font-semibold">
+                  {round2(selected.reduce((a, c) => a + c.amount, 0)).toLocaleString('en-IN', {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </span>
+              <Button size="sm" pending={bulk} onClick={moveSelected}>
+                Move to {card}
+              </Button>
+            </div>
+          ) : null}
+
+          <p className="mt-2.5 text-[11px] text-[var(--color-ink-3)]">
+            {shown.length === candidates.length
+              ? `${shown.length} ${shown.length === 1 ? 'entry' : 'entries'}`
+              : `${shown.length} of ${candidates.length}`}
+            {' · '}
+            <span className="sensitive num">
+              {shownTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </span>
+          </p>
+
+          {shown.length === 0 ? (
+            <p className="py-3 text-[11px] text-[var(--color-ink-3)]">Nothing matches that.</p>
+          ) : (
+            <ul className="mt-1 flex max-h-[26rem] flex-col overflow-y-auto">
+              {shown.map((c) => (
+                <li
+                  key={c.id}
+                  className="flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 last:border-b-0"
+                >
+                  <input
+                    type="checkbox"
+                    checked={picked.has(c.id)}
+                    onChange={() => toggle(c.id)}
+                    aria-label={`Select ${c.description}`}
+                    className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
+                  />
+                  <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
+                    {formatDayShort(c.day)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {c.description}
+                    <span className="ml-1.5 text-[11px] text-[var(--color-ink-3)]">{c.category}</span>
+                  </span>
+                  <Badge tone="neutral">{c.method}</Badge>
+                  <Money
+                    value={c.amount}
+                    size="sm"
+                    tone={c.direction === 'credit' ? 'credit' : 'debt'}
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={moving === c.id}
+                    onClick={() => moveOne(c)}
+                  >
+                    Move to {card}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className="mt-2.5 border-t border-[var(--color-line)] pt-2.5 text-[11px] text-[var(--color-ink-3)]">
+            Card bill payments are left out — re-filing one would say this card paid another
+            card&rsquo;s bill, not that a purchase was on it. Moving an entry changes only the
+            payment method; the amount, date, category and remarks stay as recorded.
+          </p>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function Chip({
+  active, onClick, children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        'rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+        active
+          ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]'
+          : 'border-[var(--color-line)] text-[var(--color-ink-2)] hover:border-[var(--color-line-strong)]',
+      )}
+    >
+      {children}
+    </button>
+  );
+}

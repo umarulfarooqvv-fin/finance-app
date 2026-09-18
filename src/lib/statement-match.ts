@@ -426,3 +426,40 @@ export function suggestFor(
       a.dayGap - b.dayGap)
     .slice(0, limit);
 }
+
+/* ===========================================================================
+   Which rows could be a spend that actually happened on this card.
+
+   Used to build the "paid with something else" list: everything in the cycle
+   window that is not on this card, and could plausibly be moved onto it.
+
+   Pure and separately tested because two of the three clauses are easy to get
+   wrong in a way nothing else would catch.
+   =========================================================================== */
+
+export type CandidateRow = {
+  method: string;
+  /** The card whose balance this row moves, if any. */
+  cardAffected: string | null;
+  kind: string;
+};
+
+export function couldBelongToCard(row: CandidateRow, card: string): boolean {
+  // Already on the card. Nothing to correct.
+  if (row.method === card) return false;
+
+  /* Already counted against this card even though it was paid from somewhere
+     else — paying THIS card's bill from Fi is the case. Such a row is in the
+     card's own entry list, so admitting it here would put one id in two
+     columns at once and offer a move onto the card it already belongs to. */
+  if (row.cardAffected === card) return false;
+
+  /* A bill payment is not a purchase. Re-filing "Coral's bill, paid from Fi"
+     onto Edge would not fix a misfiled spend; it would assert that Edge paid
+     Coral's bill. These are few — five in the live 6 Sep window — and large,
+     68,456.03 of the 183,495.53 that would otherwise be listed, so leaving
+     them in quietly wrecks the total shown beside the list. */
+  if (row.kind === 'card_payment') return false;
+
+  return true;
+}

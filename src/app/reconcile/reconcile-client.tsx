@@ -44,7 +44,7 @@ const PLACEHOLDER = `Paste the statement rows. Anything works — copy straight 
 type ManualLink = { id: string; statement: StatementLine[]; app: AppEntry[] };
 
 /** An entry in this window that is filed against some OTHER payment method. */
-export type MisfiledCandidate = AppEntry & { method: string };
+export type MisfiledCandidate = AppEntry & { method: string; category: string };
 
 export function ReconcileClient({
   entries, elsewhere, methods, card, periodYear,

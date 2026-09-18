@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import {
-  chargeFlag, isBankCharge, reconcileStatement, subsetsSummingTo, suggestFor, type AppEntry,
+  chargeFlag, couldBelongToCard, isBankCharge, reconcileStatement, subsetsSummingTo, suggestFor,
+  type AppEntry,
 } from '@/lib/statement-match';
 import type { StatementLine } from '@/lib/statement-parse';
 
@@ -290,4 +291,46 @@ test('fewer rows and closer dates rank higher', () => {
   ]);
   assert.equal(s[0]?.app.length, 1, 'one exact row beats a two-row combination');
   assert.equal(s[0]?.app[0]?.description, 'Single');
+});
+
+/* ---------------------------------------------------------------------------
+   Which rows may be offered for re-filing onto a card.
+
+   Every case here is a row that LOOKS like a candidate — it is in the window
+   and its method is not this card — and must not be offered anyway.
+   --------------------------------------------------------------------------- */
+
+const row = (method: string, cardAffected: string | null, kind = 'spend') =>
+  ({ method, cardAffected, kind });
+
+test('a spend paid with another method is a candidate', () => {
+  assert.equal(couldBelongToCard(row('Fi', null), 'Edge'), true);
+});
+
+test('a spend already on another card is a candidate — that is the common mix-up', () => {
+  assert.equal(couldBelongToCard(row('Scapia', 'Scapia'), 'Edge'), true);
+});
+
+test('a row already on this card is not a candidate', () => {
+  assert.equal(couldBelongToCard(row('Edge', 'Edge'), 'Edge'), false);
+});
+
+test('paying THIS card\'s bill is not a candidate, though its method differs', () => {
+  // method Fi, cardAffected Edge: this row is already in the card's own entry
+  // list. Offering it here would put one id in both columns at once.
+  assert.equal(couldBelongToCard(row('Fi', 'Edge', 'card_payment'), 'Edge'), false);
+});
+
+test('paying ANOTHER card\'s bill is not a candidate', () => {
+  // Re-filing it would claim Edge paid Coral's bill, not that a purchase was
+  // made on Edge. Five such rows carry 68,456.03 in the live 6 Sep window.
+  assert.equal(couldBelongToCard(row('Fi', 'Coral', 'card_payment'), 'Edge'), false);
+});
+
+test('credit given, investments and unclassified rows stay candidates', () => {
+  // They are all charges someone made; only a bill payment is definitionally
+  // not a purchase, so only it is excluded by kind.
+  for (const kind of ['credit_given', 'investment', 'emi', 'unknown']) {
+    assert.equal(couldBelongToCard(row('Fi', null, kind), 'Edge'), true, kind);
+  }
 });

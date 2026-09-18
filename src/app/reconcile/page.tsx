@@ -4,9 +4,10 @@ import { recentCycles } from '@/lib/cycles';
 import { dayOf, endOfDay, formatDay, startOfDay } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, cx } from '@/components/ui/primitives';
-import type { AppEntry } from '@/lib/statement-match';
+import { couldBelongToCard, type AppEntry } from '@/lib/statement-match';
 import { ALL_METHODS } from '@/lib/types';
 import { ReconcileClient, type MisfiledCandidate } from './reconcile-client';
+import { MisfiledPanel } from './misfiled-panel';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,18 +70,22 @@ export default async function ReconcilePage({
     }))
     .sort((a, b) => (a.ts < b.ts ? -1 : 1));
 
-  /* Entries in the same window that are NOT on this card.
+  /* Entries in the same window PAID WITH SOMETHING ELSE.
 
      A spend put on the wrong card is invisible exactly where you would notice
      it: it never shows on the statement you are checking, because this view
-     filters by the card it was filed under. Handing the reconciler those rows
-     lets an unexplained charge be matched against the entry that was misfiled,
-     and moved across in one click. */
+     filters by the card it was filed under. These are the rows that could be
+     the missing one, and moving one across is a click.
+
+     Which rows qualify is `couldBelongToCard`, kept pure and tested beside the
+     matcher: the clauses that keep a row already counted against this card,
+     and another card's bill payment, out of a list offering to re-file things
+     onto it. On the live 6 Sep window they drop 5 rows carrying 68,456.03. */
   const elsewhere: MisfiledCandidate[] = snap.transactions
     .filter(
       (t) =>
         !t.deleted && t.ts && t.amount != null &&
-        t.method !== card.name &&
+        couldBelongToCard(t, card.name) &&
         t.ts >= lo && t.ts <= hi,
     )
     .map((t) => ({
@@ -89,6 +94,7 @@ export default async function ReconcilePage({
       day: t.ts!.slice(0, 10),
       amount: t.amount ?? 0,
       description: t.remarks || t.category,
+      category: t.category,
       direction: t.cardDirection === 'debt-' ? ('credit' as const) : ('debit' as const),
       verified: t.verified,
       method: t.method,
@@ -149,6 +155,8 @@ export default async function ReconcilePage({
           {entries.length === 1 ? 'entry is' : 'entries are'} recorded in that window.
         </p>
       </Panel>
+
+      <MisfiledPanel candidates={elsewhere} card={card.name} />
 
       <ReconcileClient
         entries={entries}
