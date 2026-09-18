@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import { getSnapshot } from '@/lib/snapshot';
-import { recentCycles } from '@/lib/cycles';
+import { cycleOf, recentCycles, type CycleCard } from '@/lib/cycles';
 import { dayOf, endOfDay, formatDay, startOfDay } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, cx } from '@/components/ui/primitives';
 import { couldBelongToCard, type AppEntry } from '@/lib/statement-match';
-import { ALL_METHODS } from '@/lib/types';
+import { ALL_METHODS, isCard } from '@/lib/types';
 import { ReconcileClient, type MisfiledCandidate } from './reconcile-client';
 import { MisfiledPanel } from './misfiled-panel';
 
@@ -70,6 +70,24 @@ export default async function ReconcilePage({
     }))
     .sort((a, b) => (a.ts < b.ts ? -1 : 1));
 
+  /* EVERY CARD BILLS ON A DIFFERENT DAY — Edge on the 6th, Scapia the 14th,
+     One Card the 22nd, Coral the 25th. So an entry sitting on Scapia is on a
+     Scapia statement with its own dates, and moving it to Edge does not just
+     change a label: it takes the charge off one bill and puts it on another
+     that was cut on a different day.
+
+     Reading it off the row is the only way to know which bill is about to
+     change. `cycleOf` answers it from the entry's own timestamp, using that
+     card's bill date and boundary, and inactive cards are included because an
+     old entry can still be sitting on one. A non-card method has no statement
+     at all, which is itself worth showing rather than leaving blank. */
+  const cycleCards = new Map<string, CycleCard>(snap.cards.map((c) => [c.name, c]));
+  const statementOf = (method: string, ts: string): string | null => {
+    if (!isCard(method)) return null;
+    const c = cycleCards.get(method);
+    return c ? cycleOf(c, ts, overrides).statementEnd : null;
+  };
+
   /* Entries in the same window PAID WITH SOMETHING ELSE.
 
      A spend put on the wrong card is invisible exactly where you would notice
@@ -98,6 +116,7 @@ export default async function ReconcilePage({
       direction: t.cardDirection === 'debt-' ? ('credit' as const) : ('debit' as const),
       verified: t.verified,
       method: t.method,
+      fromStatement: statementOf(t.method, t.ts!),
     }))
     .sort((a, b) => (a.ts < b.ts ? -1 : 1));
 
@@ -156,7 +175,7 @@ export default async function ReconcilePage({
         </p>
       </Panel>
 
-      <MisfiledPanel candidates={elsewhere} card={card.name} />
+      <MisfiledPanel candidates={elsewhere} card={card.name} toStatement={cycle.statementEnd} />
 
       <ReconcileClient
         entries={entries}

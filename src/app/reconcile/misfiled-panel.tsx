@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, Search, WalletCards } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { formatDayShort } from '@/lib/time';
+import { formatDay, formatDayShort } from '@/lib/time';
 import { round2 } from '@/lib/money';
 import { Button } from '@/components/ui/button';
 import { inputClass } from '@/components/ui/field';
@@ -36,9 +36,14 @@ import type { MisfiledCandidate } from './reconcile-client';
 export function MisfiledPanel({
   candidates,
   card,
+  toStatement,
 }: {
   candidates: MisfiledCandidate[];
   card: string;
+  /** The statement every move here lands on — the one being viewed. Fixed, by
+      construction: the window IS this cycle, so an entry dated inside it falls
+      on this statement whichever card it ends up against. */
+  toStatement: string;
 }) {
   const router = useRouter();
   const { notify } = useToast();
@@ -73,6 +78,23 @@ export function MisfiledPanel({
           c.category.toLowerCase().includes(needle)),
     );
   }, [candidates, method, q]);
+
+  /* What a move actually costs each bill it is taken from. Grouped by the
+     statement the rows are on NOW, because that is the figure that changes on
+     a card the user is not looking at — and may already have reconciled. */
+  const takenFrom = useMemo(() => {
+    const by = new Map<string, { label: string; n: number; total: number }>();
+    for (const c of candidates) {
+      if (!picked.has(c.id)) continue;
+      const key = `${c.method}|${c.fromStatement ?? ''}`;
+      const label = c.fromStatement
+        ? `${c.method} ${statementLabel(c.fromStatement)}`
+        : `${c.method} (no statement)`;
+      const at = by.get(key) ?? { label, n: 0, total: 0 };
+      by.set(key, { label, n: at.n + 1, total: round2(at.total + c.amount) });
+    }
+    return [...by.values()].sort((a, b) => b.total - a.total);
+  }, [candidates, picked]);
 
   const total = round2(candidates.reduce((a, c) => a + c.amount, 0));
   const shownTotal = round2(shown.reduce((a, c) => a + c.amount, 0));
@@ -169,18 +191,36 @@ export function MisfiledPanel({
           </label>
 
           {selected.length > 0 ? (
-            <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-[var(--radius-field)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-2.5 py-2">
-              <span className="min-w-0 flex-1 text-[11px] text-[var(--color-ink-2)]">
-                {selected.length} selected, totalling{' '}
-                <span className="sensitive num font-semibold">
-                  {round2(selected.reduce((a, c) => a + c.amount, 0)).toLocaleString('en-IN', {
-                    minimumFractionDigits: 2,
-                  })}
+            <div className="mt-2.5 rounded-[var(--radius-field)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] px-2.5 py-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 flex-1 text-[11px] text-[var(--color-ink-2)]">
+                  {selected.length} selected, totalling{' '}
+                  <span className="sensitive num font-semibold">
+                    {round2(selected.reduce((a, c) => a + c.amount, 0)).toLocaleString('en-IN', {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                  {' → '}
+                  {card} {statementLabel(toStatement)}
                 </span>
-              </span>
-              <Button size="sm" pending={bulk} onClick={moveSelected}>
-                Move to {card}
-              </Button>
+                <Button size="sm" pending={bulk} onClick={moveSelected}>
+                  Move to {card}
+                </Button>
+              </div>
+
+              {/* Which bills this comes OFF. Every card bills on its own day,
+                  so a move is a transfer between two statements, and the one
+                  losing the charge belongs to a card not on screen. */}
+              <ul className="mt-1.5 flex flex-col gap-0.5 border-t border-[var(--color-warn)] pt-1.5">
+                {takenFrom.map((g) => (
+                  <li key={g.label} className="flex items-center justify-between gap-2 text-[11px] text-[var(--color-ink-2)]">
+                    <span className="min-w-0 truncate">
+                      leaves {g.label} · {g.n} {g.n === 1 ? 'entry' : 'entries'}
+                    </span>
+                    <Money value={g.total} size="sm" tone="muted" />
+                  </li>
+                ))}
+              </ul>
             </div>
           ) : null}
 
@@ -217,7 +257,13 @@ export function MisfiledPanel({
                     {c.description}
                     <span className="ml-1.5 text-[11px] text-[var(--color-ink-3)]">{c.category}</span>
                   </span>
-                  <Badge tone="neutral">{c.method}</Badge>
+                  {/* The bill it is on now. Its card bills on a different day
+                      from this one, so this is a different statement, not the
+                      same period under another name. */}
+                  <Badge tone="neutral">
+                    {c.method}
+                    {c.fromStatement ? ` · ${statementLabel(c.fromStatement)}` : ''}
+                  </Badge>
                   <Money
                     value={c.amount}
                     size="sm"
@@ -237,14 +283,22 @@ export function MisfiledPanel({
           )}
 
           <p className="mt-2.5 border-t border-[var(--color-line)] pt-2.5 text-[11px] text-[var(--color-ink-3)]">
-            Card bill payments are left out — re-filing one would say this card paid another
-            card&rsquo;s bill, not that a purchase was on it. Moving an entry changes only the
-            payment method; the amount, date, category and remarks stay as recorded.
+            Each card bills on its own day, so the date beside a card name is the statement that
+            entry is on today — moving it takes the charge off that bill and puts it on{' '}
+            {card}&rsquo;s {statementLabel(toStatement)}. Card bill payments are left out:
+            re-filing one would say this card paid another card&rsquo;s bill, not that a purchase
+            was on it. A move changes only the payment method; the amount, date, category and
+            remarks stay as recorded.
           </p>
         </div>
       )}
     </Panel>
   );
+}
+
+/** "14 Sep" — the statement's own date, without the year the row has no room for. */
+function statementLabel(day: string): string {
+  return formatDay(day).replace(/\s\d{4}$/, '');
 }
 
 function Chip({

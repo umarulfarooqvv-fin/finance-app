@@ -177,7 +177,28 @@ export function recentCycles(
   return out;
 }
 
-/** The cycle a given instant falls into, for assigning a transaction. */
+/**
+ * The cycle a given instant falls INTO — the statement that will bill it.
+ *
+ * Not the same question as `cycleFor`, and the difference is a whole month.
+ * `cycleFor(card, today)` answers "what is this card's latest statement", so
+ * it walks BACK to the last bill date that has already passed. Asked about a
+ * transaction, that returns the statement which closed before the money was
+ * spent: a 7 Aug charge on a card billing on the 14th came back as the 14 Jul
+ * statement, a bill that had already been issued and paid.
+ *
+ * So take that cycle and step forward when the day falls after its period.
+ * One step is always enough: `cycleFor` returns the latest bill date on or
+ * before the day, so the day is always inside the month that follows it.
+ *
+ * Stepping by `nextStatementEnd` rather than by adding a month keeps the
+ * boundary chaining intact — a cycle whose predecessor excluded its own bill
+ * date starts ON that date, and re-deriving it here would reopen the gap that
+ * chaining exists to close.
+ */
 export function cycleOf(card: CycleCard, ts: Instant, overrides: CycleOverrides = {}): Cycle {
-  return cycleFor(card, dayOf(ts), overrides);
+  const day = dayOf(ts);
+  const c = cycleFor(card, day, overrides);
+  if (day <= c.periodEnd) return c;
+  return cycleFor(card, c.nextStatementEnd, overrides);
 }

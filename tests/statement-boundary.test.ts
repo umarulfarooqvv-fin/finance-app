@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { boundaryFor, cycleFor, type Cycle, type CycleOverrides } from '@/lib/cycles';
+import { boundaryFor, cycleFor, cycleOf, type Cycle, type CycleOverrides } from '@/lib/cycles';
 import { cardStatement } from '@/lib/statement';
 import { closingBalanceUnder, reconcileCycle, rowsOnBoundary } from '@/lib/reconcile';
 import { addDays, daysBetween } from '@/lib/time';
@@ -248,4 +248,63 @@ test('the opening balance is carried into the reconciled figure', () => {
     transactions: [charge('2026-05-20T10:00:00', 1000)],
   });
   assert.equal(closingBalanceUnder(snap, carried, '2026-05-25', 'inclusive'), 3662.72);
+});
+
+/* ---------------------------------------------------------------------------
+   Which statement will bill a given transaction.
+
+   `cycleFor` answers "what is this card's latest statement" and walks BACK to
+   the last bill date already passed. Asked about a transaction that is the
+   wrong question by a whole month, and the answer is a statement that closed
+   before the money was spent. These pin the difference.
+   --------------------------------------------------------------------------- */
+
+const scapia: Card = {
+  name: 'Scapia', billDate: 14, graceDays: 15, dueDay: 29, dueCycle: 'same',
+  creditLimit: 50000, openingBalance: 0, openingDate: null, slot: 5, active: true,
+  statementBoundary: 'inclusive',
+};
+
+test('a charge before this month\'s bill date is billed by THIS month, not last', () => {
+  // The regression: 7 Aug on a card billing the 14th came back as 14 Jul — a
+  // statement already issued and paid by the time the money was spent.
+  const c = cycleOf(scapia, '2026-08-07T12:00:00');
+  assert.equal(c.statementEnd, '2026-08-14');
+  assert.equal(c.cycleStart, '2026-07-15');
+});
+
+test('a charge after the bill date rolls to next month', () => {
+  const c = cycleOf(scapia, '2026-08-22T12:00:00');
+  assert.equal(c.statementEnd, '2026-09-14');
+});
+
+test('a charge ON the bill date lands per the boundary', () => {
+  assert.equal(cycleOf(scapia, '2026-08-14T12:00:00').statementEnd, '2026-08-14');
+  const exclusive: Card = { ...scapia, statementBoundary: 'exclusive' };
+  // Cut before that day's spending, so it is billed a month later.
+  assert.equal(cycleOf(exclusive, '2026-08-14T12:00:00').statementEnd, '2026-09-14');
+});
+
+test('the cycle returned always CONTAINS the day, every card, every day of a year', () => {
+  // The property the whole thing rests on. A cycle that does not contain the
+  // transaction is not that transaction's statement, whatever else is true.
+  const cards: Card[] = [
+    scapia,
+    { ...scapia, name: 'Edge', billDate: 6 },
+    { ...scapia, name: 'One Card', billDate: 22 },
+    { ...scapia, name: 'Coral', billDate: 25 },
+    { ...scapia, name: 'Month end', billDate: 31 },
+    { ...scapia, name: 'Exclusive', billDate: 14, statementBoundary: 'exclusive' },
+  ];
+  for (const card of cards) {
+    let day = '2026-01-01';
+    for (let i = 0; i < 365; i++) {
+      const c = cycleOf(card, `${day}T12:00:00`);
+      assert.ok(
+        day >= c.cycleStart && day <= c.periodEnd,
+        `${card.name}: ${day} not inside ${c.cycleStart}..${c.periodEnd} (statement ${c.statementEnd})`,
+      );
+      day = addDays(day, 1);
+    }
+  }
 });
