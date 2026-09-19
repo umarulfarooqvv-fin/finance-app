@@ -10,7 +10,7 @@ import { inputClass } from '@/components/ui/field';
 import { Badge, Dot, Money, Panel, cx } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import { reassignMethodAction } from './actions';
-import type { MisfiledCandidate } from './reconcile-client';
+import type { MisfiledCandidate } from '@/lib/misfiled';
 
 /* ===========================================================================
    Everything this cycle that was paid with something else.

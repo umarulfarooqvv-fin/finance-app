@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import { getSnapshot } from '@/lib/snapshot';
-import { cycleOf, recentCycles } from '@/lib/cycles';
+import { cycleOverridesFrom, recentCycles } from '@/lib/cycles';
 import { dayOf, endOfDay, formatDay, startOfDay } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, cx } from '@/components/ui/primitives';
-import { couldBelongToCard } from '@/lib/statement-match';
 import { cardColor } from '@/lib/statement';
-import { ALL_METHODS, isCard } from '@/lib/types';
-import { ReconcileClient, type CardEntry, type MisfiledCandidate } from './reconcile-client';
+import { ALL_METHODS } from '@/lib/types';
+import { misfiledCandidates } from '@/lib/misfiled';
+import { ReconcileClient, type CardEntry } from './reconcile-client';
 import { MisfiledPanel } from './misfiled-panel';
 
 export const dynamic = 'force-dynamic';
@@ -44,7 +44,7 @@ export default async function ReconcilePage({
     );
   }
 
-  const overrides = (snap.config['cycleOverrides'] ?? {}) as Parameters<typeof recentCycles>[3];
+  const overrides = cycleOverridesFrom(snap.config);
   const cycles = recentCycles(card, today, CYCLES_OFFERED, overrides);
   const cycle = cycles.find((c) => c.statementEnd === sp.cycle) ?? cycles[0]!;
 
@@ -93,55 +93,10 @@ export default async function ReconcilePage({
     }))
     .sort((a, b) => (a.ts < b.ts ? -1 : 1));
 
-  /* EVERY CARD BILLS ON A DIFFERENT DAY — Edge on the 6th, Scapia the 14th,
-     One Card the 22nd, Coral the 25th. So an entry sitting on Scapia is on a
-     Scapia statement with its own dates, and moving it to Edge does not just
-     change a label: it takes the charge off one bill and puts it on another
-     that was cut on a different day.
-
-     Reading it off the row is the only way to know which bill is about to
-     change. `cycleOf` answers it from the entry's own timestamp, using that
-     card's bill date and boundary, and inactive cards are included because an
-     old entry can still be sitting on one. A non-card method has no statement
-     at all, which is itself worth showing rather than leaving blank. */
-  const statementOf = (method: string, ts: string): string | null => {
-    if (!isCard(method)) return null;
-    const c = cardsByName.get(method);
-    return c ? cycleOf(c, ts, overrides).statementEnd : null;
-  };
-
-  /* Entries in the same window PAID WITH SOMETHING ELSE.
-
-     A spend put on the wrong card is invisible exactly where you would notice
-     it: it never shows on the statement you are checking, because this view
-     filters by the card it was filed under. These are the rows that could be
-     the missing one, and moving one across is a click.
-
-     Which rows qualify is `couldBelongToCard`, kept pure and tested beside the
-     matcher: the clauses that keep a row already counted against this card,
-     and another card's bill payment, out of a list offering to re-file things
-     onto it. On the live 6 Sep window they drop 5 rows carrying 68,456.03. */
-  const elsewhere: MisfiledCandidate[] = snap.transactions
-    .filter(
-      (t) =>
-        !t.deleted && t.ts && t.amount != null &&
-        couldBelongToCard(t, card.name) &&
-        t.ts >= lo && t.ts <= hi,
-    )
-    .map((t) => ({
-      id: t.id,
-      ts: t.ts!,
-      day: t.ts!.slice(0, 10),
-      amount: t.amount ?? 0,
-      description: t.remarks || t.category,
-      category: t.category,
-      direction: t.cardDirection === 'debt-' ? ('credit' as const) : ('debit' as const),
-      verified: t.verified,
-      method: t.method,
-      methodColor: colorOf(t.method),
-      fromStatement: statementOf(t.method, t.ts!),
-    }))
-    .sort((a, b) => (a.ts < b.ts ? -1 : 1));
+  /* The rows that could be the missing one, and the filter that decides which
+     qualify, live in lib/misfiled so the card's own page gives the same answer
+     from the same code. */
+  const elsewhere = misfiledCandidates(snap, card, cycle, overrides);
 
   const href = (over: { card?: string; cycle?: string }) => {
     const p = new URLSearchParams({ card: card.name, cycle: cycle.statementEnd, ...over });

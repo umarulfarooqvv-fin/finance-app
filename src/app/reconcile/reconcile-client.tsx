@@ -12,6 +12,7 @@ import {
   type AppEntry, type Match,
 } from '@/lib/statement-match';
 import { formatDayShort } from '@/lib/time';
+import type { MisfiledCandidate } from '@/lib/misfiled';
 import { round2 } from '@/lib/money';
 import { Button } from '@/components/ui/button';
 import { inputClass } from '@/components/ui/field';
@@ -53,18 +54,6 @@ type ManualLink = { id: string; statement: StatementLine[]; app: AppEntry[] };
  * it is worth showing rather than leaving to be assumed.
  */
 export type CardEntry = AppEntry & { method: string; methodColor: string | null };
-
-/** An entry in this window that is filed against some OTHER payment method. */
-export type MisfiledCandidate = AppEntry & {
-  method: string;
-  category: string;
-  /** The statement this entry is on TODAY, on whichever card it is filed
-      against — null when the method is not a card and has no cycle at all. */
-  fromStatement: string | null;
-  /** That card's own themed colour, resolved server-side — null for a
-      non-card method, which has no card and so no colour to show. */
-  methodColor: string | null;
-};
 
 export function ReconcileClient({
   entries, elsewhere, methods, card, periodYear,

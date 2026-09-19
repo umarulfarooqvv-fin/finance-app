@@ -3,7 +3,10 @@ import { notFound } from 'next/navigation';
 import { getSnapshot } from '@/lib/snapshot';
 import { cardColor, cardDetail, type LedgerEntry } from '@/lib/statement';
 import { reconcileRecorded, recentStatementDates } from '@/lib/reconcile';
+import { cycleOverridesFrom } from '@/lib/cycles';
 import { ReconcileClient } from './reconcile-client';
+import { misfiledCandidates } from '@/lib/misfiled';
+import { MisfiledPanel } from '@/app/reconcile/misfiled-panel';
 import { dayOf, formatDay, formatDayShort, relativeDays } from '@/lib/time';
 import { money, percent } from '@/lib/format';
 import { Page, PageHeader } from '@/components/layout/page-header';
@@ -74,6 +77,15 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
   if (!card) notFound();
 
   const { row, billed, unbilled } = cardDetail(snap, card, today);
+
+  /* The same hunting ground the statement checker offers, on the page that
+     already reports the shortfall. "The bank billed 6,070.95 more than
+     anything recorded here accounts for" is stated a few panels down, and a
+     spend typed against the wrong method is the commonest reason for it — so
+     the list to search is here rather than a page away. Same builder, same
+     rules, same answer. */
+  const overrides = cycleOverridesFrom(snap.config);
+  const elsewhere = misfiledCandidates(snap, card, row.cycle, overrides);
   const recorded = reconcileRecorded(snap, card);
   const statementDates = recentStatementDates(card, today, 6);
   const m = row.cycleMath;
@@ -201,6 +213,15 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
           recorded={recorded}
         />
       </Panel>
+
+      {/* ---- Where a shortfall usually hides ----------------------------- */}
+      <div className="mt-4">
+        <MisfiledPanel
+          candidates={elsewhere}
+          card={card.name}
+          toStatement={row.cycle.statementEnd}
+        />
+      </div>
 
       {/* ---- Reconciliation ---------------------------------------------- */}
       <Panel className="mt-4">

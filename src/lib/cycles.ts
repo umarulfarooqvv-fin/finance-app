@@ -56,6 +56,19 @@ export type CycleOverride = {
 
 export type CycleOverrides = Record<string, Record<string, CycleOverride>>;
 
+/**
+ * Pull the overrides out of app_config.
+ *
+ * The stored key is `statement_cycles`. Reading it by hand at each call site
+ * is how a near-miss like `cycleOverrides` becomes a silently empty set: no
+ * error, no failed lookup, just every override ignored on that page while the
+ * next page honours them, and two screens quietly disagreeing about where a
+ * cycle ends.
+ */
+export function cycleOverridesFrom(config: Record<string, unknown>): CycleOverrides {
+  return (config['statement_cycles'] as CycleOverrides | undefined) ?? {};
+}
+
 /** The boundary in force for one statement date. */
 export function boundaryFor(
   card: Pick<Card, 'name' | 'statementBoundary'>,
