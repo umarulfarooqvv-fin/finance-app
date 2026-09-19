@@ -214,7 +214,19 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
         />
       </Panel>
 
-      {/* ---- Where a shortfall usually hides ----------------------------- */}
+      {/* ---- What IS on this bill, then what might be missing from it ----
+           Ordered deliberately: the statement's own entries sit directly above
+           the entries paid with something else, because the question the pair
+           answers is whether anything in the second list belongs in the first.
+           They were separated by two panels, which is a lot of scrolling to
+           compare two lists. */}
+      <Panel className="mt-4">
+        <SectionTitle>
+          On the {formatDay(row.cycle.statementEnd)} statement &middot; {billed.length}
+        </SectionTitle>
+        <Ledger entries={billed} empty="Nothing was billed in this cycle." />
+      </Panel>
+
       <div className="mt-4">
         <MisfiledPanel
           candidates={elsewhere}
@@ -254,10 +266,6 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
         <Ledger entries={unbilled} empty="Bill cleared. No new spends yet." />
       </Panel>
 
-      <Panel className="mt-4">
-        <SectionTitle>On the {formatDay(row.cycle.statementEnd)} statement</SectionTitle>
-        <Ledger entries={billed} empty="Nothing was billed in this cycle." />
-      </Panel>
     </Page>
   );
 }
