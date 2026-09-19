@@ -15,7 +15,7 @@ import { formatDayShort } from '@/lib/time';
 import { round2 } from '@/lib/money';
 import { Button } from '@/components/ui/button';
 import { inputClass } from '@/components/ui/field';
-import { Badge, Empty, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
+import { Badge, Dot, Empty, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import { reassignMethodAction } from './actions';
 
@@ -43,6 +43,17 @@ const PLACEHOLDER = `Paste the statement rows. Anything works — copy straight 
 /** A pairing made by hand. Statement lines and entries are held by identity. */
 type ManualLink = { id: string; statement: StatementLine[]; app: AppEntry[] };
 
+/**
+ * One of this card's own entries for the period.
+ *
+ * `method` is where the money came FROM, which for a spend is this card itself
+ * — a charge on a card is filed against that card, so the two agree. A bill
+ * payment is the exception: it lands ON this card but is paid FROM a bank
+ * account. That is the only way an entry here carries a different method, and
+ * it is worth showing rather than leaving to be assumed.
+ */
+export type CardEntry = AppEntry & { method: string; methodColor: string | null };
+
 /** An entry in this window that is filed against some OTHER payment method. */
 export type MisfiledCandidate = AppEntry & {
   method: string;
@@ -58,7 +69,7 @@ export type MisfiledCandidate = AppEntry & {
 export function ReconcileClient({
   entries, elsewhere, methods, card, periodYear,
 }: {
-  entries: AppEntry[];
+  entries: CardEntry[];
   /** Entries in the same window filed against a different method. */
   elsewhere: MisfiledCandidate[];
   methods: string[];
@@ -187,6 +198,31 @@ export function ReconcileClient({
     () => entries.filter((e) => matchedAppIds.has(e.id)),
     [entries, matchedAppIds],
   );
+
+  /* Which method each matched entry actually came off, looked up by id rather
+     than threaded through the matcher. The engine is pure and has no business
+     knowing about payment methods; making it generic over the entry type to
+     carry one through would complicate a tested module for a display detail. */
+  const entryById = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
+
+  /* HOW MUCH OF THE BILL THESE MATCHES ACCOUNT FOR.
+
+     Measured on the STATEMENT side, because the question is what share of the
+     bank's own figure is explained — the app side would answer a different
+     question and, where a pairing is a few rupees out, a different number.
+
+     Charges and repayments counted apart, for the reason they are everywhere
+     else on this page: a matched repayment explains no charge, and rolling the
+     two together would report a bill as better covered than it is. */
+  const matchedLines = useMemo(() => auto.matches.flatMap((m) => m.statement), [auto.matches]);
+  const coveredDebit = round2(
+    matchedLines.filter((l) => l.direction === 'debit').reduce((a, l) => a + l.amount, 0),
+  );
+  const coveredCredit = round2(
+    matchedLines.filter((l) => l.direction === 'credit').reduce((a, l) => a + l.amount, 0),
+  );
+  const coverShare =
+    auto.totals.statementDebit > 0.005 ? coveredDebit / auto.totals.statementDebit : 0;
 
   const cardPool = showMatched ? [...openApp, ...matchedEntries] : openApp;
   const pool: (AppEntry & { method?: string })[] = (showAll ? [...cardPool, ...openElsewhere] : cardPool)
@@ -807,9 +843,69 @@ export function ReconcileClient({
             {auto.matches.length === 0 ? (
               <p className="text-xs text-[var(--color-ink-3)]">Nothing matched on its own.</p>
             ) : (
-              <ul className="flex flex-col">
-                {auto.matches.map((m, i) => <MatchRow key={i} match={m} />)}
-              </ul>
+              <>
+                {/* What share of the bill this accounts for. The figure people
+                    actually want from this list — "how much of it is explained"
+                    — and it was nowhere on the page. */}
+                <div className="mb-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] px-3 py-2.5">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <span className="text-xs text-[var(--color-ink-2)]">
+                      Covers <Money value={coveredDebit} size="sm" tone="credit" className="font-semibold" />
+                      {' of the '}
+                      <Money value={auto.totals.statementDebit} size="sm" /> charged
+                    </span>
+                    <span className="num text-sm font-semibold text-[var(--color-pos)]">
+                      {Math.round(coverShare * 100)}%
+                    </span>
+                  </div>
+
+                  <div
+                    className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-raised)]"
+                    role="meter"
+                    aria-valuenow={Math.round(coverShare * 100)}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label="Share of the statement's charges matched automatically"
+                  >
+                    <div
+                      className="h-full rounded-full bg-[var(--color-pos)] transition-[width]"
+                      style={{ width: `${Math.min(100, coverShare * 100)}%` }}
+                    />
+                  </div>
+
+                  <p className="mt-2 text-[11px] text-[var(--color-ink-3)]">
+                    Leaving{' '}
+                    <Money
+                      value={round2(auto.totals.statementDebit - coveredDebit)}
+                      size="sm"
+                      tone="debt"
+                    />{' '}
+                    of charges to account for
+                    {coveredCredit > 0.005 ? (
+                      <>
+                        {'. Repayments are counted apart: '}
+                        <Money value={coveredCredit} size="sm" tone="credit" /> of{' '}
+                        <Money value={auto.totals.statementCredit} size="sm" /> matched — a
+                        repayment explains no charge, so rolling the two together would report
+                        this bill as better covered than it is
+                      </>
+                    ) : null}
+                    .
+                  </p>
+                </div>
+
+                <ul className="flex flex-col">
+                  {auto.matches.map((m, i) => (
+                    <MatchRow key={i} match={m} entryById={entryById} />
+                  ))}
+                </ul>
+
+                <p className="mt-2 border-t border-[var(--color-line)] pt-2 text-[11px] text-[var(--color-ink-3)]">
+                  Everything here is already on {card} — that is what matching against {card}&rsquo;s
+                  statement means, so there is nothing to re-file. The badge is where the money came
+                  FROM: this card for a purchase, and the account that paid it for a bill payment.
+                </p>
+              </>
             )}
           </Panel>
         </>
@@ -879,7 +975,23 @@ function Tile({
   );
 }
 
-function MatchRow({ match }: { match: Match }) {
+function MatchRow({
+  match, entryById,
+}: {
+  match: Match;
+  entryById: Map<string, CardEntry>;
+}) {
+  /* Where the money came off, de-duplicated: a grouped match can be several
+     entries, and they are nearly always the same method. Shown on every row
+     rather than only the odd one out, because "which card is this on" is not
+     a question a list should make you assume the answer to. */
+  const filed: { method: string; color: string | null }[] = [];
+  for (const a of match.app) {
+    const e = entryById.get(a.id);
+    if (!e || filed.some((f) => f.method === e.method)) continue;
+    filed.push({ method: e.method, color: e.methodColor });
+  }
+
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--color-line)] py-2 text-sm last:border-b-0">
       <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
@@ -892,6 +1004,12 @@ function MatchRow({ match }: { match: Match }) {
       <span className="min-w-0 flex-1 truncate text-xs text-[var(--color-ink-2)]">
         {match.app.map((e) => e.description).join(' + ')}
       </span>
+      {filed.map((f) => (
+        <Badge key={f.method} tone="neutral">
+          {f.color ? <Dot color={f.color} size={7} /> : null}
+          {f.method}
+        </Badge>
+      ))}
       {match.kind === 'grouped' ? (
         <Badge tone="accent">{match.statement.length}&rarr;{match.app.length}</Badge>
       ) : null}

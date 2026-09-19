@@ -4,10 +4,10 @@ import { cycleOf, recentCycles } from '@/lib/cycles';
 import { dayOf, endOfDay, formatDay, startOfDay } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, cx } from '@/components/ui/primitives';
-import { couldBelongToCard, type AppEntry } from '@/lib/statement-match';
+import { couldBelongToCard } from '@/lib/statement-match';
 import { cardColor } from '@/lib/statement';
 import { ALL_METHODS, isCard } from '@/lib/types';
-import { ReconcileClient, type MisfiledCandidate } from './reconcile-client';
+import { ReconcileClient, type CardEntry, type MisfiledCandidate } from './reconcile-client';
 import { MisfiledPanel } from './misfiled-panel';
 
 export const dynamic = 'force-dynamic';
@@ -53,7 +53,22 @@ export default async function ReconcilePage({
   const lo = startOfDay(cycle.cycleStart);
   const hi = endOfDay(cycle.periodEnd);
 
-  const entries: AppEntry[] = snap.transactions
+  // A full Card structurally satisfies CycleCard too, so one map serves both
+  // the cycle maths and the colour lookup.
+  const cardsByName = new Map(snap.cards.map((c) => [c.name, c]));
+
+  /* Each card's own colour, so a row reads as "which card" at a glance instead
+     of by parsing its badge text — the same dot used on Today and Cards.
+     Resolved here rather than handed to the client as `cardColor` itself: a
+     function is not serialisable across the server/client boundary, and
+     passing one silently fails at runtime with no typecheck to catch it. A
+     non-card method (Fi, Cash) has no card and so no colour. */
+  const colorOf = (method: string): string | null => {
+    const c = cardsByName.get(method);
+    return c ? cardColor(c.slot) : null;
+  };
+
+  const entries: CardEntry[] = snap.transactions
     .filter(
       (t) =>
         !t.deleted && t.ts && t.amount != null &&
@@ -68,6 +83,13 @@ export default async function ReconcilePage({
       // A charge raises the balance; a payment or refund lowers it.
       direction: t.cardDirection === 'debt-' ? ('credit' as const) : ('debit' as const),
       verified: t.verified,
+      /* Where the money came FROM. Usually this card — a spend charged to a
+         card IS filed against it, so the two agree. The exception is a bill
+         payment: it lands ON this card but is paid FROM a bank account, so its
+         method is that account. Carrying it lets the matched list say which,
+         instead of leaving every row to be assumed. */
+      method: t.method,
+      methodColor: colorOf(t.method),
     }))
     .sort((a, b) => (a.ts < b.ts ? -1 : 1));
 
@@ -82,24 +104,10 @@ export default async function ReconcilePage({
      card's bill date and boundary, and inactive cards are included because an
      old entry can still be sitting on one. A non-card method has no statement
      at all, which is itself worth showing rather than leaving blank. */
-  // A full Card structurally satisfies CycleCard too, so one map serves both
-  // this and the colour lookup below.
-  const cardsByName = new Map(snap.cards.map((c) => [c.name, c]));
   const statementOf = (method: string, ts: string): string | null => {
     if (!isCard(method)) return null;
     const c = cardsByName.get(method);
     return c ? cycleOf(c, ts, overrides).statementEnd : null;
-  };
-
-  /* Each card's own colour, so a row reads as "which card" at a glance instead
-     of by parsing its badge text — the same dot used on Today and Cards.
-     Resolved here rather than handed to the client as `cardColor` itself: a
-     function is not serialisable across the server/client boundary, and
-     passing one silently fails at runtime with no typecheck to catch it. A
-     non-card method (Fi, Cash) has no card and so no colour. */
-  const colorOf = (method: string): string | null => {
-    const c = cardsByName.get(method);
-    return c ? cardColor(c.slot) : null;
   };
 
   /* Entries in the same window PAID WITH SOMETHING ELSE.
