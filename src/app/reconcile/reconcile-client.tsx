@@ -98,6 +98,17 @@ export function ReconcileClient({
      the card's own list to be found. Seeing the whole period side by side with
      the statement is the only way to spot it. */
   const [showAll, setShowAll] = useState(false);
+  /* Whether a MATCHED entry is shown too, in green, or left out entirely as it
+     is by default.
+
+     Once an entry is matched it disappears from this column — the whole point
+     of the column is what is still unpaired. But that also means there is no
+     way here to see the shape of the whole cycle: which of this card's own
+     entries the statement actually confirms, and which dates have nothing
+     confirming them, at a glance rather than by cross-checking a separate
+     list at the foot of the page. Optional, because most of the time the
+     unpaired leftovers are the only thing worth looking at. */
+  const [showMatched, setShowMatched] = useState(false);
   const [bulkMoving, setBulkMoving] = useState(false);
 
   const parsed = useMemo(
@@ -162,9 +173,24 @@ export function ReconcileClient({
      matcher never sees these — auto-matching must only ever consider entries
      actually on this card — but the list and the selection do. */
   const openElsewhere = elsewhere.filter((e) => !linkedApp.has(e.id));
-  const pool: (AppEntry & { method?: string })[] = showAll
-    ? [...openApp, ...openElsewhere].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0))
-    : openApp;
+
+  /* Every entry the automatic pass already confirmed against a statement
+     line. `entries` is the FULL set for this card and this period — appOnly
+     is only the leftover — so this is entries minus openApp, computed the
+     other way round rather than tracked separately, which is what keeps it
+     from drifting out of step as matching re-runs on every keystroke. */
+  const matchedAppIds = useMemo(
+    () => new Set(auto.matches.flatMap((m) => m.app.map((a) => a.id))),
+    [auto.matches],
+  );
+  const matchedEntries = useMemo(
+    () => entries.filter((e) => matchedAppIds.has(e.id)),
+    [entries, matchedAppIds],
+  );
+
+  const cardPool = showMatched ? [...openApp, ...matchedEntries] : openApp;
+  const pool: (AppEntry & { method?: string })[] = (showAll ? [...cardPool, ...openElsewhere] : cardPool)
+    .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
 
   const selectedLines = openLines.filter((l) => pickedLines.has(l.line));
   const selectedApp = openApp.filter((e) => pickedApp.has(e.id));
@@ -587,18 +613,34 @@ export function ReconcileClient({
                   <div className="min-w-0">
                     <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-3)]">
-                        {showAll ? `Everything this period · ${pool.length}` : `On ${card} · ${openApp.length}`}
+                        {showAll ? `Everything this period · ${pool.length}` : `On ${card} · ${pool.length}`}
                       </span>
-                      {/* The whole period, whatever each entry was filed against.
-                          A spend made on this card but typed against another is
-                          not in this card's own list — this is where it shows up. */}
-                      <button
-                        type="button"
-                        onClick={() => setShowAll((v) => !v)}
-                        className="text-[11px] font-medium text-[var(--color-accent)]"
-                      >
-                        {showAll ? `Show only ${card}` : `Show all methods (${openApp.length + openElsewhere.length})`}
-                      </button>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        {/* Off by default: the leftovers are usually the only
+                            thing worth looking at, and 96 confirmed rows would
+                            bury them. On, a confirmed entry shows in green
+                            beside the ones still unpaired, so the dates with
+                            nothing green next to them are the ones to check. */}
+                        {matchedEntries.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setShowMatched((v) => !v)}
+                            className="text-[11px] font-medium text-[var(--color-accent)]"
+                          >
+                            {showMatched ? 'Hide matched' : `Show matched too (${matchedEntries.length})`}
+                          </button>
+                        ) : null}
+                        {/* The whole period, whatever each entry was filed against.
+                            A spend made on this card but typed against another is
+                            not in this card's own list — this is where it shows up. */}
+                        <button
+                          type="button"
+                          onClick={() => setShowAll((v) => !v)}
+                          className="text-[11px] font-medium text-[var(--color-accent)]"
+                        >
+                          {showAll ? `Show only ${card}` : `Show all methods (${openApp.length + openElsewhere.length})`}
+                        </button>
+                      </div>
                     </div>
 
                     {selectedElsewhere.length > 0 ? (
@@ -626,32 +668,46 @@ export function ReconcileClient({
                       <ul className="flex flex-col">
                         {pool.map((e) => {
                           const filedElsewhere = Boolean(e.method && e.method !== card);
+                          const isMatched = matchedAppIds.has(e.id);
                           return (
                             <li
                               key={e.id}
                               className={cx(
                                 'flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 last:border-b-0',
                                 filedElsewhere && 'bg-[var(--color-raised)]',
+                                isMatched && 'bg-[var(--color-pos-soft)]',
                               )}
                             >
-                              <input
-                                type="checkbox"
-                                checked={pickedApp.has(e.id)}
-                                onChange={() => toggle(pickedApp, e.id, setPickedApp)}
-                                aria-label={`Select ${e.description}`}
-                                className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-                              />
+                              {/* A matched row has nothing left to do — no
+                                  linking, no moving, that is what matched
+                                  means — so it gets a check instead of a
+                                  checkbox rather than a control with no use. */}
+                              {isMatched ? (
+                                <CheckCircle2
+                                  className="h-4 w-4 shrink-0 text-[var(--color-pos)]"
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <input
+                                  type="checkbox"
+                                  checked={pickedApp.has(e.id)}
+                                  onChange={() => toggle(pickedApp, e.id, setPickedApp)}
+                                  aria-label={`Select ${e.description}`}
+                                  className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
+                                />
+                              )}
                               <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
                                 {formatDayShort(e.day)}
                               </span>
                               <span className="min-w-0 flex-1 truncate text-sm">{e.description}</span>
                               {filedElsewhere ? <Badge tone="warn">{e.method}</Badge> : null}
+                              {isMatched ? <Badge tone="good">On statement</Badge> : null}
                               <Money
                                 value={e.amount}
                                 size="sm"
                                 tone={e.direction === 'credit' ? 'credit' : 'debt'}
                               />
-                              {!filedElsewhere ? (
+                              {isMatched ? null : !filedElsewhere ? (
                                 <select
                                   value=""
                                   disabled={moving === e.id}
