@@ -50,6 +50,9 @@ export type MisfiledCandidate = AppEntry & {
   /** The statement this entry is on TODAY, on whichever card it is filed
       against — null when the method is not a card and has no cycle at all. */
   fromStatement: string | null;
+  /** That card's own themed colour, resolved server-side — null for a
+      non-card method, which has no card and so no colour to show. */
+  methodColor: string | null;
 };
 
 export function ReconcileClient({

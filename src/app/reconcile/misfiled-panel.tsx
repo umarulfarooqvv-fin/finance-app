@@ -7,7 +7,7 @@ import { formatDay, formatDayShort } from '@/lib/time';
 import { round2 } from '@/lib/money';
 import { Button } from '@/components/ui/button';
 import { inputClass } from '@/components/ui/field';
-import { Badge, Money, Panel, cx } from '@/components/ui/primitives';
+import { Badge, Dot, Money, Panel, cx } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import { reassignMethodAction } from './actions';
 import type { MisfiledCandidate } from './reconcile-client';
@@ -56,12 +56,14 @@ export function MisfiledPanel({
   const [bulk, setBulk] = useState(false);
 
   /* One chip per method actually present, biggest first — the order in which
-     they are worth looking through. */
+     they are worth looking through. Carries that method's card colour too,
+     the same dot used on Today and Cards, so a card reads by colour rather
+     than by reading its name off every chip and every row. */
   const byMethod = useMemo(() => {
-    const counts = new Map<string, { n: number; total: number }>();
+    const counts = new Map<string, { n: number; total: number; color: string | null }>();
     for (const c of candidates) {
-      const at = counts.get(c.method) ?? { n: 0, total: 0 };
-      counts.set(c.method, { n: at.n + 1, total: round2(at.total + c.amount) });
+      const at = counts.get(c.method) ?? { n: 0, total: 0, color: c.methodColor };
+      counts.set(c.method, { n: at.n + 1, total: round2(at.total + c.amount), color: at.color });
     }
     return [...counts.entries()]
       .map(([name, v]) => ({ name, ...v }))
@@ -174,6 +176,7 @@ export function MisfiledPanel({
             </Chip>
             {byMethod.map((m) => (
               <Chip key={m.name} active={method === m.name} onClick={() => setMethod(m.name)}>
+                {m.color ? <Dot color={m.color} size={7} /> : null}
                 {m.name} {m.n}
               </Chip>
             ))}
@@ -257,10 +260,14 @@ export function MisfiledPanel({
                     {c.description}
                     <span className="ml-1.5 text-[11px] text-[var(--color-ink-3)]">{c.category}</span>
                   </span>
-                  {/* The bill it is on now. Its card bills on a different day
-                      from this one, so this is a different statement, not the
-                      same period under another name. */}
+                  {/* The bill it is on now, in that card's own colour — the
+                      same dot used on Today and Cards, so which card a row
+                      belongs to reads at a glance rather than from its text.
+                      Its card bills on a different day from this one, so this
+                      is a different statement, not the same period under
+                      another name. */}
                   <Badge tone="neutral">
+                    {c.methodColor ? <Dot color={c.methodColor} size={7} /> : null}
                     {c.method}
                     {c.fromStatement ? ` · ${statementLabel(c.fromStatement)}` : ''}
                   </Badge>
@@ -313,7 +320,7 @@ function Chip({
       type="button"
       onClick={onClick}
       className={cx(
-        'rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
         active
           ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]'
           : 'border-[var(--color-line)] text-[var(--color-ink-2)] hover:border-[var(--color-line-strong)]',

@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { getSnapshot } from '@/lib/snapshot';
-import { cycleOf, recentCycles, type CycleCard } from '@/lib/cycles';
+import { cycleOf, recentCycles } from '@/lib/cycles';
 import { dayOf, endOfDay, formatDay, startOfDay } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, cx } from '@/components/ui/primitives';
 import { couldBelongToCard, type AppEntry } from '@/lib/statement-match';
+import { cardColor } from '@/lib/statement';
 import { ALL_METHODS, isCard } from '@/lib/types';
 import { ReconcileClient, type MisfiledCandidate } from './reconcile-client';
 import { MisfiledPanel } from './misfiled-panel';
@@ -81,11 +82,24 @@ export default async function ReconcilePage({
      card's bill date and boundary, and inactive cards are included because an
      old entry can still be sitting on one. A non-card method has no statement
      at all, which is itself worth showing rather than leaving blank. */
-  const cycleCards = new Map<string, CycleCard>(snap.cards.map((c) => [c.name, c]));
+  // A full Card structurally satisfies CycleCard too, so one map serves both
+  // this and the colour lookup below.
+  const cardsByName = new Map(snap.cards.map((c) => [c.name, c]));
   const statementOf = (method: string, ts: string): string | null => {
     if (!isCard(method)) return null;
-    const c = cycleCards.get(method);
+    const c = cardsByName.get(method);
     return c ? cycleOf(c, ts, overrides).statementEnd : null;
+  };
+
+  /* Each card's own colour, so a row reads as "which card" at a glance instead
+     of by parsing its badge text — the same dot used on Today and Cards.
+     Resolved here rather than handed to the client as `cardColor` itself: a
+     function is not serialisable across the server/client boundary, and
+     passing one silently fails at runtime with no typecheck to catch it. A
+     non-card method (Fi, Cash) has no card and so no colour. */
+  const colorOf = (method: string): string | null => {
+    const c = cardsByName.get(method);
+    return c ? cardColor(c.slot) : null;
   };
 
   /* Entries in the same window PAID WITH SOMETHING ELSE.
@@ -116,6 +130,7 @@ export default async function ReconcilePage({
       direction: t.cardDirection === 'debt-' ? ('credit' as const) : ('debit' as const),
       verified: t.verified,
       method: t.method,
+      methodColor: colorOf(t.method),
       fromStatement: statementOf(t.method, t.ts!),
     }))
     .sort((a, b) => (a.ts < b.ts ? -1 : 1));
