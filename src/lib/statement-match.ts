@@ -463,3 +463,61 @@ export function couldBelongToCard(row: CandidateRow, card: string): boolean {
 
   return true;
 }
+
+/* ===========================================================================
+   Finding this card's spends among entries filed under OTHER methods.
+
+   The reconciler proper must never do this. It matches the statement against
+   entries whose card IS this card, and letting it reach across methods would
+   have it pair a bank charge with a spend that went off a different card —
+   not a reconciliation, the bug automated. `remaining` would fall while the
+   books stayed wrong.
+
+   So this is a separate question asked afterwards, about the lines the proper
+   pass could NOT explain: is there an entry somewhere else that looks exactly
+   like this charge? It produces PROPOSALS. Nothing moves until a person says
+   so, because being right about the amount is not the same as being right
+   about the card.
+
+   The rules are not re-implemented here — it runs the same engine over the
+   leftovers, which is what guarantees a proposal is held to the identical
+   tie-breaking and both-directions uniqueness the real matching uses. Two
+   plausible candidates for one line still produce nothing rather than a coin
+   toss.
+
+   `maxGroup: 1` switches grouping off: a combination summing to a charge is
+   decent evidence that an entry was split, but poor evidence about which CARD
+   it belongs to, and this decision moves money between bills. Only a single
+   entry matching a single line to the rupee is offered.
+   =========================================================================== */
+
+export type Recovery = {
+  line: StatementLine;
+  /** The entry proposed for it. Held by id so the caller keeps its own type. */
+  entryId: string;
+  dayGap: number;
+  /** Same day, or posted within the tolerance window. */
+  kind: 'exact' | 'near';
+};
+
+export function findOnOtherMethods(
+  lines: StatementLine[],
+  candidates: AppEntry[],
+  opts: { tolerance?: number } = {},
+): Recovery[] {
+  const run = reconcileStatement(lines, candidates, {
+    tolerance: opts.tolerance,
+    maxGroup: 1,
+  });
+
+  return run.matches
+    // Belt and braces: grouping cannot fire at maxGroup 1, and if that ever
+    // changes a many-to-one pairing must not silently become a card move.
+    .filter((m) => m.statement.length === 1 && m.app.length === 1)
+    .map((m) => ({
+      line: m.statement[0]!,
+      entryId: m.app[0]!.id,
+      dayGap: m.dayGap,
+      kind: m.kind === 'exact' ? ('exact' as const) : ('near' as const),
+    }));
+}

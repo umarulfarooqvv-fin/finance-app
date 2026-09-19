@@ -3,12 +3,12 @@
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, CheckCircle2, CircleHelp, CreditCard, FileWarning, Link2,
-  Undo2, Wand2,
+  Undo2, Wand2, Wand,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { parseStatement, type StatementLine } from '@/lib/statement-parse';
 import {
-  chargeFlag, isBankCharge, reconcileStatement, suggestFor,
+  chargeFlag, findOnOtherMethods, isBankCharge, reconcileStatement, suggestFor,
   type AppEntry, type Match,
 } from '@/lib/statement-match';
 import { formatDayShort } from '@/lib/time';
@@ -121,6 +121,11 @@ export function ReconcileClient({
      unpaired leftovers are the only thing worth looking at. */
   const [showMatched, setShowMatched] = useState(false);
   const [bulkMoving, setBulkMoving] = useState(false);
+  /* Proposals the user has taken OFF the table. Only the rejections are held,
+     so a newly found proposal is offered by default rather than needing to be
+     opted into every time the statement is re-matched. */
+  const [rejected, setRejected] = useState<Set<string>>(new Set());
+  const [recovering, setRecovering] = useState(false);
 
   const parsed = useMemo(
     () => parseStatement(submitted, { dateOrder, assumeYear: periodYear }),
@@ -227,6 +232,37 @@ export function ReconcileClient({
   const cardPool = showMatched ? [...openApp, ...matchedEntries] : openApp;
   const pool: (AppEntry & { method?: string })[] = (showAll ? [...cardPool, ...openElsewhere] : cardPool)
     .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+
+  /* THE SWEEP: for every statement line the proper pass could not explain,
+     is there an entry filed under some other method that looks exactly like
+     it? Run after the real reconciliation, never as part of it, and it only
+     ever proposes — see findOnOtherMethods for why both of those matter. */
+  const recoveries = useMemo(
+    () => findOnOtherMethods(openLines, openElsewhere, { tolerance }),
+    [openLines, openElsewhere, tolerance],
+  );
+  const byId = useMemo(() => new Map(openElsewhere.map((e) => [e.id, e])), [openElsewhere]);
+  const proposals = recoveries
+    .map((r) => ({ ...r, entry: byId.get(r.entryId) }))
+    .filter((r): r is typeof r & { entry: MisfiledCandidate } => Boolean(r.entry));
+  const accepted = proposals.filter((r) => !rejected.has(r.entryId));
+  const acceptedTotal = sum(accepted.map((r) => r.entry));
+
+  async function acceptProposals() {
+    if (accepted.length === 0) return;
+    setRecovering(true);
+    let moved = 0;
+    for (const r of accepted) {
+      const result = await reassignMethodAction({ id: r.entryId, method: card });
+      if (result.ok) moved++;
+      else notify('error', `${r.entry.description}: ${result.error}`);
+    }
+    setRecovering(false);
+    if (moved > 0) {
+      notify('success', `${moved} ${moved === 1 ? 'entry' : 'entries'} moved to ${card}.`);
+      router.refresh();
+    }
+  }
 
   const selectedLines = openLines.filter((l) => pickedLines.has(l.line));
   const selectedApp = openApp.filter((e) => pickedApp.has(e.id));
@@ -496,6 +532,75 @@ export function ReconcileClient({
                   <Money value={sum(charges)} size="sm" tone="debt" className="font-semibold" />
                 </li>
               </ul>
+            </Panel>
+          ) : null}
+
+          {/* ---- Found somewhere else ------------------------------------ */}
+          {proposals.length > 0 ? (
+            <Panel className="mb-4">
+              <SectionTitle>Probably on {card} &middot; {proposals.length}</SectionTitle>
+              <p className="mb-3 text-xs text-[var(--color-ink-2)]">
+                These charges have nothing behind them on {card}, but an entry filed under another
+                method matches each one to the rupee. That is what a spend typed against the wrong
+                method looks like. Check them and move the lot.
+              </p>
+
+              {accepted.length > 0 ? (
+                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[var(--radius-field)] border border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-2">
+                  <Wand className="h-4 w-4 shrink-0 text-[var(--color-accent)]" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 text-xs text-[var(--color-ink-2)]">
+                    {accepted.length} of {proposals.length} ticked, worth{' '}
+                    <span className="sensitive num font-semibold">{acceptedTotal.toFixed(2)}</span>
+                    {' — '}moving them explains that much of the{' '}
+                    <span className="sensitive num">{Math.abs(remaining).toFixed(2)}</span> still
+                    unaccounted for.
+                  </span>
+                  <Button size="sm" pending={recovering} onClick={acceptProposals}>
+                    Move {accepted.length} to {card}
+                  </Button>
+                </div>
+              ) : null}
+
+              <ul className="flex flex-col">
+                {proposals.map((r) => {
+                  const on = !rejected.has(r.entryId);
+                  return (
+                    <li
+                      key={r.entryId}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--color-line)] py-2 text-sm last:border-b-0"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() => toggle(rejected, r.entryId, setRejected)}
+                        aria-label={`Move ${r.entry.description} to ${card}`}
+                        className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
+                      />
+                      <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
+                        {formatDayShort(r.line.day)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{r.line.description}</span>
+                      <ArrowRight className="h-3 w-3 shrink-0 text-[var(--color-ink-3)]" aria-hidden="true" />
+                      <span className="min-w-0 flex-1 truncate text-xs text-[var(--color-ink-2)]">
+                        {r.entry.description}
+                      </span>
+                      <Badge tone="neutral">
+                        {r.entry.methodColor ? <Dot color={r.entry.methodColor} size={7} /> : null}
+                        {r.entry.method}
+                      </Badge>
+                      {r.kind === 'near' ? <Badge tone="neutral">{r.dayGap}d apart</Badge> : null}
+                      <Money value={r.entry.amount} size="sm" tone="debt" />
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <p className="mt-2 border-t border-[var(--color-line)] pt-2 text-[11px] text-[var(--color-ink-3)]">
+                Only a single entry matching a single charge to the rupee is offered, and only when
+                nothing else fits it equally well — the automatic matching itself never looks at
+                other methods, because a charge paired with a spend that went off a different card
+                is not a reconciliation. Moving one changes its payment method and nothing else.
+              </p>
             </Panel>
           ) : null}
 

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import {
-  chargeFlag, couldBelongToCard, isBankCharge, reconcileStatement, subsetsSummingTo, suggestFor,
-  type AppEntry,
+  chargeFlag, couldBelongToCard, findOnOtherMethods, isBankCharge, reconcileStatement,
+  subsetsSummingTo, suggestFor, type AppEntry,
 } from '@/lib/statement-match';
 import type { StatementLine } from '@/lib/statement-parse';
 
@@ -333,4 +333,94 @@ test('credit given, investments and unclassified rows stay candidates', () => {
   for (const kind of ['credit_given', 'investment', 'emi', 'unknown']) {
     assert.equal(couldBelongToCard(row('Fi', null, kind), 'Edge'), true, kind);
   }
+});
+
+/* ---------------------------------------------------------------------------
+   Recovering this card's spends from entries filed under another method.
+
+   Proposals, not moves — so the bar is not "could this be it" but "is this the
+   only thing it could be". Most of these assert a REFUSAL, because a wrong
+   proposal here re-files real money onto the wrong bill.
+   --------------------------------------------------------------------------- */
+
+test('an exact-amount entry on another method is proposed', () => {
+  const found = findOnOtherMethods(
+    [line('2026-08-22', 1799, 'MAX RETAIL 4617')],
+    [entry('2026-08-22', 1799, 'Shirts (Banglore Trip)')],
+  );
+  assert.equal(found.length, 1);
+  assert.equal(found[0]!.kind, 'exact');
+  assert.equal(found[0]!.dayGap, 0);
+});
+
+test('a late-posted entry is proposed, and says how late', () => {
+  const found = findOnOtherMethods(
+    [line('2026-08-25', 450, 'SWIGGY')],
+    [entry('2026-08-22', 450, 'Dinner')],
+    { tolerance: 4 },
+  );
+  assert.equal(found.length, 1);
+  assert.equal(found[0]!.kind, 'near');
+  assert.equal(found[0]!.dayGap, 3);
+});
+
+test('two equally close candidates propose NOTHING', () => {
+  // One three days before, one three days after. Choosing is a coin toss, and
+  // the loser is real money moved onto a bill it never belonged to.
+  const found = findOnOtherMethods(
+    [line('2026-08-22', 200, 'SHOP')],
+    [entry('2026-08-19', 200, 'On Fi'), entry('2026-08-25', 200, 'On Scapia')],
+    { tolerance: 4 },
+  );
+  assert.equal(found.length, 0);
+});
+
+test('an entry either of two lines could claim is still proposed', () => {
+  /* Not the same situation as a tie between two ENTRIES, which is refused
+     above. Choosing which entry to move is a real decision with a loser. But
+     both of these LINES are charges on this card's own statement, so whichever
+     one it pairs with, the only thing being decided here — that this entry
+     belongs on this card — comes out the same. Refusing would drop a correct
+     proposal to avoid an ambiguity that does not change the answer. */
+  const found = findOnOtherMethods(
+    [line('2026-08-20', 300, 'SHOP A'), line('2026-08-24', 300, 'SHOP B')],
+    [entry('2026-08-22', 300, 'Something')],
+    { tolerance: 4 },
+  );
+  assert.equal(found.length, 1);
+});
+
+test('direction must agree — a refund is not a charge', () => {
+  const found = findOnOtherMethods(
+    [line('2026-08-22', 500, 'PURCHASE', 'debit')],
+    [entry('2026-08-22', 500, 'Refund received', 'credit')],
+  );
+  assert.equal(found.length, 0);
+});
+
+test('an amount that is close but not equal is not proposed', () => {
+  const found = findOnOtherMethods(
+    [line('2026-08-22', 500, 'SHOP')],
+    [entry('2026-08-22', 499, 'Nearly')],
+  );
+  assert.equal(found.length, 0);
+});
+
+test('two entries summing to one line are NEVER proposed', () => {
+  // Good evidence the charge was split, poor evidence about which CARD it
+  // belongs to — and this decision moves money between bills.
+  const found = findOnOtherMethods(
+    [line('2026-08-22', 500, 'RESTAURANT')],
+    [entry('2026-08-22', 300, 'Meal'), entry('2026-08-22', 200, 'Tip')],
+  );
+  assert.equal(found.length, 0);
+});
+
+test('each entry is proposed at most once across the whole statement', () => {
+  const found = findOnOtherMethods(
+    [line('2026-08-10', 70, 'A'), line('2026-08-10', 70, 'B')],
+    [entry('2026-08-10', 70, 'Only one')],
+  );
+  assert.equal(found.length, 1);
+  assert.equal(new Set(found.map((f) => f.entryId)).size, found.length);
 });
