@@ -246,6 +246,16 @@ export function ReconcileClient({
     .map((r) => ({ ...r, entry: byId.get(r.entryId) }))
     .filter((r): r is typeof r & { entry: MisfiledCandidate } => Boolean(r.entry));
   const accepted = proposals.filter((r) => !rejected.has(r.entryId));
+  const proposedIds = useMemo(() => new Set(proposals.map((p) => p.entryId)), [proposals]);
+  /* Membership of the elsewhere pool, by identity.
+
+     NOT `e.method !== card`, which is a different question with a different
+     answer. A bill payment is ON this card and paid FROM a bank account, so it
+     sits in the card's own entries with a method that differs — reading the
+     method would file it as misplaced and offer to "correct" it onto this
+     card, rewriting it to say the card paid its own bill. It is in `entries`
+     precisely because it belongs there, so ask the list, not the field. */
+  const elsewhereIds = useMemo(() => new Set(openElsewhere.map((e) => e.id)), [openElsewhere]);
   const acceptedTotal = sum(accepted.map((r) => r.entry));
 
   async function acceptProposals() {
@@ -808,15 +818,25 @@ export function ReconcileClient({
                     ) : (
                       <ul className="flex flex-col">
                         {pool.map((e) => {
-                          const filedElsewhere = Boolean(e.method && e.method !== card);
+                          const filedElsewhere = elsewhereIds.has(e.id);
                           const isMatched = matchedAppIds.has(e.id);
+                          const isProposed = proposedIds.has(e.id);
                           return (
                             <li
                               key={e.id}
                               className={cx(
                                 'flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 last:border-b-0',
-                                filedElsewhere && 'bg-[var(--color-raised)]',
-                                isMatched && 'bg-[var(--color-pos-soft)]',
+                                /* One tint, chosen explicitly. Two background
+                                   utilities with arbitrary values have equal
+                                   specificity, so which one won would come down
+                                   to stylesheet order rather than intent. */
+                                isMatched
+                                  ? 'bg-[var(--color-pos-soft)]'
+                                  : isProposed
+                                    ? 'bg-[var(--color-accent-soft)]'
+                                    : filedElsewhere
+                                      ? 'bg-[var(--color-raised)]'
+                                      : '',
                               )}
                             >
                               {/* A matched row has nothing left to do — no
@@ -842,6 +862,11 @@ export function ReconcileClient({
                               </span>
                               <span className="min-w-0 flex-1 truncate text-sm">{e.description}</span>
                               {filedElsewhere ? <Badge tone="warn">{e.method}</Badge> : null}
+                              {/* The sweep found a charge on the statement that
+                                  this entry matches to the rupee. Flagged here
+                                  too, not only in its own panel, so it is
+                                  findable while scrolling the whole period. */}
+                              {isProposed ? <Badge tone="accent">Probably {card}</Badge> : null}
                               {isMatched ? <Badge tone="good">On statement</Badge> : null}
                               <Money
                                 value={e.amount}
