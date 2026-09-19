@@ -17,10 +17,19 @@ import { NAV_SECTIONS } from '@/lib/nav-sections';
    =========================================================================== */
 
 export function CommandPalette({
-  open, onOpenChange,
+  open, onOpenChange, autoFocusInput = true,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Off for the phone tab bar's More button. Autofocusing pops the virtual
+   * keyboard, which on a phone eats most of the screen before the fourteen
+   * grouped destinations are even visible — exactly backwards for a button
+   * whose job is "let me reach a page", not "let me type a query". Desktop
+   * keeps the default: a hand is already on the keyboard when ⌘K or the
+   * sidebar's Search button is used, so focusing it immediately is the point.
+   */
+  autoFocusInput?: boolean;
 }) {
   const router = useRouter();
 
@@ -51,7 +60,7 @@ export function CommandPalette({
         <div className="flex items-center gap-2 border-b border-[var(--color-line)] px-3">
           <Search className="h-4 w-4 shrink-0 text-[var(--color-ink-3)]" aria-hidden="true" />
           <Command.Input
-            autoFocus
+            autoFocus={autoFocusInput}
             placeholder="Go to… or search"
             className="w-full bg-transparent py-3 text-sm outline-none placeholder:text-[var(--color-ink-3)]"
           />

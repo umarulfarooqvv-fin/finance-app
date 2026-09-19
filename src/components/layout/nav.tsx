@@ -1,13 +1,14 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { IndianRupee } from 'lucide-react';
+import { IndianRupee, MoreHorizontal } from 'lucide-react';
 import {
-  NAV_SECTIONS, PRIMARY_NAV_ITEMS, isActive, type NavItem,
+  NAV_SECTIONS, PRIMARY_NAV_ITEMS, isActive, resolveActiveHref, type NavItem,
 } from '@/lib/nav-sections';
 import { cx } from '@/components/ui/primitives';
-import { CommandTrigger } from '@/components/layout/command-palette';
+import { CommandPalette, CommandTrigger } from '@/components/layout/command-palette';
 
 /* ===========================================================================
    Two shapes, one data source (see lib/nav-sections.ts).
@@ -18,7 +19,15 @@ import { CommandTrigger } from '@/components/layout/command-palette';
 
    Desktop: a left rail with the same destinations, grouped into sections, and
    the command palette trigger pinned at the top.
-   =========================================================================== */
+
+   THE TAB BAR ONLY HAS ROOM FOR SEVEN OF FOURTEEN DESTINATIONS. `primary`
+   picks the seven that earn a permanent thumb-width slot; the rest — Income,
+   Tally, Inbox, Check a statement, Search, Shortcuts, Settings — used to be
+   reachable only from the sidebar, which is `hidden` below the `lg` breakpoint
+   and therefore invisible on a phone. There was no route to them at all on
+   mobile. The eighth slot, More, opens the same command palette the sidebar's
+   Search button and ⌘K open on desktop — already a full list of every
+   destination grouped by section, so it is the fix rather than a new one. */
 
 /** Routes that render without app chrome. The lock screen must show nothing
     of the app behind it — not even the shape of the navigation. */
@@ -28,37 +37,68 @@ const isBare = (pathname: string) =>
 
 export function BottomBar() {
   const pathname = usePathname();
+  const [paletteOpen, setPaletteOpen] = useState(false);
   if (isBare(pathname)) return null;
 
+  // True when the current page is a real destination that just has no tab of
+  // its own — e.g. /settings — so More lights up instead of nothing lighting
+  // up at all, which otherwise looks like the bar lost track of where you are.
+  const activeHref = resolveActiveHref(pathname);
+  const onHiddenPage = activeHref !== null && !PRIMARY_NAV_ITEMS.some((i) => i.href === activeHref);
+
   return (
-    <nav
-      aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-line)] bg-[var(--color-surface)]/95 backdrop-blur-lg lg:hidden"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-    >
-      <div className="mx-auto flex max-w-lg items-stretch gap-0.5 px-2 py-1">
-        {PRIMARY_NAV_ITEMS.map((item) => {
-          const active = isActive(pathname, item);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={active ? 'page' : undefined}
-              className={cx(
-                'flex min-h-[52px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 transition-colors',
-                active
-                  ? 'text-[var(--color-accent)]'
-                  : 'text-[var(--color-ink-3)] active:bg-[var(--color-raised)]',
-              )}
-            >
-              <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
-              <span className="text-[10px] font-medium leading-none">{item.label}</span>
-            </Link>
-          );
-        })}
-      </div>
-    </nav>
+    <>
+      <nav
+        aria-label="Main"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-line)] bg-[var(--color-surface)]/95 backdrop-blur-lg lg:hidden"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="mx-auto flex max-w-lg items-stretch gap-0.5 px-2 py-1">
+          {PRIMARY_NAV_ITEMS.map((item) => {
+            const active = isActive(pathname, item);
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                className={cx(
+                  'flex min-h-[52px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 transition-colors',
+                  active
+                    ? 'text-[var(--color-accent)]'
+                    : 'text-[var(--color-ink-3)] active:bg-[var(--color-raised)]',
+                )}
+              >
+                <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                <span className="text-[10px] font-medium leading-none">{item.label}</span>
+              </Link>
+            );
+          })}
+
+          {/* Everything without a tab of its own: Income, Tally, Inbox, Check a
+              statement, Search, Shortcuts, Settings. Same palette the sidebar
+              opens, so nothing here is duplicated or can drift out of sync
+              with it — one list, grouped by section, filterable by typing. */}
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            aria-label="More destinations"
+            aria-current={onHiddenPage ? 'page' : undefined}
+            className={cx(
+              'flex min-h-[52px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 transition-colors',
+              onHiddenPage
+                ? 'text-[var(--color-accent)]'
+                : 'text-[var(--color-ink-3)] active:bg-[var(--color-raised)]',
+            )}
+          >
+            <MoreHorizontal className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+            <span className="text-[10px] font-medium leading-none">More</span>
+          </button>
+        </div>
+      </nav>
+
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} autoFocusInput={false} />
+    </>
   );
 }
 
