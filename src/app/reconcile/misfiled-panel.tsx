@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { CheckCircle2, ChevronDown, Search, WalletCards } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Plus, Search, WalletCards } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { formatDay, formatDayShort } from '@/lib/time';
 import { round2 } from '@/lib/money';
@@ -10,6 +10,7 @@ import { inputClass } from '@/components/ui/field';
 import { Badge, Dot, Money, Panel, cx } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import { reassignMethodAction } from './actions';
+import { TransactionDialog } from '@/app/transactions/transaction-dialog';
 import type { MisfiledCandidate } from '@/lib/misfiled';
 
 /* ===========================================================================
@@ -36,6 +37,7 @@ import type { MisfiledCandidate } from '@/lib/misfiled';
 export function MisfiledPanel({
   candidates,
   own = [],
+  billed = null,
   card,
   toStatement,
 }: {
@@ -45,6 +47,11 @@ export function MisfiledPanel({
       the cycle reads as one list instead of two lists on one screen that have
       to be held side by side in the head. */
   own?: MisfiledCandidate[];
+  /** What the bank billed for this cycle against what is recorded against it,
+      when the bank's own figure has been entered. The bar it draws is the
+      answer to "how much is still missing", which is the question the list
+      underneath exists to close. */
+  billed?: { actual: number; recorded: number; shortfall: number } | null;
   card: string;
   /** The statement every move here lands on — the one being viewed. Fixed, by
       construction: the window IS this cycle, so an entry dated inside it falls
@@ -61,6 +68,11 @@ export function MisfiledPanel({
   const [moving, setMoving] = useState<string | null>(null);
   const [bulk, setBulk] = useState(false);
   const [withOwn, setWithOwn] = useState(false);
+  const [fullView, setFullView] = useState(false);
+  /* The day to date a new entry to. A spend that was never logged at all is
+     invisible to every list here — the only way to close the gap is to add it,
+     and it has to carry the day it happened rather than today. */
+  const [addOn, setAddOn] = useState<string | null>(null);
 
   /* Rows already on this card, by id — the one thing the list needs to know
      about a row that cannot be "moved here" because it is already here. */
@@ -209,6 +221,78 @@ export function MisfiledPanel({
 
       {!open ? null : (
         <div className="mt-3 border-t border-[var(--color-line)] pt-3">
+          {/* How much of the bank's own figure is accounted for. Shown only
+              when that figure has been entered, because without it the bar
+              would be measuring the app against itself and always read 100%. */}
+          {billed ? (
+            <div className="mb-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] px-3 py-2.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span className="text-xs text-[var(--color-ink-2)]">
+                  Recorded{' '}
+                  <Money value={billed.recorded} size="sm" className="font-semibold" />
+                  {' of the '}
+                  <Money value={billed.actual} size="sm" /> the bank billed
+                </span>
+                <span
+                  className={cx(
+                    'num text-sm font-semibold',
+                    Math.abs(billed.shortfall) < 0.005
+                      ? 'text-[var(--color-pos)]'
+                      : 'text-[var(--color-neg)]',
+                  )}
+                >
+                  {Math.round(
+                    (billed.actual > 0.005 ? billed.recorded / billed.actual : 1) * 100,
+                  )}%
+                </span>
+              </div>
+
+              <div
+                className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-raised)]"
+                role="meter"
+                aria-valuenow={Math.round(
+                  (billed.actual > 0.005 ? billed.recorded / billed.actual : 1) * 100,
+                )}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Share of the ${card} bill accounted for`}
+              >
+                <div
+                  className={cx(
+                    'h-full rounded-full transition-[width]',
+                    Math.abs(billed.shortfall) < 0.005
+                      ? 'bg-[var(--color-pos)]'
+                      : 'bg-[var(--color-warn)]',
+                  )}
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.max(0, (billed.actual > 0.005 ? billed.recorded / billed.actual : 1) * 100),
+                    )}%`,
+                  }}
+                />
+              </div>
+
+              <p className="mt-2 text-[11px] text-[var(--color-ink-2)]">
+                {Math.abs(billed.shortfall) < 0.005 ? (
+                  'Every rupee the bank billed is accounted for.'
+                ) : billed.shortfall > 0 ? (
+                  <>
+                    <Money value={billed.shortfall} size="sm" tone="debt" className="font-semibold" />
+                    {' still missing — a spend on this card that was typed against another method '}
+                    is in the list below; one that was never logged at all is not, and has to be
+                    added.
+                  </>
+                ) : (
+                  <>
+                    <Money value={Math.abs(billed.shortfall)} size="sm" tone="debt" className="font-semibold" />
+                    {' more recorded than the bank billed.'}
+                  </>
+                )}
+              </p>
+            </div>
+          ) : null}
+
           <div className="flex flex-wrap items-center gap-1.5">
             <Chip active={method === null} onClick={() => setMethod(null)}>
               All {candidates.length}
@@ -279,15 +363,27 @@ export function MisfiledPanel({
             {/* The cycle as one list. Without this the card's own entries are a
                 separate panel elsewhere on the page, and comparing the two
                 means holding one in your head while reading the other. */}
-            {own.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {own.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setWithOwn((v) => !v)}
+                  className="text-[11px] font-medium text-[var(--color-accent)]"
+                >
+                  {withOwn ? `Hide ${card}'s own` : `Show ${card} too (${own.length})`}
+                </button>
+              ) : null}
+              {/* Working a whole bill from a 26rem window means scrolling a
+                  list inside a page that also scrolls. Full view drops the
+                  cage and puts every row on the page. */}
               <button
                 type="button"
-                onClick={() => setWithOwn((v) => !v)}
+                onClick={() => setFullView((v) => !v)}
                 className="text-[11px] font-medium text-[var(--color-accent)]"
               >
-                {withOwn ? `Hide ${card}'s own` : `Show ${card} too (${own.length})`}
+                {fullView ? 'Compact' : 'Full view'}
               </button>
-            ) : null}
+            </div>
           </div>
 
           {days.length === 0 ? (
@@ -295,7 +391,12 @@ export function MisfiledPanel({
           ) : (
             // Clipped sideways on purpose: the day bands are bled out past this
             // container's edges, and without this they would widen the panel.
-            <div className="mt-1 max-h-[26rem] overflow-y-auto overflow-x-hidden">
+            <div
+              className={cx(
+                'mt-1 overflow-x-hidden',
+                fullView ? '' : 'max-h-[26rem] overflow-y-auto',
+              )}
+            >
               {days.map((g) => (
                 <section key={g.day}>
                   {/* The date once per day, not once per row, and sticky so it
@@ -315,8 +416,24 @@ export function MisfiledPanel({
                         {g.items.length} {g.items.length === 1 ? 'entry' : 'entries'}
                       </span>
                     </span>
-                    <span className="sensitive num text-xs font-semibold text-[var(--color-ink-2)]">
-                      {g.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    <span className="flex items-center gap-2">
+                      <span className="sensitive num text-xs font-semibold text-[var(--color-ink-2)]">
+                        {g.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                      {/* A spend that was never logged appears in no list here,
+                          because there is nothing to appear. Adding it from the
+                          day it belongs to is the only way to close that part
+                          of the gap, and it must carry that day rather than
+                          today or it lands on the wrong bill. */}
+                      <button
+                        type="button"
+                        onClick={() => setAddOn(g.day)}
+                        aria-label={`Add an entry on ${formatDay(g.day)}`}
+                        title={`Add an entry on ${formatDay(g.day)}`}
+                        className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-[var(--color-line)] text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                      >
+                        <Plus className="h-3 w-3" aria-hidden="true" />
+                      </button>
                     </span>
                   </h4>
 
@@ -407,6 +524,16 @@ export function MisfiledPanel({
               ))}
             </div>
           )}
+
+          {/* Noon, not midnight: an entry timed 00:00 on a bill date sits
+              exactly on the boundary between two statements, which is the one
+              timestamp whose cycle depends on a rule rather than a date. */}
+          <TransactionDialog
+            open={addOn !== null}
+            onOpenChange={(v) => !v && setAddOn(null)}
+            defaultTs={addOn ? `${addOn}T12:00:00` : `${toStatement}T12:00:00`}
+            onSaved={() => { setAddOn(null); router.refresh(); }}
+          />
 
           <p className="mt-2.5 border-t border-[var(--color-line)] pt-2.5 text-[11px] text-[var(--color-ink-3)]">
             Each card bills on its own day, so the date beside a card name is the statement that

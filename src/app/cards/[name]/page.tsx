@@ -10,6 +10,7 @@ import { misfiledCandidates } from '@/lib/misfiled';
 import { MisfiledPanel } from '@/app/reconcile/misfiled-panel';
 import { dayOf, formatDay, formatDayShort, relativeDays } from '@/lib/time';
 import { money, percent } from '@/lib/format';
+import { round2 } from '@/lib/money';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import {
   Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, Stat, StatGrid, TableWrap, Td, Th,
@@ -95,6 +96,25 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
   );
   const recorded = reconcileRecorded(snap, card);
   const statementDates = recentStatementDates(card, today, 6);
+  /* The bank's own figure for the cycle on screen, when it has been entered
+     through "Check against the bank". Without it there is nothing to measure
+     against — the app compared to itself always agrees — so the bar is simply
+     not drawn. `current` picks the total under the boundary actually in force,
+     which is the number the rest of the page is showing. */
+  const checkedCycle = recorded.find((r) => r.statementDate === row.cycle.statementEnd);
+  const billCheck = checkedCycle
+    ? {
+        actual: checkedCycle.actual,
+        recorded: checkedCycle.current === 'inclusive'
+          ? checkedCycle.inclusive
+          : checkedCycle.exclusive,
+        shortfall: round2(
+          checkedCycle.actual
+            - (checkedCycle.current === 'inclusive' ? checkedCycle.inclusive : checkedCycle.exclusive),
+        ),
+      }
+    : null;
+
   const m = row.cycleMath;
   const checked = row.verified.verified + row.verified.unverified;
 
@@ -238,6 +258,7 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
         <MisfiledPanel
           candidates={cycleEntries.elsewhere}
           own={cycleEntries.own}
+          billed={billCheck}
           card={card.name}
           toStatement={row.cycle.statementEnd}
         />
