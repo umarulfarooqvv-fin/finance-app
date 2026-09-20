@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeStatementLine } from '@/lib/statement-describe';
+import { describeMerged, describeStatementLine } from '@/lib/statement-describe';
 
 const debit = (description: string) => ({ description, direction: 'debit' as const });
 const credit = (description: string) => ({ description, direction: 'credit' as const });
@@ -80,4 +80,48 @@ describe('describeStatementLine', () => {
       expect(d.remarks.trim().length).toBeGreaterThan(0);
     }
   });
+});
+
+describe('describeMerged', () => {
+  const emi = [
+    { description: 'Interest Amount Amortization - <24/24>INDAMAZON PGSI', direction: 'debit' as const, amount: 37.98, day: '2026-09-01' },
+    { description: 'IGST-CI@18%', direction: 'debit' as const, amount: 6.84, day: '2026-09-01' },
+    { description: 'Principal Amount Amortization - <24/24>INDAMAZON PGSI', direction: 'debit' as const, amount: 2850.13, day: '2026-09-01' },
+  ];
+
+  it('sums the parts to the paisa', () => {
+    expect(describeMerged(emi, 'ICICI').amount).toBe(2894.95);
+  });
+
+  /* The rule that decides what the merged row IS. Named after the tax line, an
+     EMI instalment would file itself under Taxes and vanish from the series. */
+  it('takes its name and category from the largest line, not the first', () => {
+    const d = describeMerged(emi, 'ICICI');
+    expect(d.remarks).toMatch(/Principal/i);
+    expect(d.category).not.toBe('Taxes');
+  });
+
+  it('dates the entry at the earliest of its parts', () => {
+    const spread = [
+      { ...emi[0]!, day: '2026-09-03' },
+      { ...emi[2]!, day: '2026-09-01' },
+    ];
+    expect(describeMerged(spread, 'ICICI').day).toBe('2026-09-01');
+  });
+
+  it('behaves like a single reading when given one line', () => {
+    const one = describeMerged([emi[1]!], 'ICICI');
+    expect(one).toMatchObject({ remarks: 'Tax', category: 'Taxes', amount: 6.84 });
+  });
+});
+
+/* A bank glues codes to names with no space. Casing from the word's first
+   character then lowercases the name that follows the code. */
+it('cases a name glued to a code', () => {
+  const d = describeStatementLine(
+    { description: 'Principal Amount Amortization - <24/24>INDAMAZON PGSI', direction: 'debit' },
+    'ICICI',
+  );
+  expect(d.remarks).toMatch(/Indamazon/);
+  expect(d.remarks).not.toMatch(/indamazon/);
 });

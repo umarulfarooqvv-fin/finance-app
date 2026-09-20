@@ -89,7 +89,15 @@ function houseCase(text: string): string {
       if (ACRONYMS.has(bare.toUpperCase())) return w.toUpperCase();
       // Mixed case already — the bank meant it (McDonald, iPhone, BookMyShow).
       if (/[a-z]/.test(w) && /[A-Z]/.test(w)) return w;
-      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+      /* Cased per RUN OF LETTERS, not per word. A bank glues a code to a name
+         with no space — "<24/24>INDAMAZON" — and casing from the word's first
+         character makes that character a digit or a bracket, so the name that
+         follows it gets lowercased whole and comes out "indamazon". */
+      return w.replace(/[A-Za-z]+/g, (run) =>
+        ACRONYMS.has(run.toUpperCase())
+          ? run.toUpperCase()
+          : run.charAt(0).toUpperCase() + run.slice(1).toLowerCase(),
+      );
     })
     .join(' ');
 }
@@ -167,5 +175,54 @@ export function describeStatementLine(
     note: kind
       ? `Named from the statement; ${kind.category.toLowerCase()} because the line says so.`
       : 'Named from the statement. The category is a guess nobody should make for you.',
+  };
+}
+
+/* ===========================================================================
+   Several statement lines that are one entry here.
+
+   A bank splits things this ledger keeps whole. An EMI instalment arrives as
+   three lines — principal, interest, and the tax on the interest — and this
+   ledger has always recorded it as one row, because one row is what it is:
+   a single instalment of a single loan. Adding the three separately would
+   reconcile the bill and wreck the ledger, leaving a "Tax" and an "Interest"
+   with no idea what they belong to and an EMI series with a hole in it.
+   =========================================================================== */
+
+/**
+ * One draft from several lines.
+ *
+ * THE LARGEST LINE NAMES IT. On a split like an EMI the big line is the thing
+ * itself and the small ones are its satellites, so taking the name and the
+ * category from the principal gives "the instalment, with its tax" rather than
+ * "a tax, with an instalment attached". Taking the first line instead would
+ * name the whole by whichever piece the bank happened to print first.
+ *
+ * The date is the EARLIEST. A merged entry has to sit in the cycle its parts
+ * sit in, and the earliest is the only choice that cannot push it past a
+ * statement boundary its parts were on the near side of.
+ *
+ * Direction is NOT reconciled here — the caller must not mix a charge with a
+ * refund, because summing those produces a number that is neither.
+ */
+export function describeMerged(
+  lines: { description: string; direction: 'debit' | 'credit'; amount: number; day: string }[],
+  card: string,
+): Described & { amount: number; day: string } {
+  if (lines.length === 0) throw new Error('describeMerged needs at least one line');
+
+  const amount = Math.round(lines.reduce((a, l) => a + l.amount, 0) * 100) / 100;
+  const day = lines.reduce((a, l) => (l.day < a ? l.day : a), lines[0]!.day);
+  const biggest = lines.reduce((a, l) => (l.amount > a.amount ? l : a), lines[0]!);
+  const base = describeStatementLine(biggest, card);
+
+  return {
+    ...base,
+    amount,
+    day,
+    note:
+      lines.length === 1
+        ? base.note
+        : `${lines.length} lines merged into one entry, named after the largest.`,
   };
 }

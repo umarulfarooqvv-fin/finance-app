@@ -24,7 +24,7 @@ import { reassignMethodAction } from './actions';
 import { recordSummaryAction } from '@/app/cards/[name]/actions';
 import { StatementPromptCard } from './prompt-card';
 import { TransactionDialog } from '@/app/transactions/transaction-dialog';
-import { describeStatementLine } from '@/lib/statement-describe';
+import { describeMerged, describeStatementLine } from '@/lib/statement-describe';
 
 /* ===========================================================================
    Reconciling a pasted statement, line by line.
@@ -127,7 +127,14 @@ export function ReconcileClient({
   /* The statement line being turned into an entry, if any. Held as the line
      itself rather than as a prepared draft: the draft is derived from it, so
      re-opening the dialog cannot show a stale reading of a different row. */
-  const [adding, setAdding] = useState<StatementLine | null>(null);
+  const [adding, setAdding] = useState<StatementLine[] | null>(null);
+
+  /* Statement lines ticked to become ONE entry. A bank splits what this ledger
+     keeps whole — an EMI instalment arrives as principal, interest and the tax
+     on the interest — so the list has to be able to put them back together.
+     Held by line number, and cleared whenever the paste is re-matched, because
+     a number that survived a re-parse would point at a different row. */
+  const [merging, setMerging] = useState<Set<number>>(new Set());
 
   const parsed = useMemo(
     () => parseStatement(submitted, { dateOrder, assumeYear: periodYear }),
@@ -314,6 +321,23 @@ export function ReconcileClient({
      card, so their absence from its statement means nothing. */
   const unbilled = openApp.filter((e) => !elsewhereIds.has(e.id));
 
+  /* The rows ticked to be merged, and what they would become. Both derived
+     from `merging` rather than stored, so a tick and an untick cannot leave a
+     total that no longer matches the rows it claims to add up. */
+  const mergeLines = useMemo(
+    () => parsed.lines.filter((l) => merging.has(l.line)),
+    [parsed.lines, merging],
+  );
+  const mergeTotal = round2(mergeLines.reduce((a, l) => a + l.amount, 0));
+  /* A charge and a refund never merge: summing opposite directions gives a
+     number that is neither, and the bar would offer to save it. */
+  const mergeMixed = new Set(mergeLines.map((l) => l.direction)).size > 1;
+
+  const merged = useMemo(
+    () => (adding && adding.length > 0 ? describeMerged(adding, card) : null),
+    [adding, card],
+  );
+
   async function acceptProposals() {
     if (accepted.length === 0) return;
     setRecovering(true);
@@ -438,7 +462,7 @@ export function ReconcileClient({
 
           <Button
             type="button"
-            onClick={() => { setSubmitted(text); setLinks([]); setPickedLines(new Set()); setPickedApp(new Set()); }}
+            onClick={() => { setSubmitted(text); setLinks([]); setPickedLines(new Set()); setPickedApp(new Set()); setMerging(new Set()); }}
             disabled={!text.trim()}
           >
             Match against {card}
@@ -446,7 +470,7 @@ export function ReconcileClient({
           {hasRun ? (
             <Button
               type="button" variant="ghost"
-              onClick={() => { setText(''); setSubmitted(''); setLinks([]); }}
+              onClick={() => { setText(''); setSubmitted(''); setLinks([]); setMerging(new Set()); }}
             >
               Clear
             </Button>
@@ -624,6 +648,39 @@ export function ReconcileClient({
               </p>
             </div>
 
+            {/* Ticked rows, and the one entry they would become. Appears only
+                once something is ticked: an empty bar would be a permanent
+                instruction on a page most people never need it on. */}
+            {mergeLines.length > 0 ? (
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[var(--radius-field)] border border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-2">
+                <Link2 className="h-4 w-4 shrink-0 text-[var(--color-accent)]" aria-hidden="true" />
+                <span className="min-w-0 flex-1 text-xs text-[var(--color-ink-2)]">
+                  {mergeLines.length} {mergeLines.length === 1 ? 'line' : 'lines'} ticked
+                  {mergeMixed ? (
+                    <span className="text-[var(--color-warn)]">
+                      {' '}— a charge and a repayment cannot be one entry. Untick one of them.
+                    </span>
+                  ) : (
+                    <>
+                      {', adding up to '}
+                      <Money value={mergeTotal} size="sm" className="font-semibold" />
+                      {mergeLines.length > 1 ? ' — one entry, the way this ledger keeps it.' : ''}
+                    </>
+                  )}
+                </span>
+                <Button size="sm" variant="ghost" onClick={() => setMerging(new Set())}>
+                  Clear
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={mergeMixed}
+                  onClick={() => setAdding(mergeLines)}
+                >
+                  Add as one entry
+                </Button>
+              </div>
+            ) : null}
+
             <ul className="flex flex-col">
               {lineStates.map((st) => (
                 <StatementRow
@@ -631,7 +688,9 @@ export function ReconcileClient({
                   state={st}
                   card={card}
                   moving={moving}
-                  onAdd={() => setAdding(st.line)}
+                  ticked={merging.has(st.line.line)}
+                  onTick={() => toggle(merging, st.line.line, setMerging)}
+                  onAdd={() => setAdding([st.line])}
                   onMove={(id) => move(id, card, st.line.description)}
                 />
               ))}
@@ -1178,20 +1237,18 @@ export function ReconcileClient({
       <TransactionDialog
         open={adding !== null}
         onOpenChange={(v) => !v && setAdding(null)}
-        defaultTs={adding ? `${adding.day}T12:00:00` : `${statementDate}T12:00:00`}
+        defaultTs={merged ? `${merged.day}T12:00:00` : `${statementDate}T12:00:00`}
         draft={
-          adding
+          merged
             ? {
-                amount: adding.amount,
+                amount: merged.amount,
                 method: card,
-                ...(() => {
-                  const d = describeStatementLine(adding, card);
-                  return { remarks: d.remarks, category: d.category ?? '' };
-                })(),
+                remarks: merged.remarks,
+                category: merged.category ?? '',
               }
             : null
         }
-        onSaved={() => { setAdding(null); router.refresh(); }}
+        onSaved={() => { setAdding(null); setMerging(new Set()); router.refresh(); }}
       />
     </>
   );
@@ -1215,11 +1272,13 @@ type LineState = {
  * add one. Offering Add beside Move would let one spend be recorded twice.
  */
 function StatementRow({
-  state, card, moving, onAdd, onMove,
+  state, card, moving, ticked, onTick, onAdd, onMove,
 }: {
   state: LineState;
   card: string;
   moving: string | null;
+  ticked: boolean;
+  onTick: () => void;
   onAdd: () => void;
   onMove: (entryId: string) => void;
 }) {
@@ -1227,14 +1286,30 @@ function StatementRow({
   const settled = matched || pairedByHand;
   const flag = chargeFlag(line.description);
   const draft = describeStatementLine(line, card);
+  /* Only a row that would be ADDED can be merged. A settled row is already an
+     entry, and a row whose entry exists elsewhere has to be moved, not copied
+     into a new one — ticking either would build an entry that duplicates a
+     real one. */
+  const mergeable = !settled && !proposal;
 
   return (
     <li
       className={cx(
         'flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[var(--color-line)] py-2 text-sm last:border-b-0',
-        settled ? 'bg-[var(--color-pos-soft)]' : '',
+        settled ? 'bg-[var(--color-pos-soft)]' : ticked ? 'bg-[var(--color-accent-soft)]' : '',
       )}
     >
+      {mergeable ? (
+        <input
+          type="checkbox"
+          checked={ticked}
+          onChange={onTick}
+          aria-label={`Merge ${line.description} into one entry`}
+          className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
+        />
+      ) : (
+        <span className="w-4 shrink-0" aria-hidden="true" />
+      )}
       <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
         {formatDayShort(line.day)}
       </span>
