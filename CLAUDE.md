@@ -148,6 +148,9 @@ per-request dedupe.
      and the deploy failed; on Next 16 Proxy defaults to Node and setting the
      option *throws*. Same rule, new reason.
   The session cookie holds a SHA-256 derivation, never the PIN itself.
+- **Reminders.** `/reminders`, `/api/cron/reminders` (Vercel Cron, 08:00 IST)
+  and `/api/calendar` (an .ics feed). See `docs/REMINDERS.md` — and note that
+  `docs/DEPLOY.md` section 4 describes v2's ntfy alerts, which v3 does not have.
 - **The Google Sheet.** `scripts/sheet-diff.mjs` and `scripts/sync-sheet.mjs`
   (dry-run by default; `--apply` to write). Matching is a **day-level multiset**
   on the natural key, not a set — the same amount, method and category twice in
