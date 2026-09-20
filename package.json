@@ -17,7 +17,8 @@
     "format:check": "prettier --check .",
     "test:watch": "vitest",
     "gen:types": "node --env-file=.env.local scripts/gen-db-types.mjs",
-    "check:privacy": "node scripts/check-privacy.mjs"
+    "check:privacy": "node scripts/check-privacy.mjs",
+    "gen:vapid": "node scripts/gen-vapid.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
@@ -38,7 +39,8 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "server-only": "^0.0.1",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
@@ -46,6 +48,7 @@
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9.0.0",
     "prettier": "^3.3.0",
     "tailwindcss": "^4.3.3",

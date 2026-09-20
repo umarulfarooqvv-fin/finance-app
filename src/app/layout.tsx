@@ -11,6 +11,10 @@ export const metadata: Metadata = {
   description: 'Personal finance manager — cards, spending, ledgers and forecasting.',
   applicationName: 'Finance',
   appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'Finance' },
+  /* Required for Web Push on iOS. Apple only delivers push to a web app that
+     was added to the Home Screen, and only one with a manifest declaring
+     display: standalone — without it the permission prompt never appears. */
+  manifest: '/manifest.webmanifest',
   formatDetection: { telephone: false },
 };
 

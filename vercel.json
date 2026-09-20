@@ -1,3 +1,11 @@
 {
-  "regions": ["syd1"]
+  "regions": [
+    "syd1"
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/reminders",
+      "schedule": "30 2 * * *"
+    }
+  ]
 }

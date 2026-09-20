@@ -40,6 +40,10 @@ const ALLOWED = new Map([
   ['src/lib/format.ts', 'defines the formatters'],
   ['src/components/ui/primitives.tsx', 'defines <Money>, the choke point'],
   ['src/lib/ai/tools.ts', 'server-side JSON for the model, never rendered'],
+  /* A notification body, not a render — there is no DOM to blur. The figure
+     is included only when ReminderSettings.showAmounts is on, which is off by
+     default precisely because a lock screen cannot be blurred. */
+  ['src/lib/push.ts', 'notification payload, gated on showAmounts'],
 ]);
 
 const problems = [];

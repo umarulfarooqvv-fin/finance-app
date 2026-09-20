@@ -1,7 +1,5 @@
 import {
-  ArrowLeftRight, BookOpen, Camera, CreditCard, Home, LineChart,
-  MessageCircleQuestion, Scale, ScanLine, Search, Settings, Smartphone, TrendingUp,
-  Wallet, type LucideIcon,
+  ArrowLeftRight, BellRing, BookOpen, Camera, CreditCard, Home, LineChart, MessageCircleQuestion, Scale, ScanLine, Search, Settings, Smartphone, TrendingUp, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 /* ===========================================================================
@@ -152,6 +150,16 @@ export const NAV_SECTIONS: NavSection[] = [
         keywords: ['reconcile', 'statement', 'bank', 'credit card', 'match', 'paste',
                    'extra charge', 'fee', 'compare', 'verify'],
         match: ['/reconcile'],
+      },
+      {
+        label: 'Reminders',
+        href: '/reminders',
+        icon: BellRing,
+        hint: 'Bills, EMIs and subscriptions before they are late',
+        keywords: ['reminder', 'alert', 'notification', 'notify', 'due', 'upcoming',
+                   'emi', 'instalment', 'installment', 'subscription', 'recurring',
+                   'calendar', 'push'],
+        match: ['/reminders'],
       },
       {
         label: 'Search',
