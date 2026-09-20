@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, CheckCircle2, CircleHelp, CreditCard, FileWarning, Link2,
-  Undo2, Wand2, Wand,
+  Plus, Undo2, Wand2, Wand,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
@@ -23,6 +23,8 @@ import { useToast } from '@/components/ui/toast';
 import { reassignMethodAction } from './actions';
 import { recordSummaryAction } from '@/app/cards/[name]/actions';
 import { StatementPromptCard } from './prompt-card';
+import { TransactionDialog } from '@/app/transactions/transaction-dialog';
+import { describeStatementLine } from '@/lib/statement-describe';
 
 /* ===========================================================================
    Reconciling a pasted statement, line by line.
@@ -121,6 +123,11 @@ export function ReconcileClient({
      opted into every time the statement is re-matched. */
   const [rejected, setRejected] = useState<Set<string>>(new Set());
   const [recovering, setRecovering] = useState(false);
+
+  /* The statement line being turned into an entry, if any. Held as the line
+     itself rather than as a prepared draft: the draft is derived from it, so
+     re-opening the dialog cannot show a stale reading of a different row. */
+  const [adding, setAdding] = useState<StatementLine | null>(null);
 
   const parsed = useMemo(
     () => parseStatement(submitted, { dateOrder, assumeYear: periodYear }),
@@ -602,14 +609,13 @@ export function ReconcileClient({
               </p>
               <ul className="flex flex-col">
                 {charges.map((l) => (
-                  <li key={l.line} className="flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 text-sm last:border-b-0">
-                    <span className="num w-24 shrink-0 text-xs text-[var(--color-ink-3)]">
-                      {formatDayShort(l.day)}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">{l.description}</span>
-                    <Badge tone="warn">{chargeFlag(l.description)?.label}</Badge>
-                    <Money value={l.amount} size="sm" tone="debt" />
-                  </li>
+                  <MissingLine
+                    key={l.line}
+                    line={l}
+                    card={card}
+                    badge={chargeFlag(l.description)?.label ?? null}
+                    onAdd={() => setAdding(l)}
+                  />
                 ))}
                 <li className="flex items-center justify-between gap-2 pt-2 text-xs">
                   <span className="text-[var(--color-ink-3)]">Total added by the bank</span>
@@ -1013,10 +1019,17 @@ export function ReconcileClient({
           {unlogged.length > 0 ? (
             <Panel className="mb-4">
               <SectionTitle>Not recorded here &middot; {unlogged.length}</SectionTitle>
-              <p className="text-xs text-[var(--color-ink-2)]">
+              <p className="mb-2 text-xs text-[var(--color-ink-2)]">
                 Purchases on the statement with nothing behind them. Either they were never logged,
-                or they went on a different card.
+                or they went on a different card. Adding one opens the entry form already filled in
+                from the line &mdash; dated, priced, and named in this ledger&rsquo;s words rather
+                than the bank&rsquo;s. The category is left for you where the line does not say it.
               </p>
+              <ul className="flex flex-col">
+                {unlogged.map((l) => (
+                  <MissingLine key={l.line} line={l} card={card} badge={null} onAdd={() => setAdding(l)} />
+                ))}
+              </ul>
             </Panel>
           ) : null}
 
@@ -1114,7 +1127,86 @@ export function ReconcileClient({
           </Panel>
         </>
       )}
+
+      {/* Turning a statement line into an entry.
+
+          The draft is derived from the line each time rather than stored, and
+          noon rather than midnight for the same reason as everywhere else: an
+          entry timed 00:00 on a bill date sits exactly on the boundary between
+          two statements.
+
+          Saving refreshes the page, so the new entry comes back through the
+          server and the line it was made from matches on the next render — it
+          leaves this list by being explained, not by being ticked off. */}
+      <TransactionDialog
+        open={adding !== null}
+        onOpenChange={(v) => !v && setAdding(null)}
+        defaultTs={adding ? `${adding.day}T12:00:00` : `${statementDate}T12:00:00`}
+        draft={
+          adding
+            ? {
+                amount: adding.amount,
+                method: card,
+                ...(() => {
+                  const d = describeStatementLine(adding, card);
+                  return { remarks: d.remarks, category: d.category ?? '' };
+                })(),
+              }
+            : null
+        }
+        onSaved={() => { setAdding(null); router.refresh(); }}
+      />
     </>
+  );
+}
+
+/**
+ * One statement line nothing in the app explains, with the way to fix that.
+ *
+ * The bank's own words are what is shown — this is a list for FINDING the
+ * line on the statement, so it has to read as the statement reads. The
+ * translation into this ledger's words happens in the form the button opens,
+ * where it can be seen and corrected before anything is saved.
+ */
+function MissingLine({
+  line, card, badge, onAdd,
+}: {
+  line: StatementLine;
+  card: string;
+  badge: string | null;
+  onAdd: () => void;
+}) {
+  const draft = describeStatementLine(line, card);
+  return (
+    <li className="flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 text-sm last:border-b-0">
+      <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
+        {formatDayShort(line.day)}
+      </span>
+      <span className="min-w-0 flex-1 truncate" title={line.raw}>{line.description}</span>
+      {badge ? <Badge tone="warn">{badge}</Badge> : null}
+      {/* What the form will say, shown before it is opened: the point of the
+          feature is that the entry reads like the rest of the ledger, and that
+          is only reassuring if it can be seen without committing to it. */}
+      <span className="hidden shrink-0 items-center gap-1 text-[11px] text-[var(--color-ink-3)] sm:flex">
+        <ArrowRight className="h-3 w-3" aria-hidden="true" />
+        {draft.remarks}
+        {draft.category ? (
+          <Badge tone="neutral">{draft.category}</Badge>
+        ) : (
+          <Badge tone="warn">Category?</Badge>
+        )}
+      </span>
+      <Money value={line.amount} size="sm" tone={line.direction === 'credit' ? 'credit' : 'debt'} />
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={onAdd}
+        aria-label={`Add ${line.description} as an entry on ${card}`}
+      >
+        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+        Add
+      </Button>
+    </li>
   );
 }
 

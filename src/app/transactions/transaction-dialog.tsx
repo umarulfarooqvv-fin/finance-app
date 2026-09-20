@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import type { FieldErrors } from '@/lib/action-result';
 import { ALL_CATEGORIES, ALL_METHODS, isCard } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -46,6 +46,16 @@ type Props = {
   editing?: EditableTransaction | null;
   /** IST "now", supplied by the server so a wrong device clock cannot date an entry. */
   defaultTs: string;
+  /**
+   * A part-filled create, from somewhere that already knows some of the answer
+   * — reconciling a statement knows the date, the amount and the card.
+   *
+   * It is a DRAFT, not a save: it lands in the fields and waits to be read.
+   * A field it leaves out stays empty, so the form goes on refusing to submit
+   * until a person supplies it. That is what keeps a suggested category a
+   * suggestion.
+   */
+  draft?: Partial<Omit<EditableTransaction, 'id'>> | null;
   /** The saved row's id, when a create produced one. The capture inbox uses
       it to link a photo to the entry it became. */
   onSaved?: (id?: string) => void;
@@ -53,7 +63,18 @@ type Props = {
 
 const blank = (ts: string) => ({ amount: '', method: '', category: '', remarks: '', ts });
 
-export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSaved }: Props) {
+/** A draft's set fields, as form strings. Nulls and undefineds are dropped so
+    they cannot overwrite a blank with `undefined` and break the inputs. */
+function clean(draft: Props['draft']): Partial<ReturnType<typeof blank>> {
+  if (!draft) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(draft)) {
+    if (v !== null && v !== undefined && v !== '') out[k] = String(v);
+  }
+  return out;
+}
+
+export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draft, onSaved }: Props) {
   const { notify } = useToast();
   const [pending, startTransition] = useTransition();
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -70,6 +91,15 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSa
   // reuses it, so a request that actually succeeded cannot become two rows.
   const [clientKey, setClientKey] = useState(() => crypto.randomUUID());
 
+  /* The draft is read through a ref, and `draft` is deliberately NOT a
+     dependency of the effect below. A caller passing an inline object literal
+     — which is the natural way to write one — would otherwise hand over a new
+     identity on every render, and the form would reset itself under the
+     fingers of whoever was typing into it. The draft only ever matters at the
+     moment the dialog opens, which `open` already captures. */
+  const latestDraft = useRef(draft);
+  latestDraft.current = draft;
+
   useEffect(() => {
     if (!open) return;
     setErrors({});
@@ -85,7 +115,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, onSa
             remarks: editing.remarks,
             ts: editing.ts,
           }
-        : blank(defaultTs),
+        : { ...blank(defaultTs), ...clean(latestDraft.current) },
     );
   }, [open, editing, defaultTs]);
 
