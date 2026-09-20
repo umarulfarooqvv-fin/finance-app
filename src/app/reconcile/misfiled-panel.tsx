@@ -293,18 +293,30 @@ export function MisfiledPanel({
           {days.length === 0 ? (
             <p className="py-3 text-[11px] text-[var(--color-ink-3)]">Nothing matches that.</p>
           ) : (
-            <div className="mt-1 max-h-[26rem] overflow-y-auto">
+            // Clipped sideways on purpose: the day bands are bled out past this
+            // container's edges, and without this they would widen the panel.
+            <div className="mt-1 max-h-[26rem] overflow-y-auto overflow-x-hidden">
               {days.map((g) => (
                 <section key={g.day}>
-                  {/* The date once per day, not once per row. Sticky so it is
-                      still on screen while reading a long day. */}
-                  <h4 className="sticky top-0 z-10 flex items-baseline justify-between gap-2 border-b border-[var(--color-line)] bg-[var(--color-surface)] py-1.5 text-[11px] font-semibold text-[var(--color-ink-2)]">
-                    <span>{formatDayShort(g.day)}</span>
-                    <span className="font-normal text-[var(--color-ink-3)]">
-                      {g.items.length} &middot;{' '}
-                      <span className="sensitive num">
-                        {g.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  {/* The date once per day, not once per row, and sticky so it
+                      stays put while reading a long one.
+
+                      The same band /transactions uses for its own date
+                      headers: raised fill, a rule top and bottom, bled out to
+                      the panel's edges so it reads as a divider between days
+                      rather than another row. Without the fill it was text of
+                      the same weight on the same background as the rows, and a
+                      sticky header that looks like a row looks like it is
+                      slicing the one it covers. */}
+                  <h4 className="sticky top-0 z-10 -mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
+                    <span className="text-xs font-semibold">
+                      {formatDayShort(g.day)}
+                      <span className="ml-2 font-normal text-[var(--color-ink-3)]">
+                        {g.items.length} {g.items.length === 1 ? 'entry' : 'entries'}
                       </span>
+                    </span>
+                    <span className="sensitive num text-xs font-semibold text-[var(--color-ink-2)]">
+                      {g.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </span>
                   </h4>
 
