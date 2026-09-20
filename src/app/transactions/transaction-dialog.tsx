@@ -9,6 +9,7 @@ import { Field, inputClass } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 import { VoiceInput } from '@/components/entry/voice-input';
 import { RemarkSearch } from '@/components/entry/remark-search';
+import { AmountField, amountToSubmit } from '@/components/entry/amount-field';
 import { createTransactionAction, updateTransactionAction } from './actions';
 
 /* ===========================================================================
@@ -182,6 +183,11 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
     e.preventDefault();
     setErrors({});
 
+    /* The box may hold "450+230+120"; the ledger stores 800. Converted once,
+       here, so both the create and the edit path send the same thing and
+       neither can drift into saving an expression as text. */
+    const payload = { ...form, amount: amountToSubmit(form.amount) };
+
     startTransition(async () => {
       let savedId: string | undefined;
 
@@ -189,7 +195,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
       // back reporting that it resolved to an existing row, and the compiler
       // should enforce that rather than the reader remembering it.
       if (editing) {
-        const result = await updateTransactionAction({ ...form, id: editing.id });
+        const result = await updateTransactionAction({ ...payload, id: editing.id });
         if (!result.ok) {
           if (result.fieldErrors) setErrors(result.fieldErrors);
           notify('error', result.error);
@@ -197,7 +203,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
         }
         notify('success', 'Entry updated.');
       } else {
-        const result = await createTransactionAction({ ...form, clientKey });
+        const result = await createTransactionAction({ ...payload, clientKey });
         if (!result.ok) {
           if (result.fieldErrors) setErrors(result.fieldErrors);
           notify('error', result.error);
@@ -243,20 +249,13 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
           label="Amount"
           htmlFor="amount"
           error={errors['amount'] ?? flagged('amount')}
-          hint="Rupees, to the paisa"
+          hint="Rupees, to the paisa — or a sum like 450+230"
         >
-          <input
-            id="amount"
-            name="amount"
-            inputMode="decimal"
-            autoComplete="off"
-            autoFocus
+          <AmountField
             value={form.amount}
-            onChange={(e) => set('amount')(e.target.value)}
-            placeholder="0.00"
-            aria-invalid={Boolean(errors['amount'])}
-            aria-describedby={errors['amount'] ? 'amount-error' : undefined}
-            className={`${inputClass(errors['amount'])} num text-lg`}
+            onChange={set('amount')}
+            error={errors['amount']}
+            autoFocus
           />
         </Field>
 

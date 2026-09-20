@@ -6,6 +6,7 @@ import { nowIST } from '@/lib/time';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, inputClass } from '@/components/ui/field';
+import { AmountField, amountToSubmit } from '@/components/entry/amount-field';
 import { useToast } from '@/components/ui/toast';
 import { assignRepaymentAction, createIncomeAction, updateIncomeAction } from './actions';
 
@@ -91,10 +92,14 @@ export function IncomeDialog({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setErrors({});
+
+    // The box may hold "12000+3500"; the ledger stores 15500.
+    const payload = { ...form, amount: amountToSubmit(form.amount) };
+
     startTransition(async () => {
       const result = editing
-        ? await updateIncomeAction({ ...form, id: editing.id })
-        : await createIncomeAction({ ...form, clientKey });
+        ? await updateIncomeAction({ ...payload, id: editing.id })
+        : await createIncomeAction({ ...payload, clientKey });
 
       if (!result.ok) {
         setErrors(result.fieldErrors ?? {});
@@ -140,12 +145,18 @@ export function IncomeDialog({
       }
     >
       <form id="income-form" onSubmit={submit} className="flex flex-col gap-3">
-        <Field label="Amount" htmlFor="inc-amount" error={errors['amount']}>
-          <input
-            id="inc-amount" inputMode="decimal" autoFocus value={form.amount}
-            onChange={(e) => set('amount', e.target.value)}
-            placeholder="0.00"
-            className={`${inputClass(errors['amount'])} num`}
+        <Field
+          label="Amount"
+          htmlFor="inc-amount"
+          error={errors['amount']}
+          hint="Or a sum like 12000+3500"
+        >
+          <AmountField
+            id="inc-amount"
+            value={form.amount}
+            onChange={(v) => set('amount', v)}
+            error={errors['amount']}
+            autoFocus
           />
         </Field>
 
