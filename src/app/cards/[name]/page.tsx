@@ -143,6 +143,12 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
               Check a statement
             </Link>
             <Link
+              href={`/cards/${encodeURIComponent(card.name)}/analysis`}
+              className="rounded-[var(--radius-field)] border border-[var(--color-line)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-line-strong)]"
+            >
+              Where it went
+            </Link>
+            <Link
               href="/cards"
               className="rounded-[var(--radius-field)] border border-[var(--color-line)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-line-strong)]"
             >
