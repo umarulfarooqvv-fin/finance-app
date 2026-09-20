@@ -1,5 +1,6 @@
 import type { Transaction } from '@/lib/types';
 import { monthKey } from '@/lib/time';
+import { looseIncludes } from '@/lib/search-text';
 
 /* ===========================================================================
    Reading a filter set off the URL, and applying it.
@@ -50,7 +51,7 @@ export function readFilters(sp: RawParams): Filters {
   const day = str(sp['day']);
   const month = str(sp['month']);
   return {
-    q: str(sp['q']).toLowerCase(),
+    q: str(sp['q']),
     // Anything malformed is ignored rather than applied half-understood.
     month: MONTH_RE.test(month) ? month : '',
     day: DAY_RE.test(day) ? day : '',
@@ -96,7 +97,10 @@ export function applyFilters(
       if (f.max !== null && a > f.max) return false;
     }
 
-    if (f.q && !`${t.remarks} ${t.category} ${t.method}`.toLowerCase().includes(f.q)) return false;
+    /* Folded, not lower-cased. Remarks that came through the Google Sheet
+       carry a curled apostrophe, so "Sheya's" typed into the search box found
+       nothing and the row read as deleted rather than as unfindable. */
+    if (f.q && !looseIncludes(`${t.remarks} ${t.category} ${t.method}`, f.q)) return false;
     return true;
   });
 }

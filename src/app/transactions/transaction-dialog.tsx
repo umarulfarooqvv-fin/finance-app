@@ -8,6 +8,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, inputClass } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 import { VoiceInput } from '@/components/entry/voice-input';
+import { RemarkSearch } from '@/components/entry/remark-search';
 import { createTransactionAction, updateTransactionAction } from './actions';
 
 /* ===========================================================================
@@ -312,14 +313,27 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
           />
         </Field>
 
-        <Field label="Remarks" htmlFor="remarks" error={errors['remarks']} hint="Optional">
-          <input
+        <Field
+          label="Remarks"
+          htmlFor="remarks"
+          error={errors['remarks']}
+          hint="Optional — search what you have used before"
+        >
+          <RemarkSearch
             id="remarks"
-            name="remarks"
             value={form.remarks}
-            onChange={(e) => set('remarks')(e.target.value)}
-            placeholder="What was it for?"
-            className={inputClass(errors['remarks'])}
+            error={errors['remarks']}
+            onChange={set('remarks')}
+            /* A picked remark brings its category, but ONLY into an empty
+               field. A category already chosen — by hand, by the voice parser,
+               or by the statement draft this dialog was opened from — is an
+               answer someone gave; a past entry's filing is a suggestion, and
+               a suggestion does not overwrite an answer. */
+            onPick={({ remarks, category }) => {
+              setForm((f) => ({ ...f, remarks, category: f.category || category }));
+              // Picking is vouching, the same as typing into the field.
+              setUncertain((u) => u.filter((x) => x !== 'remarks' && x !== 'category'));
+            }}
           />
         </Field>
 
