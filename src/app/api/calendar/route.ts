@@ -13,15 +13,22 @@ export const dynamic = 'force-dynamic';
 
    NOT SESSION-GUARDED, and it cannot be: iOS fetches this on its own schedule
    with no cookie jar and no way to log in. The URL carries a secret instead,
-   which makes the URL itself the credential — so it is never rendered into a
-   page, never logged, and regenerating the secret revokes every device at
-   once.
+   which makes the URL itself the credential.
 
-   The reply names no amounts a stranger could act on beyond the dues
-   themselves, but it is still the user's financial calendar, so an absent
-   token is a refusal rather than a public feed. That is the opposite of the
-   Shortcut endpoint's rule, where an unset token means "open"; there the
-   danger is a write being blocked, here it is a life being read.
+   THE TOKEN WILL APPEAR IN REQUEST LOGS. This is the very thing /api/entry
+   avoids by taking its token in a header — but a calendar subscription cannot
+   send headers, so there is no header to take it in. Every provider that
+   offers a private calendar feed has the same exposure, and the honest
+   mitigations are the ones taken here: the feed is read-only, it is the only
+   thing this token unlocks, and rotating CALENDAR_TOKEN revokes every
+   subscribed device at once. Anyone with access to the server's logs can read
+   this calendar until it is rotated — so rotate it if a log is ever shared.
+
+   The reply names no amounts unless showAmounts is on, but it is still the
+   user's financial calendar, so an absent token is a refusal rather than a
+   public feed. That is the opposite of the Shortcut endpoint's rule, where an
+   unset token means "open"; there the danger is a write being blocked, here it
+   is a life being read.
    =========================================================================== */
 
 const HORIZON_DAYS = 120;

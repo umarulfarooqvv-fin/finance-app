@@ -402,7 +402,10 @@ function CalendarPanel({ ready, today }: { ready: boolean; today: string }) {
             Subscribe once on the phone and every due date appears in Calendar with its own alert.
             It survives what push does not &mdash; no permission to grant, nothing to re-enable.
             <strong className="text-[var(--color-ink-2)]"> Treat this address as a password:</strong>{' '}
-            anyone who has it can read what you owe and when.
+            anyone who has it can read what you owe and when, and it travels in the address rather
+            than a header &mdash; so it reaches the server&rsquo;s logs. Change{' '}
+            <code>CALENDAR_TOKEN</code> if one is ever shared; that revokes every subscribed
+            device at once.
           </p>
           <ol className="mb-3 flex flex-col gap-1 text-[11px] text-[var(--color-ink-3)]">
             <li>1. iOS Settings &rarr; Apps &rarr; Calendar &rarr; Accounts &rarr; Add Account &rarr; Other</li>
