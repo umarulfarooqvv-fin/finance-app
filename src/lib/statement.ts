@@ -1,6 +1,6 @@
 import { creditLedger } from '@/lib/credit';
 import {
-  cycleFor, cycleOverridesFrom, daysUntilDue, dueStatus,
+  cycleFor, cycleOverridesFrom, daysUntilDue, dueStatus, recentCycles,
   type Cycle, type CycleOverrides, type DueStatus,
 } from '@/lib/cycles';
 import { dayOf, endOfDay, startOfDay, type Day, type Instant } from '@/lib/time';
@@ -338,4 +338,73 @@ export function cardColor(slot: number): string {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/* ===========================================================================
+   Every cycle a card has had, side by side.
+
+   One statement tells you what this month cost. It cannot tell you where a
+   balance that should be zero came from, because the answer is always in an
+   earlier month — a bill paid short, an amount typed wrong, a payment never
+   recorded — and it then rolls forward for ever, looking like a fresh problem
+   every month.
+
+   The column that finds it is `carriedIn`: the opening balance MINUS what was
+   paid during the cycle. Pay a bill in full and it is zero. The first row
+   where it stops being zero is the month the error entered, and every row
+   after it inherits the number.
+
+   Nothing is recomputed here. `cardStatement` already knows how to value a
+   card on a given day, and asking it about a past statement date gives that
+   cycle — so the history is the same arithmetic the card's own page shows,
+   evaluated once per cycle, rather than a second implementation that could
+   disagree with it.
+   =========================================================================== */
+
+export type HistoryRow = {
+  cycle: Cycle;
+  opening: number;
+  spends: number;
+  payments: number;
+  closing: number;
+  /** Opening less what was paid in the cycle: what the previous bill left
+      behind. Zero when that bill was cleared. */
+  carriedIn: number;
+};
+
+export function statementHistory(
+  snapshot: Snapshot,
+  card: Card,
+  today: Day,
+  outstandingByTx: Record<string, number>,
+  overrides: CycleOverrides = {},
+  count = 18,
+): HistoryRow[] {
+  return recentCycles(card, today, count, overrides)
+    .map((cycle) => {
+      const m = cardStatement(snapshot, card, cycle.statementEnd, outstandingByTx, overrides)
+        .cycleMath;
+      return {
+        cycle,
+        opening: m.openingBalance,
+        spends: m.cycleSpends,
+        payments: m.cycleRepayments,
+        closing: m.closingBalance,
+        // Never negative: paying MORE than the old bill is paying this cycle's
+        // spending early, which is not something left behind.
+        carriedIn: round2(Math.max(0, m.openingBalance - m.cycleRepayments)),
+      };
+    })
+    /* Stop at the card's opening date. Cycles before it are all zero — the
+       opening balance replaces that history rather than adding to it — and a
+       run of empty rows buries the ones that say something. */
+    .filter((r) => !card.openingDate || r.cycle.periodEnd >= card.openingDate)
+    .reverse()
+    /* The OLDEST row never carries anything in. Its opening balance is the
+       card's opening balance, which stands in for history from before tracking
+       began — there is no earlier bill in the data that could have been paid
+       short. Left as-is it reports the whole opening balance as a shortfall on
+       the first row of every card, which is a false positive in exactly the
+       column the table exists for. */
+    .map((r, i) => (i === 0 ? { ...r, carriedIn: 0 } : r));
 }

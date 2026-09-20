@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { creditLedger } from '@/lib/credit';
 import { cycleFor, dueStatus } from '@/lib/cycles';
-import { cardStatement, statementView } from '@/lib/statement';
+import { cardStatement, statementHistory, statementView } from '@/lib/statement';
 import type { Card } from '@/lib/types';
 import { fixtureTransactions, income, makeSnapshot, tx } from './helpers.ts';
 
@@ -270,4 +270,104 @@ test('the whole engine runs over the real fixture and stays coherent', async () 
   // Totals must equal the sum of the parts.
   const manual = Math.round(view.rows.reduce((a, r) => a + r.totalDebtLive, 0) * 100) / 100;
   assert.equal(view.totals.totalDebtLive, manual);
+});
+
+/* ---------------------------------------------------------------------------
+   The statement history, and the one column it exists for.
+
+   `carriedIn` is the opening balance less what was paid during the cycle: what
+   the previous bill left behind. Pay in full and it is zero, so the first
+   non-zero row is the month an error entered — every later row only inherits
+   it. These pin that it reads zero when bills are cleared and names the right
+   month when one is not.
+   --------------------------------------------------------------------------- */
+
+const tracked: Card = { ...plain, openingBalance: 0, openingDate: '2026-01-01' };
+
+const spend = (ts: string, amount: number) =>
+  tx({ ts, amount, method: 'Coral', category: 'Food', remarks: 'Groceries' });
+const payBill = (ts: string, amount: number) =>
+  tx({ ts, amount, method: 'Fi', category: 'Coral', remarks: 'Cleared' });
+
+/** Oldest-first rows, looked up by statement date. */
+function history(rows: ReturnType<typeof tx>[], today: string, count = 6) {
+  const snap = makeSnapshot({ transactions: rows });
+  const credit = creditLedger(snap);
+  return statementHistory(snap, tracked, today, credit.outstandingByTx, {}, count);
+}
+
+test('a bill cleared every month carries nothing', () => {
+  // Billing on the 25th, so a spend on 10 Feb is billed 25 Feb and paid in the
+  // cycle after it.
+  const rows = history([
+    spend('2026-02-10T10:00:00', 1000),
+    payBill('2026-03-05T10:00:00', 1000),
+    spend('2026-03-10T10:00:00', 500),
+    payBill('2026-04-05T10:00:00', 500),
+  ], '2026-04-25');
+
+  for (const r of rows) {
+    assert.equal(r.carriedIn, 0, `${r.cycle.statementEnd} should carry nothing`);
+  }
+});
+
+test('a bill paid SHORT names its own month, and every later one inherits it', () => {
+  const rows = history([
+    spend('2026-02-10T10:00:00', 1000),
+    // 900 against a 1,000 bill: 100 left behind.
+    payBill('2026-03-05T10:00:00', 900),
+    spend('2026-03-10T10:00:00', 500),
+    // Pays that cycle's 500 in full, but the 100 is still underneath it.
+    payBill('2026-04-05T10:00:00', 500),
+  ], '2026-04-25');
+  const at = (d: string) => rows.find((r) => r.cycle.statementEnd === d)!;
+
+  assert.equal(at('2026-02-25').carriedIn, 0, 'nothing owed before the short payment');
+  assert.equal(at('2026-03-25').carriedIn, 100, 'the month the shortfall happened');
+  // Inherited, not a second mistake: April paid its own bill in full.
+  assert.equal(at('2026-04-25').carriedIn, 100, 'still carried, though April paid in full');
+  assert.equal(at('2026-04-25').payments, 500);
+});
+
+test('the cycle arithmetic in a history row adds up', () => {
+  const rows = history([
+    spend('2026-02-10T10:00:00', 1000),
+    payBill('2026-03-05T10:00:00', 900),
+    spend('2026-03-10T10:00:00', 500),
+  ], '2026-03-25');
+  const march = rows.find((r) => r.cycle.statementEnd === '2026-03-25')!;
+
+  assert.equal(march.opening, 1000);
+  assert.equal(march.spends, 500);
+  assert.equal(march.payments, 900);
+  assert.equal(march.closing, 600);
+  assert.equal(march.opening + march.spends - march.payments, march.closing);
+});
+
+test('paying more than the old bill carries nothing rather than a negative', () => {
+  // Paying ahead is not something left behind, so it floors at zero.
+  const rows = history([
+    spend('2026-02-10T10:00:00', 1000),
+    payBill('2026-03-05T10:00:00', 1500),
+  ], '2026-03-25', 4);
+  assert.equal(rows.find((r) => r.cycle.statementEnd === '2026-03-25')!.carriedIn, 0);
+});
+
+test('history stops at the opening date, oldest first', () => {
+  const rows = history([spend('2026-03-10T10:00:00', 100)], '2026-03-25', 24);
+  assert.ok(rows.every((r) => r.cycle.periodEnd >= '2026-01-01'));
+  assert.ok(rows[0]!.cycle.statementEnd < rows[rows.length - 1]!.cycle.statementEnd);
+});
+
+test('the opening balance is not reported as a shortfall on the first row', () => {
+  // A card that starts with debt carried in from before tracking began. There
+  // is no earlier bill in the data, so nothing was paid short.
+  const withOpening: Card = { ...plain, openingBalance: 2662.72, openingDate: '2025-12-15' };
+  const snap = makeSnapshot({ transactions: [spend('2025-12-20T10:00:00', 300)] });
+  const credit = creditLedger(snap);
+  const rows = statementHistory(snap, withOpening, '2026-01-25', credit.outstandingByTx, {}, 6);
+
+  assert.ok(rows.length > 0);
+  assert.equal(rows[0]!.carriedIn, 0, 'the opening balance is not a shortfall');
+  assert.equal(rows[0]!.opening, 2662.72, 'but it is still shown as the opening');
 });

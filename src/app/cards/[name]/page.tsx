@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getSnapshot } from '@/lib/snapshot';
-import { cardColor, cardDetail, type LedgerEntry } from '@/lib/statement';
+import { creditLedger } from '@/lib/credit';
+import { cardColor, cardDetail, statementHistory, type LedgerEntry } from '@/lib/statement';
 import { reconcileRecorded, recentStatementDates } from '@/lib/reconcile';
 import { cycleOverridesFrom } from '@/lib/cycles';
 import { ReconcileClient } from './reconcile-client';
@@ -86,6 +87,12 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
      rules, same answer. */
   const overrides = cycleOverridesFrom(snap.config);
   const cycleEntries = misfiledCandidates(snap, card, row.cycle, overrides);
+
+  /* Every cycle this card has had, so a balance that should be zero can be
+     traced to the month it started rather than guessed at. */
+  const history = statementHistory(
+    snap, card, today, creditLedger(snap).outstandingByTx, overrides,
+  );
   const recorded = reconcileRecorded(snap, card);
   const statementDates = recentStatementDates(card, today, 6);
   const m = row.cycleMath;
@@ -235,6 +242,53 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
           toStatement={row.cycle.statementEnd}
         />
       </div>
+
+      {/* ---- Where a balance came from ----------------------------------- */}
+      {history.length > 1 ? (
+        <Panel className="mt-4">
+          <SectionTitle>Statement history &middot; {history.length}</SectionTitle>
+          <p className="mb-3 text-xs text-[var(--color-ink-2)]">
+            Every cycle since {formatDay(card.openingDate ?? history[0]!.cycle.cycleStart)}.
+            <strong className="font-medium text-[var(--color-ink)]"> Left over</strong> is what the
+            previous bill was not paid off by — zero when a bill is cleared in full, so the first
+            month it is not zero is where a balance you cannot account for began. Every month after
+            it inherits the same figure without being a new mistake.
+          </p>
+          <TableWrap>
+            <thead>
+              <tr>
+                <Th>Statement</Th>
+                <Th align="right">Opening</Th>
+                <Th align="right">Spends</Th>
+                <Th align="right">Paid</Th>
+                <Th align="right">Closing</Th>
+                <Th align="right">Left over</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((h) => (
+                <tr
+                  key={h.cycle.statementEnd}
+                  className={h.carriedIn > 0.005 ? 'bg-[var(--color-warn-soft)]' : undefined}
+                >
+                  <Td className="whitespace-nowrap text-xs">{formatDay(h.cycle.statementEnd)}</Td>
+                  <Td align="right"><Money value={h.opening} size="sm" tone="muted" /></Td>
+                  <Td align="right"><Money value={h.spends} size="sm" /></Td>
+                  <Td align="right"><Money value={h.payments} size="sm" tone="credit" /></Td>
+                  <Td align="right"><Money value={h.closing} size="sm" /></Td>
+                  <Td align="right">
+                    {h.carriedIn > 0.005 ? (
+                      <Money value={h.carriedIn} size="sm" tone="debt" className="font-semibold" />
+                    ) : (
+                      <span className="text-xs text-[var(--color-ink-3)]">&mdash;</span>
+                    )}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+        </Panel>
+      ) : null}
 
       {/* ---- Reconciliation ---------------------------------------------- */}
       <Panel className="mt-4">
