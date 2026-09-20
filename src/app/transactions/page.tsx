@@ -102,52 +102,60 @@ export default async function TransactionsPage({
         subtitle={`${matched.length.toLocaleString('en-IN')} ${matched.length === 1 ? 'entry' : 'entries'}${f.deleted ? ' · deleted' : ''}`}
       />
 
-      <Panel className="mb-4">
-        <FilterBar
-          months={months}
-          initial={{
-            q: sp['q'] as string | undefined,
-            month: f.month,
-            day: f.day,
-            category: f.category,
-            method: f.method,
-            min: sp['min'] as string | undefined,
-            max: sp['max'] as string | undefined,
-            upcoming: f.upcoming,
-            deleted: f.deleted,
-          }}
-          narrowed={isNarrowed(f)}
-          matched={matched.length}
-          total={totalShown}
-          spend={spendShown}
-        />
-
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--color-ink-3)]">
-          {hiddenUpcoming > 0 || f.upcoming ? (
-            <span className="flex items-center gap-2">
-              {f.upcoming
-                ? 'Including rows dated in the future.'
-                : `${hiddenUpcoming} pre-logged future ${hiddenUpcoming === 1 ? 'row is' : 'rows are'} hidden.`}
-              <Link
-                href={qs({ upcoming: f.upcoming ? undefined : '1', page: undefined })}
-                className="font-medium text-[var(--color-accent)]"
-              >
-                {f.upcoming ? 'Hide' : 'Show'}
-              </Link>
-            </span>
-          ) : null}
-          <Link
-            href={qs({ deleted: f.deleted ? undefined : '1', page: undefined })}
-            className="font-medium text-[var(--color-accent)]"
-          >
-            {f.deleted ? 'Back to active entries' : 'View deleted'}
-          </Link>
-        </div>
-      </Panel>
-
+      {/* Search, filters and New entry live INSIDE this panel now, in a bar
+          frozen to the top of it — they were a separate panel above, which
+          scrolled away on a list thousands of rows long. */}
       <Panel padded={false}>
         <div className="p-4 sm:p-5">
-          <TransactionsClient groups={dayGroups} defaultTs={nowIST()} nowIso={now} />
+          <TransactionsClient
+            groups={dayGroups}
+            defaultTs={nowIST()}
+            nowIso={now}
+            toolbar={
+              <>
+                <FilterBar
+                  months={months}
+                  initial={{
+                    q: sp['q'] as string | undefined,
+                    month: f.month,
+                    day: f.day,
+                    category: f.category,
+                    method: f.method,
+                    min: sp['min'] as string | undefined,
+                    max: sp['max'] as string | undefined,
+                    upcoming: f.upcoming,
+                    deleted: f.deleted,
+                  }}
+                  narrowed={isNarrowed(f)}
+                  matched={matched.length}
+                  total={totalShown}
+                  spend={spendShown}
+                />
+
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--color-ink-3)]">
+                  {hiddenUpcoming > 0 || f.upcoming ? (
+                    <span className="flex items-center gap-2">
+                      {f.upcoming
+                        ? 'Including rows dated in the future.'
+                        : `${hiddenUpcoming} pre-logged future ${hiddenUpcoming === 1 ? 'row is' : 'rows are'} hidden.`}
+                      <Link
+                        href={qs({ upcoming: f.upcoming ? undefined : '1', page: undefined })}
+                        className="font-medium text-[var(--color-accent)]"
+                      >
+                        {f.upcoming ? 'Hide' : 'Show'}
+                      </Link>
+                    </span>
+                  ) : null}
+                  <Link
+                    href={qs({ deleted: f.deleted ? undefined : '1', page: undefined })}
+                    className="font-medium text-[var(--color-accent)]"
+                  >
+                    {f.deleted ? 'Back to active entries' : 'View deleted'}
+                  </Link>
+                </div>
+              </>
+            }
+          />
         </div>
       </Panel>
 

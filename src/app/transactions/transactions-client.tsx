@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { formatDayShort } from '@/lib/time';
@@ -35,8 +35,12 @@ export type DayGroup = {
 };
 
 export function TransactionsClient({
-  groups, defaultTs, nowIso,
+  groups, defaultTs, nowIso, toolbar,
 }: {
+  /** Search, filters and the row-visibility links, rendered inside the frozen
+      bar rather than in a panel of their own. They belong with New entry: one
+      strip of controls that stays put over a list thousands of rows long. */
+  toolbar?: ReactNode;
   groups: DayGroup[];
   defaultTs: string;
   nowIso: string;
@@ -73,13 +77,39 @@ export function TransactionsClient({
     });
   }
 
+  /* The day headers stick UNDER the bar, not beneath the viewport's top, so
+     they need its height — which changes with the viewport: the controls wrap
+     onto more rows on a phone, and the "future rows are hidden" line comes and
+     goes. Measured rather than guessed, because a hardcoded offset is wrong at
+     every width except the one it was written for. */
+  const rootRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const bar = barRef.current;
+    const root = rootRef.current;
+    if (!bar || !root) return;
+    const sync = () => root.style.setProperty('--tx-bar-h', `${bar.offsetHeight}px`);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, []);
+
   return (
-    <>
-      <div className="mb-3 flex justify-end">
-        <Button size="sm" onClick={openAdd}>
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          New entry
-        </Button>
+    <div ref={rootRef}>
+      {/* Frozen. Scrolling a list this long used to mean scrolling all the way
+          back up to change a filter or add an entry. */}
+      <div
+        ref={barRef}
+        className="sticky top-0 z-30 -mx-4 mb-3 border-b border-[var(--color-line)] bg-[var(--color-surface)] px-4 pb-3 sm:-mx-5 sm:px-5"
+      >
+        {toolbar}
+        <div className="mt-3 flex justify-end">
+          <Button size="sm" onClick={openAdd}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            New entry
+          </Button>
+        </div>
       </div>
 
       {groups.length === 0 ? (
@@ -107,7 +137,7 @@ export function TransactionsClient({
               again, so nothing is lost on a desktop. */}
           {groups.map((g) => (
             <section key={g.day}>
-              <h3 className="sticky top-0 z-10 -mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
+              <h3 className="sticky top-[var(--tx-bar-h,0px)] z-10 -mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
                 <span className="text-xs font-semibold">
                   {formatDayShort(g.day)}
                   <span className="ml-2 font-normal text-[var(--color-ink-3)]">
@@ -255,6 +285,6 @@ export function TransactionsClient({
       </Dialog>
 
       <span className="sr-only" aria-hidden="true" data-now={nowIso} />
-    </>
+    </div>
   );
 }
