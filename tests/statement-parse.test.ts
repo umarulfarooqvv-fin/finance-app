@@ -323,3 +323,42 @@ test('the prompt states the rules that keep the data trustworthy', () => {
     assert.match(STATEMENT_PROMPT, rule);
   }
 });
+
+/* ===========================================================================
+   Rows with no column structure at all.
+
+   This is what an assistant returns when asked to read a statement image: one
+   line per transaction, single spaces throughout, no tabs and no aligned
+   columns. The description used to come back empty for every one of them,
+   because the single cell holding the whole row was thrown away for containing
+   the date — so the row the app most wants to name arrived nameless.
+   =========================================================================== */
+
+test('a single-spaced row keeps its description', () => {
+  const r = parseStatement('21/08/2026 ANTHROPIC* CLAUDE SUB ANTHROPIC.COM US* 2,312.16', {
+    dateOrder: 'dmy', assumeYear: 2026,
+  });
+  assert.equal(r.lines.length, 1);
+  assert.equal(r.lines[0]!.description, 'ANTHROPIC* CLAUDE SUB ANTHROPIC.COM US*');
+  assert.equal(r.lines[0]!.amount, 2312.16);
+  assert.equal(r.lines[0]!.day, '2026-08-21');
+});
+
+test('a single-spaced description may carry digits and punctuation', () => {
+  const r = parseStatement(
+    '01/09/2026 Interest Amount Amortization - <24/24>INDAMAZON PGSI 37.98\n01/09/2026 IGST-CI@18% 6.84',
+    { dateOrder: 'dmy', assumeYear: 2026 },
+  );
+  assert.deepEqual(r.lines.map((l) => l.description), [
+    'Interest Amount Amortization - <24/24>INDAMAZON PGSI',
+    'IGST-CI@18%',
+  ]);
+  assert.deepEqual(r.lines.map((l) => l.amount), [37.98, 6.84]);
+});
+
+test('a date-only cell is still dropped when the row IS in columns', () => {
+  const r = parseStatement('31/01/2026\tABDUL MUJEEB MOOZHIKKAL\t30.00', {
+    dateOrder: 'dmy', assumeYear: 2026,
+  });
+  assert.equal(r.lines[0]!.description, 'ABDUL MUJEEB MOOZHIKKAL');
+});

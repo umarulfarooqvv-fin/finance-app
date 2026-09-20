@@ -344,8 +344,21 @@ export function parseStatement(text: string, opts: ParseOptions = {}): ParseResu
     const amount = found.amount;
     const credit = found.credit;
 
+    /* Drop the cell the date came out of — but only when the date is ALL it
+       held. A row with no column structure at all is a single cell holding the
+       date, the merchant and the amount together, and testing for "contains
+       the date" threw that whole cell away, leaving every such row with a
+       blank description. The date is stripped from what survives a few lines
+       below anyway, which is what makes keeping the cell safe.
+
+       This is the shape an assistant hands back when asked to transcribe a
+       statement — "21/08/2026 ANTHROPIC* CLAUDE SUB 2,312.16", single spaces
+       throughout — so it is not an edge case, it is the common one. */
+    const withoutDate = (c: string) =>
+      date.consumed ? c.split(date.consumed).join(' ').trim() : c.trim();
+
     const description = cells
-      .filter((c, idx) => idx !== usedIndex && !(date.consumed && c.includes(date.consumed)) && readAmountCell(c) === null)
+      .filter((c, idx) => idx !== usedIndex && withoutDate(c) !== '' && readAmountCell(c) === null)
       .join(' ')
       .replace(new RegExp(date.consumed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), ' ')
       .replace(

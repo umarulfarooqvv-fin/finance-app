@@ -10,8 +10,8 @@ import {
   parseStatement, parseStatementSummary, type StatementLine,
 } from '@/lib/statement-parse';
 import {
-  chargeFlag, findOnOtherMethods, isBankCharge, reconcileStatement, suggestFor,
-  type AppEntry, type Match,
+  chargeFlag, findOnOtherMethods, reconcileStatement, suggestFor,
+  type AppEntry,
 } from '@/lib/statement-match';
 import { formatDayShort } from '@/lib/time';
 import type { MisfiledCandidate } from '@/lib/misfiled';
@@ -235,7 +235,6 @@ export function ReconcileClient({
      than threaded through the matcher. The engine is pure and has no business
      knowing about payment methods; making it generic over the entry type to
      carry one through would complicate a tested module for a display detail. */
-  const entryById = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
 
   /* HOW MUCH OF THE BILL THESE MATCHES ACCOUNT FOR.
 
@@ -284,6 +283,36 @@ export function ReconcileClient({
      precisely because it belongs there, so ask the list, not the field. */
   const elsewhereIds = useMemo(() => new Set(openElsewhere.map((e) => e.id)), [openElsewhere]);
   const acceptedTotal = sum(accepted.map((r) => r.entry));
+
+  /* THE ONE LIST.
+
+     Every parsed line, in the order the bank printed it, each carrying what
+     became of it and the single thing left to do about it. Before this the
+     same line could appear in three panels at once — once in the charges it
+     was flagged as, once in the pairing grid, once in "not recorded here" —
+     and reading the page meant working out that they were the same row.
+
+     Priority is deliberate. A line with an entry sitting under the wrong
+     method must offer to MOVE that entry, never to add one: adding would
+     leave the spend recorded twice, which is the error this page exists to
+     find. So a proposal outranks the draft, and matched outranks everything.  */
+  const lineStates = useMemo(() => {
+    const matchedLineNos = new Set(auto.matches.flatMap((m) => m.statement.map((s) => s.line)));
+    const proposalFor = new Map(proposals.map((p) => [p.line.line, p]));
+    return parsed.lines.map((line) => ({
+      line,
+      matched: matchedLineNos.has(line.line),
+      pairedByHand: linkedLines.has(line.line),
+      proposal: proposalFor.get(line.line) ?? null,
+    }));
+  }, [parsed.lines, auto.matches, proposals, linkedLines]);
+
+  /* This card's own entries with nothing on the statement against them. The
+     other half of the same question: the statement list asks what the bank
+     billed that the app has not got, this asks what the app has that the bank
+     did not bill. Entries filed elsewhere are not here — they are not on this
+     card, so their absence from its statement means nothing. */
+  const unbilled = openApp.filter((e) => !elsewhereIds.has(e.id));
 
   async function acceptProposals() {
     if (accepted.length === 0) return;
@@ -358,9 +387,6 @@ export function ReconcileClient({
 
   const hasRun = submitted.trim().length > 0;
 
-  // The findings: unmatched lines the description marks as a bank charge.
-  const charges = openLines.filter((l) => isBankCharge(l.description));
-  const unlogged = openLines.filter((l) => !isBankCharge(l.description));
 
   return (
     <>
@@ -461,9 +487,6 @@ export function ReconcileClient({
                   <span className="text-[var(--color-ink-2)]">
                     {openLines.length} statement {openLines.length === 1 ? 'line' : 'lines'} and{' '}
                     {openApp.length} {openApp.length === 1 ? 'entry' : 'entries'} still to pair.
-                    {charges.length > 0
-                      ? ' Some look like charges the bank added — see below.'
-                      : ''}
                   </span>
                 </>
               )}
@@ -547,6 +570,130 @@ export function ReconcileClient({
             ) : null}
           </Panel>
 
+          {/* ---- The statement, once, with what became of each line ------ */}
+          <Panel className="mb-4">
+            <SectionTitle>The statement &middot; {parsed.lines.length} {parsed.lines.length === 1 ? 'line' : 'lines'}</SectionTitle>
+            <p className="mb-2 text-xs text-[var(--color-ink-2)]">
+              Every row the bank printed, in its order, and what this app has against it.
+            </p>
+
+            <div className="mb-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] px-3 py-2.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span className="text-xs text-[var(--color-ink-2)]">
+                  Covers <Money value={coveredDebit} size="sm" tone="credit" className="font-semibold" />
+                  {' of the '}
+                  <Money value={auto.totals.statementDebit} size="sm" /> charged
+                </span>
+                <span className="num text-sm font-semibold text-[var(--color-pos)]">
+                  {Math.round(coverShare * 100)}%
+                </span>
+              </div>
+
+              <div
+                className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-raised)]"
+                role="meter"
+                aria-valuenow={Math.round(coverShare * 100)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Share of the statement's charges matched automatically"
+              >
+                <div
+                  className="h-full rounded-full bg-[var(--color-pos)] transition-[width]"
+                  style={{ width: `${Math.min(100, coverShare * 100)}%` }}
+                />
+              </div>
+
+              <p className="mt-2 text-[11px] text-[var(--color-ink-3)]">
+                Leaving{' '}
+                <Money
+                  value={round2(auto.totals.statementDebit - coveredDebit)}
+                  size="sm"
+                  tone="debt"
+                />{' '}
+                of charges to account for
+                {coveredCredit > 0.005 ? (
+                  <>
+                    {'. Repayments are counted apart: '}
+                    <Money value={coveredCredit} size="sm" tone="credit" /> of{' '}
+                    <Money value={auto.totals.statementCredit} size="sm" /> matched — a
+                    repayment explains no charge, so rolling the two together would report
+                    this bill as better covered than it is
+                  </>
+                ) : null}
+                .
+              </p>
+            </div>
+
+            <ul className="flex flex-col">
+              {lineStates.map((st) => (
+                <StatementRow
+                  key={st.line.line}
+                  state={st}
+                  card={card}
+                  moving={moving}
+                  onAdd={() => setAdding(st.line)}
+                  onMove={(id) => move(id, card, st.line.description)}
+                />
+              ))}
+            </ul>
+          </Panel>
+
+          {/* ---- The other half of the question --------------------------- */}
+          {unbilled.length > 0 ? (
+            <Panel className="mb-4">
+              <SectionTitle>Not on the statement &middot; {unbilled.length}</SectionTitle>
+              <p className="mb-2 text-xs text-[var(--color-ink-2)]">
+                Recorded on {card} in this period, but the bank did not bill it. Either it belongs
+                on another method, or it has not been billed yet.
+              </p>
+              <ul className="flex flex-col">
+                {unbilled.map((e) => (
+                  <li key={e.id} className="flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 text-sm last:border-b-0">
+                    <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
+                      {formatDayShort(e.day)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{e.description}</span>
+                    <Money value={e.amount} size="sm" tone={e.direction === 'credit' ? 'credit' : 'debt'} />
+                    <select
+                      value=""
+                      disabled={moving === e.id}
+                      aria-label={`Move ${e.description} to another payment method`}
+                      onChange={(ev) => ev.target.value && move(e.id, ev.target.value, e.description)}
+                      className={cx(inputClass(), 'w-[6.5rem] shrink-0 text-[11px]')}
+                    >
+                      <option value="">Move to&hellip;</option>
+                      {methods.filter((m) => m !== card).map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          ) : null}
+
+          {/* ---- Everything a normal reconciliation never needs ------------
+
+               Folded, not deleted. These are the tools for the statement that
+               will NOT reconcile — pairing a split charge by hand, sweeping
+               other methods, reading the bank's own summary against the rows.
+               Each was asked for and each earns its place on the day it is
+               needed, which is not most days. Open on its own when something
+               inside it has already found something worth acting on. */}
+          <details
+            className="mb-4 rounded-[var(--radius-panel)] border border-[var(--color-line)] bg-[var(--color-surface)]"
+            open={proposals.length > 0 || links.length > 0 || parsed.skipped.length > 0}
+          >
+            <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-[var(--color-ink-2)] marker:text-[var(--color-ink-3)]">
+              More tools
+              {proposals.length > 0 ? (
+                <span className="ml-2 text-[var(--color-accent)]">
+                  {proposals.length} possibly on {card}
+                </span>
+              ) : null}
+            </summary>
+            <div className="border-t border-[var(--color-line)] p-4 pt-3">
+
           {/* ---- The summary box, if the paste carried one ---------------- */}
           {summary ? (
             <Panel className="mb-4">
@@ -600,31 +747,6 @@ export function ReconcileClient({
           ) : null}
 
           {/* ---- The findings -------------------------------------------- */}
-          {charges.length > 0 ? (
-            <Panel className="mb-4">
-              <SectionTitle>Charges the bank added &middot; {charges.length}</SectionTitle>
-              <p className="mb-2 text-xs text-[var(--color-ink-2)]">
-                Unmatched lines whose description says they are a fee, a tax or interest rather than
-                something bought. This is the list worth reading.
-              </p>
-              <ul className="flex flex-col">
-                {charges.map((l) => (
-                  <MissingLine
-                    key={l.line}
-                    line={l}
-                    card={card}
-                    badge={chargeFlag(l.description)?.label ?? null}
-                    onAdd={() => setAdding(l)}
-                  />
-                ))}
-                <li className="flex items-center justify-between gap-2 pt-2 text-xs">
-                  <span className="text-[var(--color-ink-3)]">Total added by the bank</span>
-                  <Money value={sum(charges)} size="sm" tone="debt" className="font-semibold" />
-                </li>
-              </ul>
-            </Panel>
-          ) : null}
-
           {/* ---- Found somewhere else ------------------------------------ */}
           {proposals.length > 0 ? (
             <Panel className="mb-4">
@@ -1016,23 +1138,6 @@ export function ReconcileClient({
             </Panel>
           ) : null}
 
-          {unlogged.length > 0 ? (
-            <Panel className="mb-4">
-              <SectionTitle>Not recorded here &middot; {unlogged.length}</SectionTitle>
-              <p className="mb-2 text-xs text-[var(--color-ink-2)]">
-                Purchases on the statement with nothing behind them. Either they were never logged,
-                or they went on a different card. Adding one opens the entry form already filled in
-                from the line &mdash; dated, priced, and named in this ledger&rsquo;s words rather
-                than the bank&rsquo;s. The category is left for you where the line does not say it.
-              </p>
-              <ul className="flex flex-col">
-                {unlogged.map((l) => (
-                  <MissingLine key={l.line} line={l} card={card} badge={null} onAdd={() => setAdding(l)} />
-                ))}
-              </ul>
-            </Panel>
-          ) : null}
-
           {parsed.skipped.length > 0 ? (
             <Panel className="mb-4">
               <SectionTitle>
@@ -1055,76 +1160,8 @@ export function ReconcileClient({
             </Panel>
           ) : null}
 
-          <Panel>
-            <SectionTitle>Matched automatically &middot; {auto.matches.length}</SectionTitle>
-            {auto.matches.length === 0 ? (
-              <p className="text-xs text-[var(--color-ink-3)]">Nothing matched on its own.</p>
-            ) : (
-              <>
-                {/* What share of the bill this accounts for. The figure people
-                    actually want from this list — "how much of it is explained"
-                    — and it was nowhere on the page. */}
-                <div className="mb-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] px-3 py-2.5">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                    <span className="text-xs text-[var(--color-ink-2)]">
-                      Covers <Money value={coveredDebit} size="sm" tone="credit" className="font-semibold" />
-                      {' of the '}
-                      <Money value={auto.totals.statementDebit} size="sm" /> charged
-                    </span>
-                    <span className="num text-sm font-semibold text-[var(--color-pos)]">
-                      {Math.round(coverShare * 100)}%
-                    </span>
-                  </div>
-
-                  <div
-                    className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-raised)]"
-                    role="meter"
-                    aria-valuenow={Math.round(coverShare * 100)}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-label="Share of the statement's charges matched automatically"
-                  >
-                    <div
-                      className="h-full rounded-full bg-[var(--color-pos)] transition-[width]"
-                      style={{ width: `${Math.min(100, coverShare * 100)}%` }}
-                    />
-                  </div>
-
-                  <p className="mt-2 text-[11px] text-[var(--color-ink-3)]">
-                    Leaving{' '}
-                    <Money
-                      value={round2(auto.totals.statementDebit - coveredDebit)}
-                      size="sm"
-                      tone="debt"
-                    />{' '}
-                    of charges to account for
-                    {coveredCredit > 0.005 ? (
-                      <>
-                        {'. Repayments are counted apart: '}
-                        <Money value={coveredCredit} size="sm" tone="credit" /> of{' '}
-                        <Money value={auto.totals.statementCredit} size="sm" /> matched — a
-                        repayment explains no charge, so rolling the two together would report
-                        this bill as better covered than it is
-                      </>
-                    ) : null}
-                    .
-                  </p>
-                </div>
-
-                <ul className="flex flex-col">
-                  {auto.matches.map((m, i) => (
-                    <MatchRow key={i} match={m} entryById={entryById} />
-                  ))}
-                </ul>
-
-                <p className="mt-2 border-t border-[var(--color-line)] pt-2 text-[11px] text-[var(--color-ink-3)]">
-                  Everything here is already on {card} — that is what matching against {card}&rsquo;s
-                  statement means, so there is nothing to re-file. The badge is where the money came
-                  FROM: this card for a purchase, and the account that paid it for a bill payment.
-                </p>
-              </>
-            )}
-          </Panel>
+            </div>
+          </details>
         </>
       )}
 
@@ -1160,52 +1197,106 @@ export function ReconcileClient({
   );
 }
 
-/**
- * One statement line nothing in the app explains, with the way to fix that.
- *
- * The bank's own words are what is shown — this is a list for FINDING the
- * line on the statement, so it has to read as the statement reads. The
- * translation into this ledger's words happens in the form the button opens,
- * where it can be seen and corrected before anything is saved.
- */
-function MissingLine({
-  line, card, badge, onAdd,
-}: {
+/** What became of one statement line, and the single thing left to do. */
+type LineState = {
   line: StatementLine;
+  matched: boolean;
+  pairedByHand: boolean;
+  proposal: { entryId: string; entry: MisfiledCandidate } | null;
+};
+
+/**
+ * One row of the statement, with its state and at most one action.
+ *
+ * AT MOST ONE. A row that offers two things to do is a row that has to be
+ * thought about, and a statement is a hundred of them. So the state decides:
+ * settled rows offer nothing, a row whose entry exists under another method
+ * offers to move it, and only a row with nothing behind it at all offers to
+ * add one. Offering Add beside Move would let one spend be recorded twice.
+ */
+function StatementRow({
+  state, card, moving, onAdd, onMove,
+}: {
+  state: LineState;
   card: string;
-  badge: string | null;
+  moving: string | null;
   onAdd: () => void;
+  onMove: (entryId: string) => void;
 }) {
+  const { line, matched, pairedByHand, proposal } = state;
+  const settled = matched || pairedByHand;
+  const flag = chargeFlag(line.description);
   const draft = describeStatementLine(line, card);
+
   return (
-    <li className="flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 text-sm last:border-b-0">
+    <li
+      className={cx(
+        'flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[var(--color-line)] py-2 text-sm last:border-b-0',
+        settled ? 'bg-[var(--color-pos-soft)]' : '',
+      )}
+    >
       <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
         {formatDayShort(line.day)}
       </span>
-      <span className="min-w-0 flex-1 truncate" title={line.raw}>{line.description}</span>
-      {badge ? <Badge tone="warn">{badge}</Badge> : null}
-      {/* What the form will say, shown before it is opened: the point of the
-          feature is that the entry reads like the rest of the ledger, and that
-          is only reassuring if it can be seen without committing to it. */}
-      <span className="hidden shrink-0 items-center gap-1 text-[11px] text-[var(--color-ink-3)] sm:flex">
-        <ArrowRight className="h-3 w-3" aria-hidden="true" />
-        {draft.remarks}
-        {draft.category ? (
-          <Badge tone="neutral">{draft.category}</Badge>
-        ) : (
-          <Badge tone="warn">Category?</Badge>
-        )}
-      </span>
+      <span className="min-w-0 flex-1 basis-40 truncate" title={line.raw}>{line.description}</span>
+
+      {flag && !settled ? <Badge tone="warn">{flag.label}</Badge> : null}
+
+      {/* What this row will become, shown only while it is still a proposal.
+          Once a row is settled its draft is history and saying it again would
+          be one more thing to read past. */}
+      {/* The draft yields space to the bank's own words, never the other way
+          round: this list is read to FIND a row on the paper statement, and a
+          row you cannot identify is no use however well it has been renamed. */}
+      {!settled && !proposal ? (
+        <span className="hidden min-w-0 max-w-[45%] items-center gap-1 text-[11px] text-[var(--color-ink-3)] lg:flex">
+          <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{draft.remarks}</span>
+          <span className="shrink-0">
+            {draft.category ? (
+              <Badge tone="neutral">{draft.category}</Badge>
+            ) : (
+              <Badge tone="warn">Category?</Badge>
+            )}
+          </span>
+        </span>
+      ) : null}
+
+      {proposal && !settled ? (
+        <span className="hidden shrink-0 items-center gap-1 text-[11px] text-[var(--color-ink-3)] lg:flex">
+          <ArrowRight className="h-3 w-3" aria-hidden="true" />
+          already on <Badge tone="accent">{proposal.entry.method}</Badge>
+        </span>
+      ) : null}
+
       <Money value={line.amount} size="sm" tone={line.direction === 'credit' ? 'credit' : 'debt'} />
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={onAdd}
-        aria-label={`Add ${line.description} as an entry on ${card}`}
-      >
-        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-        Add
-      </Button>
+
+      {settled ? (
+        <span className="flex w-[5.5rem] shrink-0 items-center justify-end gap-1 text-[11px] text-[var(--color-pos)]">
+          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+          {pairedByHand ? 'paired' : 'matched'}
+        </span>
+      ) : proposal ? (
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={moving === proposal.entryId}
+          onClick={() => onMove(proposal.entryId)}
+          aria-label={`Move ${proposal.entry.description} onto ${card}`}
+        >
+          Move to {card}
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={onAdd}
+          aria-label={`Add ${line.description} as an entry on ${card}`}
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+          Add
+        </Button>
+      )}
     </li>
   );
 }
@@ -1268,49 +1359,5 @@ function Tile({
         {note}
       </div>
     </div>
-  );
-}
-
-function MatchRow({
-  match, entryById,
-}: {
-  match: Match;
-  entryById: Map<string, CardEntry>;
-}) {
-  /* Where the money came off, de-duplicated: a grouped match can be several
-     entries, and they are nearly always the same method. Shown on every row
-     rather than only the odd one out, because "which card is this on" is not
-     a question a list should make you assume the answer to. */
-  const filed: { method: string; color: string | null }[] = [];
-  for (const a of match.app) {
-    const e = entryById.get(a.id);
-    if (!e || filed.some((f) => f.method === e.method)) continue;
-    filed.push({ method: e.method, color: e.methodColor });
-  }
-
-  return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--color-line)] py-2 text-sm last:border-b-0">
-      <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
-        {formatDayShort(match.statement[0]!.day)}
-      </span>
-      <span className="min-w-0 flex-1 truncate">
-        {match.statement.map((l) => l.description).join(' + ')}
-      </span>
-      <ArrowRight className="h-3 w-3 shrink-0 text-[var(--color-ink-3)]" aria-hidden="true" />
-      <span className="min-w-0 flex-1 truncate text-xs text-[var(--color-ink-2)]">
-        {match.app.map((e) => e.description).join(' + ')}
-      </span>
-      {filed.map((f) => (
-        <Badge key={f.method} tone="neutral">
-          {f.color ? <Dot color={f.color} size={7} /> : null}
-          {f.method}
-        </Badge>
-      ))}
-      {match.kind === 'grouped' ? (
-        <Badge tone="accent">{match.statement.length}&rarr;{match.app.length}</Badge>
-      ) : null}
-      {match.kind === 'near' ? <Badge tone="neutral">{match.dayGap}d later</Badge> : null}
-      <Money value={match.total} size="sm" />
-    </li>
   );
 }
