@@ -259,6 +259,7 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
           candidates={cycleEntries.elsewhere}
           own={cycleEntries.own}
           billed={billCheck}
+          fullViewHref={`/cards/${encodeURIComponent(card.name)}/cycle?cycle=${encodeURIComponent(row.cycle.statementEnd)}`}
           card={card.name}
           toStatement={row.cycle.statementEnd}
         />

@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, ChevronDown, Plus, Search, WalletCards } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatDay, formatDayShort } from '@/lib/time';
 import { round2 } from '@/lib/money';
@@ -40,6 +41,8 @@ export function MisfiledPanel({
   billed = null,
   card,
   toStatement,
+  variant = 'panel',
+  fullViewHref,
 }: {
   candidates: MisfiledCandidate[];
   /** This card's OWN entries for the window — what is already on the bill.
@@ -57,18 +60,50 @@ export function MisfiledPanel({
       construction: the window IS this cycle, so an entry dated inside it falls
       on this statement whichever card it ends up against. */
   toStatement: string;
+  /**
+   * `panel` sits among other panels on a card's page: collapsed until asked
+   * for, and capped in height so it cannot push everything else off screen.
+   * `page` has the screen to itself — always open, no cap, and the coverage
+   * bar frozen at the top so the figure being closed stays in view while the
+   * list under it is worked through.
+   *
+   * One component rather than two, because everything worth having here is the
+   * filtering, the day grouping and the moves; a second copy for the page
+   * would be the copy that stops matching.
+   */
+  variant?: 'panel' | 'page';
+  /** Where the panel's "Full view" link goes. Absent = no link. */
+  fullViewHref?: string;
 }) {
   const router = useRouter();
   const { notify } = useToast();
 
-  const [open, setOpen] = useState(false);
+  const asPage = variant === 'page';
+  // On its own page there is nothing to collapse into.
+  const [open, setOpen] = useState(asPage);
   const [method, setMethod] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [moving, setMoving] = useState<string | null>(null);
   const [bulk, setBulk] = useState(false);
   const [withOwn, setWithOwn] = useState(false);
-  const [fullView, setFullView] = useState(false);
+  /* The day headers are sticky too, and two things pinned at top 0 means the
+     second is invisible under the first. So they stick under the coverage bar
+     instead, at its measured height — published as a CSS variable that
+     defaults to 0, which is exactly right in panel mode where no bar is
+     frozen and the headers should pin to the top of the scroll box. */
+  const rootRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const bar = barRef.current;
+    const root = rootRef.current;
+    if (!asPage || !bar || !root) return;
+    const sync = () => root.style.setProperty('--misfiled-bar-h', `${bar.offsetHeight}px`);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, [asPage]);
   /* The day to date a new entry to. A spend that was never logged at all is
      invisible to every list here — the only way to close the gap is to add it,
      and it has to carry the day it happened rather than today. */
@@ -192,7 +227,10 @@ export function MisfiledPanel({
   if (candidates.length === 0) return null;
 
   return (
-    <Panel className="mb-4">
+    <Panel className={asPage ? undefined : 'mb-4'}>
+      {/* On its own page the title is the page's, and there is nothing to
+          collapse into — so the header is a heading rather than a button. */}
+      {asPage ? null : (
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -218,14 +256,26 @@ export function MisfiledPanel({
           aria-hidden="true"
         />
       </button>
+      )}
 
       {!open ? null : (
-        <div className="mt-3 border-t border-[var(--color-line)] pt-3">
+        <div
+          ref={rootRef}
+          className={asPage ? undefined : 'mt-3 border-t border-[var(--color-line)] pt-3'}
+        >
           {/* How much of the bank's own figure is accounted for. Shown only
               when that figure has been entered, because without it the bar
               would be measuring the app against itself and always read 100%. */}
           {billed ? (
-            <div className="mb-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] px-3 py-2.5">
+            <div
+              ref={barRef}
+              className={cx(
+                'mb-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] px-3 py-2.5',
+                // Frozen on the page: the figure being closed should stay in
+                // view while the list that closes it is worked through.
+                asPage && 'sticky top-0 z-30 shadow-[var(--shadow-card)]',
+              )}
+            >
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <span className="text-xs text-[var(--color-ink-2)]">
                   Recorded{' '}
@@ -374,15 +424,17 @@ export function MisfiledPanel({
                 </button>
               ) : null}
               {/* Working a whole bill from a 26rem window means scrolling a
-                  list inside a page that also scrolls. Full view drops the
-                  cage and puts every row on the page. */}
-              <button
-                type="button"
-                onClick={() => setFullView((v) => !v)}
-                className="text-[11px] font-medium text-[var(--color-accent)]"
-              >
-                {fullView ? 'Compact' : 'Full view'}
-              </button>
+                  list inside a page that also scrolls. Full view is its own
+                  page: this list alone, uncapped, with the coverage bar
+                  frozen at the top. */}
+              {fullViewHref ? (
+                <Link
+                  href={fullViewHref}
+                  className="text-[11px] font-medium text-[var(--color-accent)]"
+                >
+                  Full view
+                </Link>
+              ) : null}
             </div>
           </div>
 
@@ -394,7 +446,8 @@ export function MisfiledPanel({
             <div
               className={cx(
                 'mt-1 overflow-x-hidden',
-                fullView ? '' : 'max-h-[26rem] overflow-y-auto',
+                // A page has the screen; only the panel needs a ceiling.
+                asPage ? '' : 'max-h-[26rem] overflow-y-auto',
               )}
             >
               {days.map((g) => (
@@ -409,7 +462,7 @@ export function MisfiledPanel({
                       the same weight on the same background as the rows, and a
                       sticky header that looks like a row looks like it is
                       slicing the one it covers. */}
-                  <h4 className="sticky top-0 z-10 -mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
+                  <h4 className="sticky top-[var(--misfiled-bar-h,0px)] z-10 -mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
                     <span className="text-xs font-semibold">
                       {formatDayShort(g.day)}
                       <span className="ml-2 font-normal text-[var(--color-ink-3)]">

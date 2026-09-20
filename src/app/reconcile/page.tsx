@@ -157,6 +157,7 @@ export default async function ReconcilePage({
       <MisfiledPanel
         candidates={elsewhere}
         own={cycleEntries.own}
+        fullViewHref={`/cards/${encodeURIComponent(card.name)}/cycle?cycle=${encodeURIComponent(cycle.statementEnd)}`}
         card={card.name}
         toStatement={cycle.statementEnd}
       />
