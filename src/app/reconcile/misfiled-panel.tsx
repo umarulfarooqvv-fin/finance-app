@@ -35,10 +35,16 @@ import type { MisfiledCandidate } from '@/lib/misfiled';
 
 export function MisfiledPanel({
   candidates,
+  own = [],
   card,
   toStatement,
 }: {
   candidates: MisfiledCandidate[];
+  /** This card's OWN entries for the window — what is already on the bill.
+      Off by default: the panel's question is about the others. Switched on,
+      the cycle reads as one list instead of two lists on one screen that have
+      to be held side by side in the head. */
+  own?: MisfiledCandidate[];
   card: string;
   /** The statement every move here lands on — the one being viewed. Fixed, by
       construction: the window IS this cycle, so an entry dated inside it falls
@@ -54,6 +60,19 @@ export function MisfiledPanel({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [moving, setMoving] = useState<string | null>(null);
   const [bulk, setBulk] = useState(false);
+  const [withOwn, setWithOwn] = useState(false);
+
+  /* Rows already on this card, by id — the one thing the list needs to know
+     about a row that cannot be "moved here" because it is already here. */
+  const ownIds = useMemo(() => new Set(own.map((e) => e.id)), [own]);
+
+  const pool = useMemo(
+    () =>
+      withOwn
+        ? [...candidates, ...own].sort((a, b) => (a.ts < b.ts ? -1 : 1))
+        : candidates,
+    [candidates, own, withOwn],
+  );
 
   /* One chip per method actually present, biggest first — the order in which
      they are worth looking through. Carries that method's card colour too,
@@ -61,25 +80,43 @@ export function MisfiledPanel({
      than by reading its name off every chip and every row. */
   const byMethod = useMemo(() => {
     const counts = new Map<string, { n: number; total: number; color: string | null }>();
-    for (const c of candidates) {
+    for (const c of pool) {
       const at = counts.get(c.method) ?? { n: 0, total: 0, color: c.methodColor };
       counts.set(c.method, { n: at.n + 1, total: round2(at.total + c.amount), color: at.color });
     }
     return [...counts.entries()]
       .map(([name, v]) => ({ name, ...v }))
       .sort((a, b) => b.n - a.n);
-  }, [candidates]);
+  }, [pool]);
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return candidates.filter(
+    return pool.filter(
       (c) =>
         (method === null || c.method === method) &&
         (needle === '' ||
           c.description.toLowerCase().includes(needle) ||
           c.category.toLowerCase().includes(needle)),
     );
-  }, [candidates, method, q]);
+  }, [pool, method, q]);
+
+  /* BY DAY, ALWAYS. A flat list makes the date column repeat on every row and
+     still leaves the reader finding the boundaries by eye — and the question
+     asked of this list is nearly always "what happened on the 22nd". */
+  const days = useMemo(() => {
+    const by = new Map<string, MisfiledCandidate[]>();
+    for (const c of shown) {
+      const at = by.get(c.day);
+      if (at) at.push(c);
+      else by.set(c.day, [c]);
+    }
+    // `shown` is already in date order, so insertion order is chronological.
+    return [...by.entries()].map(([day, items]) => ({
+      day,
+      items,
+      total: round2(items.reduce((a, x) => a + x.amount, 0)),
+    }));
+  }, [shown]);
 
   /* What a move actually costs each bill it is taken from. Grouped by the
      statement the rows are on NOW, because that is the figure that changes on
@@ -100,7 +137,9 @@ export function MisfiledPanel({
 
   const total = round2(candidates.reduce((a, c) => a + c.amount, 0));
   const shownTotal = round2(shown.reduce((a, c) => a + c.amount, 0));
-  const selected = shown.filter((c) => picked.has(c.id));
+  /* A row already on this card cannot be moved onto it, so it is never part of
+     a selection even if its box was ticked before the toggle was switched on. */
+  const selected = shown.filter((c) => picked.has(c.id) && !ownIds.has(c.id));
 
   function toggle(id: string) {
     setPicked((prev) => {
@@ -227,66 +266,111 @@ export function MisfiledPanel({
             </div>
           ) : null}
 
-          <p className="mt-2.5 text-[11px] text-[var(--color-ink-3)]">
-            {shown.length === candidates.length
-              ? `${shown.length} ${shown.length === 1 ? 'entry' : 'entries'}`
-              : `${shown.length} of ${candidates.length}`}
-            {' · '}
-            <span className="sensitive num">
-              {shownTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-            </span>
-          </p>
+          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] text-[var(--color-ink-3)]">
+              {shown.length === pool.length
+                ? `${shown.length} ${shown.length === 1 ? 'entry' : 'entries'}`
+                : `${shown.length} of ${pool.length}`}
+              {' · '}
+              <span className="sensitive num">
+                {shownTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </span>
+            </p>
+            {/* The cycle as one list. Without this the card's own entries are a
+                separate panel elsewhere on the page, and comparing the two
+                means holding one in your head while reading the other. */}
+            {own.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setWithOwn((v) => !v)}
+                className="text-[11px] font-medium text-[var(--color-accent)]"
+              >
+                {withOwn ? `Hide ${card}'s own` : `Show ${card} too (${own.length})`}
+              </button>
+            ) : null}
+          </div>
 
-          {shown.length === 0 ? (
+          {days.length === 0 ? (
             <p className="py-3 text-[11px] text-[var(--color-ink-3)]">Nothing matches that.</p>
           ) : (
-            <ul className="mt-1 flex max-h-[26rem] flex-col overflow-y-auto">
-              {shown.map((c) => (
-                <li
-                  key={c.id}
-                  className="flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 last:border-b-0"
-                >
-                  <input
-                    type="checkbox"
-                    checked={picked.has(c.id)}
-                    onChange={() => toggle(c.id)}
-                    aria-label={`Select ${c.description}`}
-                    className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-                  />
-                  <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
-                    {formatDayShort(c.day)}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-sm">
-                    {c.description}
-                    <span className="ml-1.5 text-[11px] text-[var(--color-ink-3)]">{c.category}</span>
-                  </span>
-                  {/* The bill it is on now, in that card's own colour — the
-                      same dot used on Today and Cards, so which card a row
-                      belongs to reads at a glance rather than from its text.
-                      Its card bills on a different day from this one, so this
-                      is a different statement, not the same period under
-                      another name. */}
-                  <Badge tone="neutral">
-                    {c.methodColor ? <Dot color={c.methodColor} size={7} /> : null}
-                    {c.method}
-                    {c.fromStatement ? ` · ${statementLabel(c.fromStatement)}` : ''}
-                  </Badge>
-                  <Money
-                    value={c.amount}
-                    size="sm"
-                    tone={c.direction === 'credit' ? 'credit' : 'debt'}
-                  />
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={moving === c.id}
-                    onClick={() => moveOne(c)}
-                  >
-                    Move to {card}
-                  </Button>
-                </li>
+            <div className="mt-1 max-h-[26rem] overflow-y-auto">
+              {days.map((g) => (
+                <section key={g.day}>
+                  {/* The date once per day, not once per row. Sticky so it is
+                      still on screen while reading a long day. */}
+                  <h4 className="sticky top-0 z-10 flex items-baseline justify-between gap-2 border-b border-[var(--color-line)] bg-[var(--color-surface)] py-1.5 text-[11px] font-semibold text-[var(--color-ink-2)]">
+                    <span>{formatDayShort(g.day)}</span>
+                    <span className="font-normal text-[var(--color-ink-3)]">
+                      {g.items.length} &middot;{' '}
+                      <span className="sensitive num">
+                        {g.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                    </span>
+                  </h4>
+
+                  <ul className="flex flex-col">
+                    {g.items.map((c) => {
+                      const mine = ownIds.has(c.id);
+                      return (
+                        <li
+                          key={c.id}
+                          className={cx(
+                            'flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 last:border-b-0',
+                            mine && 'bg-[var(--color-raised)]',
+                          )}
+                        >
+                          {/* Already on this card: nothing to tick, because
+                              there is nowhere to move it to. */}
+                          {mine ? (
+                            <span className="h-4 w-4 shrink-0" aria-hidden="true" />
+                          ) : (
+                            <input
+                              type="checkbox"
+                              checked={picked.has(c.id)}
+                              onChange={() => toggle(c.id)}
+                              aria-label={`Select ${c.description}`}
+                              className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
+                            />
+                          )}
+                          <span className="min-w-0 flex-1 truncate text-sm">
+                            {c.description}
+                            <span className="ml-1.5 text-[11px] text-[var(--color-ink-3)]">
+                              {c.category}
+                            </span>
+                          </span>
+                          {/* The bill it is on now, in that card's own colour.
+                              Its card bills on a different day from this one,
+                              so this is a different statement, not the same
+                              period under another name. */}
+                          <Badge tone={mine ? 'good' : 'neutral'}>
+                            {c.methodColor ? <Dot color={c.methodColor} size={7} /> : null}
+                            {c.method}
+                            {!mine && c.fromStatement ? ` \u00b7 ${statementLabel(c.fromStatement)}` : ''}
+                          </Badge>
+                          <Money
+                            value={c.amount}
+                            size="sm"
+                            tone={c.direction === 'credit' ? 'credit' : 'debt'}
+                          />
+                          {mine ? (
+                            <span className="text-[11px] text-[var(--color-ink-3)]">on this bill</span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={moving === c.id}
+                              onClick={() => moveOne(c)}
+                            >
+                              Move to {card}
+                            </Button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
               ))}
-            </ul>
+            </div>
           )}
 
           <p className="mt-2.5 border-t border-[var(--color-line)] pt-2.5 text-[11px] text-[var(--color-ink-3)]">

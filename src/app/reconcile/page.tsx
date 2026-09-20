@@ -96,7 +96,8 @@ export default async function ReconcilePage({
   /* The rows that could be the missing one, and the filter that decides which
      qualify, live in lib/misfiled so the card's own page gives the same answer
      from the same code. */
-  const elsewhere = misfiledCandidates(snap, card, cycle, overrides);
+  const cycleEntries = misfiledCandidates(snap, card, cycle, overrides);
+  const elsewhere = cycleEntries.elsewhere;
 
   const href = (over: { card?: string; cycle?: string }) => {
     const p = new URLSearchParams({ card: card.name, cycle: cycle.statementEnd, ...over });
@@ -153,7 +154,12 @@ export default async function ReconcilePage({
         </p>
       </Panel>
 
-      <MisfiledPanel candidates={elsewhere} card={card.name} toStatement={cycle.statementEnd} />
+      <MisfiledPanel
+        candidates={elsewhere}
+        own={cycleEntries.own}
+        card={card.name}
+        toStatement={cycle.statementEnd}
+      />
 
       <ReconcileClient
         entries={entries}

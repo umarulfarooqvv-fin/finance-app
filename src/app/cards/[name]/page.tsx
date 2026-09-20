@@ -85,7 +85,7 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
      the list to search is here rather than a page away. Same builder, same
      rules, same answer. */
   const overrides = cycleOverridesFrom(snap.config);
-  const elsewhere = misfiledCandidates(snap, card, row.cycle, overrides);
+  const cycleEntries = misfiledCandidates(snap, card, row.cycle, overrides);
   const recorded = reconcileRecorded(snap, card);
   const statementDates = recentStatementDates(card, today, 6);
   const m = row.cycleMath;
@@ -229,7 +229,8 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
 
       <div className="mt-4">
         <MisfiledPanel
-          candidates={elsewhere}
+          candidates={cycleEntries.elsewhere}
+          own={cycleEntries.own}
           card={card.name}
           toStatement={row.cycle.statementEnd}
         />

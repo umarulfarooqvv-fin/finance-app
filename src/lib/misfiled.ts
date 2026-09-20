@@ -30,12 +30,19 @@ export type MisfiledCandidate = AppEntry & {
   methodColor: string | null;
 };
 
+export type CycleEntries = {
+  /** Paid with something else — the rows that could be the missing one. */
+  elsewhere: MisfiledCandidate[];
+  /** Already counted against this card in this window. */
+  own: MisfiledCandidate[];
+};
+
 export function misfiledCandidates(
   snap: Snapshot,
   card: Card,
   cycle: Cycle,
   overrides: CycleOverrides = {},
-): MisfiledCandidate[] {
+): CycleEntries {
   // A full Card structurally satisfies CycleCard, so one map serves both the
   // cycle maths and the colour lookup.
   const cardsByName = new Map(snap.cards.map((c) => [c.name, c]));
@@ -63,25 +70,31 @@ export function misfiledCandidates(
   const lo = startOfDay(cycle.cycleStart);
   const hi = endOfDay(cycle.periodEnd);
 
-  return snap.transactions
-    .filter(
-      (t) =>
-        !t.deleted && t.ts && t.amount != null &&
-        couldBelongToCard(t, card.name) &&
-        t.ts >= lo && t.ts <= hi,
-    )
-    .map((t) => ({
-      id: t.id,
-      ts: t.ts!,
-      day: t.ts!.slice(0, 10),
-      amount: t.amount ?? 0,
-      description: t.remarks || t.category,
-      category: t.category,
-      direction: t.cardDirection === 'debt-' ? ('credit' as const) : ('debit' as const),
-      verified: t.verified,
-      method: t.method,
-      methodColor: colorOf(t.method),
-      fromStatement: statementOf(t.method, t.ts!),
-    }))
-    .sort((a, b) => (a.ts < b.ts ? -1 : 1));
+  const rows = (keep: (t: Snapshot['transactions'][number]) => boolean): MisfiledCandidate[] =>
+    snap.transactions
+      .filter(
+        (t) => !t.deleted && t.ts && t.amount != null && keep(t) && t.ts >= lo && t.ts <= hi,
+      )
+      .map((t) => ({
+        id: t.id,
+        ts: t.ts!,
+        day: t.ts!.slice(0, 10),
+        amount: t.amount ?? 0,
+        description: t.remarks || t.category,
+        category: t.category,
+        direction: t.cardDirection === 'debt-' ? ('credit' as const) : ('debit' as const),
+        verified: t.verified,
+        method: t.method,
+        methodColor: colorOf(t.method),
+        fromStatement: statementOf(t.method, t.ts!),
+      }))
+      .sort((a, b) => (a.ts < b.ts ? -1 : 1));
+
+  return {
+    elsewhere: rows((t) => couldBelongToCard(t, card.name)),
+    /* The card's OWN entries for the same window — what is already on this
+       bill. Same shape and same builder, so the two can be shown in one list
+       without a second set of rules about how a row is described. */
+    own: rows((t) => t.cardAffected === card.name),
+  };
 }
