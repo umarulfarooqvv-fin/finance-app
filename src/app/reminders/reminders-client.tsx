@@ -337,8 +337,9 @@ function PushPanel({ vapidPublicKey, pushReady }: { vapidPublicKey: string | nul
         </p>
       ) : state === 'denied' ? (
         <p className="text-xs text-[var(--color-ink-2)]">
-          Notifications are blocked for this app. Turn them back on in iOS Settings &rarr;
-          Notifications &rarr; Finance, then return here.
+          Notifications are blocked for this app. On an iPhone, turn them back on in Settings
+          &rarr; Notifications &rarr; Finance; in a desktop browser, in the site settings beside
+          the address bar. Then return here.
         </p>
       ) : state === 'on' ? (
         <div className="flex flex-wrap items-center gap-3">

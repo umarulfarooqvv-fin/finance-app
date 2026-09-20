@@ -66,8 +66,19 @@ export function icsFold(line: string): string {
   return out.join('\r\n ');
 }
 
+/**
+ * A UTC timestamp, with minutes carried into hours.
+ *
+ * Written without the carry, an event starting at 03:30 and lasting 30 minutes
+ * ended at "036000Z" — minute sixty, which is not a time. Some parsers take
+ * it, some reject the whole event, and the one that rejects it does so
+ * silently on a phone with no console.
+ */
 function stamp(day: string, h: number, m: number): string {
-  return `${day.replace(/-/g, '')}T${String(h).padStart(2, '0')}${String(m).padStart(2, '0')}00Z`;
+  const total = h * 60 + m;
+  const hh = Math.floor(total / 60) % 24;
+  const mm = total % 60;
+  return `${day.replace(/-/g, '')}T${String(hh).padStart(2, '0')}${String(mm).padStart(2, '0')}00Z`;
 }
 
 const KIND_LABEL: Record<Due['kind'], string> = {

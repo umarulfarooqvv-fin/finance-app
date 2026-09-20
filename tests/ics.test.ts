@@ -111,3 +111,31 @@ describe('buildIcs', () => {
     expect(empty).toContain('END:VCALENDAR');
   });
 });
+
+/* Found in a real feed: 03:30 plus 30 minutes was written "036000Z" — minute
+   sixty, which is not a time. A parser that rejects it does so silently on a
+   phone with no console. */
+describe('timestamps', () => {
+  const all = (s: string) => s.match(/DT(?:START|END):\d{8}T(\d{2})(\d{2})(\d{2})Z/g) ?? [];
+
+  it('never writes an impossible time', () => {
+    const ics = buildIcs(
+      [due({ on: '2026-10-12' }), due({ id: 'b', on: '2026-11-01' })],
+      opts,
+    );
+    expect(all(ics).length).toBe(4);
+    for (const m of all(ics)) {
+      const [, hh, mm, ss] = m.match(/T(\d{2})(\d{2})(\d{2})Z/)!;
+      expect(Number(hh)).toBeLessThan(24);
+      expect(Number(mm)).toBeLessThan(60);
+      expect(Number(ss)).toBeLessThan(60);
+    }
+  });
+
+  it('ends an event after it starts', () => {
+    const ics = buildIcs([due({ on: '2026-10-12' })], opts);
+    const start = ics.match(/DTSTART:(\d{8}T\d{6}Z)/)![1]!;
+    const end = ics.match(/DTEND:(\d{8}T\d{6}Z)/)![1]!;
+    expect(end > start).toBe(true);
+  });
+});
