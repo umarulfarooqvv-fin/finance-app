@@ -12,8 +12,12 @@ export function PageHeader({
   showTheme?: boolean;
 }) {
   return (
-    <header className="mb-5 flex items-start justify-between gap-4">
-      <div className="min-w-0">
+    /* Wraps rather than squeezes. The actions are shrink-0, so on a narrow
+       screen a page with a real button in its header — not just an icon — used
+       to crush the title to nothing and spill the buttons over it. Given a
+       floor of its own, the title keeps its line and the actions drop below. */
+    <header className="mb-5 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+      <div className="min-w-0 flex-1 basis-48">
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
         {subtitle ? <p className="mt-1 text-sm text-[var(--color-ink-2)]">{subtitle}</p> : null}
       </div>

@@ -131,12 +131,24 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
           </span>
         }
         action={
-          <Link
-            href="/cards"
-            className="rounded-[var(--radius-field)] border border-[var(--color-line)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-line-strong)]"
-          >
-            All cards
-          </Link>
+          <div className="flex items-center gap-2">
+            {/* The main thing anyone comes to a card page to do once the bill
+                arrives, and until now it was only reachable from the nav. It
+                leads with the cycle this page is already showing, so the check
+                opens on the bill being looked at rather than on the newest. */}
+            <Link
+              href={`/reconcile?card=${encodeURIComponent(card.name)}&cycle=${encodeURIComponent(row.cycle.statementEnd)}`}
+              className="rounded-[var(--radius-field)] bg-[var(--color-accent)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-ink)] transition-opacity hover:opacity-90"
+            >
+              Check a statement
+            </Link>
+            <Link
+              href="/cards"
+              className="rounded-[var(--radius-field)] border border-[var(--color-line)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-line-strong)]"
+            >
+              All cards
+            </Link>
+          </div>
         }
       />
 
@@ -235,15 +247,6 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
         </p>
       </Panel>
 
-      {/* ---- Reconciliation against the bank ------------------------------ */}
-      <Panel className="mt-4">
-        <ReconcileClient
-          card={card.name}
-          statementDates={statementDates}
-          recorded={recorded}
-        />
-      </Panel>
-
       {/* ---- What IS on this bill, then what might be missing from it ----
            Ordered deliberately: the statement's own entries sit directly above
            the entries paid with something else, because the question the pair
@@ -256,17 +259,6 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
         </SectionTitle>
         <Ledger entries={billed} empty="Nothing was billed in this cycle." />
       </Panel>
-
-      <div className="mt-4">
-        <MisfiledPanel
-          candidates={cycleEntries.elsewhere}
-          own={cycleEntries.own}
-          billed={billCheck}
-          fullViewHref={`/cards/${encodeURIComponent(card.name)}/cycle?cycle=${encodeURIComponent(row.cycle.statementEnd)}`}
-          card={card.name}
-          toStatement={row.cycle.statementEnd}
-        />
-      </div>
 
       {/* ---- Where a balance came from ----------------------------------- */}
       {history.length > 1 ? (
@@ -360,36 +352,73 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
         </Panel>
       ) : null}
 
-      {/* ---- Reconciliation ---------------------------------------------- */}
-      <Panel className="mt-4">
-        <SectionTitle>Reconciliation</SectionTitle>
-        <div className="flex items-center gap-4">
-          <div className="flex-1">
-            <div className="flex h-2 overflow-hidden rounded-full bg-[var(--color-raised)]">
-              <div
-                className="bg-[var(--color-pos)]"
-                style={{ width: checked > 0 ? `${(row.verified.verified / checked) * 100}%` : '0%' }}
-              />
-            </div>
-            <div className="mt-2 flex justify-between text-xs">
-              <span className="text-[var(--color-pos)]">
-                <span className="sensitive">{money(row.verified.verified)}</span> verified
-              </span>
-              <span className="text-[var(--color-ink-3)]">
-                <span className="sensitive">{money(row.verified.unverified)}</span> unchecked
-              </span>
+      {/* ---- What has landed since the bill ------------------------------
+           Only when something has. An empty panel headed "Still building ·
+           0.00" says exactly what the balance card already says two screens
+           up, in a whole panel of its own. */}
+      {unbilled.length > 0 ? (
+        <Panel className="mt-4">
+          <SectionTitle>
+            Still building · <span className="sensitive">{money(row.unbilled)}</span>
+          </SectionTitle>
+          <Ledger entries={unbilled} empty="Bill cleared. No new spends yet." />
+        </Panel>
+      ) : null}
+
+      {/* ---- Everything a glance at a card never needs --------------------
+
+           Folded, not removed, the same way the statement check folds its own.
+           Deducing a cycle's cut-off from the bank's closing balance, sweeping
+           other methods for a spend that was really on this card, and the
+           verified-tick bar are all real tools on the day a bill does not
+           add up — and clutter on the days it does, which is most of them. */}
+      <details className="mt-4 rounded-[var(--radius-panel)] border border-[var(--color-line)] bg-[var(--color-surface)]">
+        <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-[var(--color-ink-2)] marker:text-[var(--color-ink-3)]">
+          More tools
+        </summary>
+        <div className="border-t border-[var(--color-line)] p-4 pt-3">
+          <Panel>
+            <ReconcileClient
+              card={card.name}
+              statementDates={statementDates}
+              recorded={recorded}
+            />
+          </Panel>
+
+          <div className="mt-4">
+            <MisfiledPanel
+              candidates={cycleEntries.elsewhere}
+              own={cycleEntries.own}
+              billed={billCheck}
+              fullViewHref={`/cards/${encodeURIComponent(card.name)}/cycle?cycle=${encodeURIComponent(row.cycle.statementEnd)}`}
+              card={card.name}
+              toStatement={row.cycle.statementEnd}
+            />
+          </div>
+
+        <Panel className="mt-4">
+          <SectionTitle>Reconciliation</SectionTitle>
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <div className="flex h-2 overflow-hidden rounded-full bg-[var(--color-raised)]">
+                <div
+                  className="bg-[var(--color-pos)]"
+                  style={{ width: checked > 0 ? `${(row.verified.verified / checked) * 100}%` : '0%' }}
+                />
+              </div>
+              <div className="mt-2 flex justify-between text-xs">
+                <span className="text-[var(--color-pos)]">
+                  <span className="sensitive">{money(row.verified.verified)}</span> verified
+                </span>
+                <span className="text-[var(--color-ink-3)]">
+                  <span className="sensitive">{money(row.verified.unverified)}</span> unchecked
+                </span>
+              </div>
             </div>
           </div>
+        </Panel>
         </div>
-      </Panel>
-
-      {/* ---- Ledgers ------------------------------------------------------ */}
-      <Panel className="mt-4">
-        <SectionTitle>
-          Still building · <span className="sensitive">{money(row.unbilled)}</span>
-        </SectionTitle>
-        <Ledger entries={unbilled} empty="Bill cleared. No new spends yet." />
-      </Panel>
+      </details>
 
     </Page>
   );
