@@ -111,7 +111,11 @@ export function TransactionsClient({
         className="sticky top-0 z-30 -mx-4 mb-3 rounded-t-[var(--radius-card)] border-b border-[var(--color-line)] bg-[var(--color-surface)] px-4 pb-3 pt-4 sm:-mx-5 sm:px-5 sm:pt-5"
       >
         {toolbar}
-        <div className="mt-3 flex justify-end">
+        {/* Desktop only. On a phone this row is 48px of PERMANENTLY frozen
+            height for one button, and it puts that button in the hardest
+            corner of the screen to reach — so there it lives above the thumb
+            instead, at the foot of the page. */}
+        <div className="mt-3 hidden justify-end lg:flex">
           <Button size="sm" onClick={openAdd}>
             <Plus className="h-4 w-4" aria-hidden="true" />
             New entry
@@ -290,6 +294,19 @@ export function TransactionsClient({
           </dl>
         ) : null}
       </Dialog>
+
+      {/* Clear of the tab bar — 52px of row plus its own padding, plus the
+          home indicator underneath it — so it never sits on a destination.
+          `main` already reserves pb-24, so it covers no row either. */}
+      <button
+        type="button"
+        onClick={openAdd}
+        aria-label="New entry"
+        className="fixed right-4 z-30 grid h-14 w-14 place-items-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-ink)] shadow-[var(--shadow-pop)] transition-transform active:scale-95 lg:hidden"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.75rem)' }}
+      >
+        <Plus className="h-6 w-6" strokeWidth={2.25} aria-hidden="true" />
+      </button>
 
       <span className="sr-only" aria-hidden="true" data-now={nowIso} />
     </div>
