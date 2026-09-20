@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getSnapshot } from '@/lib/snapshot';
 import { analyseCard } from '@/lib/card-analysis';
-import { addDays, dayOf, formatDay, formatDayShort } from '@/lib/time';
+import { addDays, dayOf, formatDay, formatDayShort, type Day } from '@/lib/time';
+import { cycleFor, cycleOverridesFrom } from '@/lib/cycles';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import {
   Badge, Empty, Money, Panel, SectionTitle, Stat, StatGrid, cx,
@@ -20,11 +21,18 @@ export const dynamic = 'force-dynamic';
    out that is coming back.
    =========================================================================== */
 
-const WINDOWS = [
-  { key: '3m', label: '3 months', days: 90 },
-  { key: '12m', label: '12 months', days: 365 },
-  { key: 'all', label: 'All time', days: null },
-] as const;
+/* The windows on offer, in the order the questions are usually asked.
+
+   THE TWO CYCLE WINDOWS COME FIRST because they are the ones tied to a bill.
+   "This cycle" is what is building toward the next statement — the figure that
+   answers "what have I run up since the last bill" — and it starts the day
+   after the last statement's period ended, never at the statement date itself,
+   because those two differ by a day exactly when the bank cut the statement
+   before that day's spending posted.
+
+   The rolling windows that follow are for understanding habits rather than
+   bills, which is a different question and a different span. */
+type WindowDef = { key: string; label: string; from: Day; to: Day; note: string };
 
 export default async function CardAnalysisPage({
   params, searchParams,
@@ -41,10 +49,33 @@ export default async function CardAnalysisPage({
   const card = snap.cards.find((c) => c.name === cardName);
   if (!card) notFound();
 
-  const win = WINDOWS.find((w) => w.key === sp.window) ?? WINDOWS[1];
-  const from = win.days === null ? (card.openingDate || '2000-01-01') : addDays(today, -win.days);
+  const cycle = cycleFor(card, today, cycleOverridesFrom(snap.config));
+  const cycleStart = addDays(cycle.periodEnd, 1);
+  const opened = card.openingDate || '2000-01-01';
 
-  const a = analyseCard(snap, card.name, from, today);
+  const windows: WindowDef[] = [
+    {
+      key: 'cycle',
+      label: 'This cycle',
+      from: cycleStart,
+      to: today,
+      note: `since the ${formatDay(cycle.statementEnd)} statement closed`,
+    },
+    {
+      key: 'statement',
+      label: 'Last statement',
+      from: cycle.cycleStart,
+      to: cycle.periodEnd,
+      note: `the bill dated ${formatDay(cycle.statementEnd)}`,
+    },
+    { key: '3m', label: '3 months', from: addDays(today, -90), to: today, note: 'the last 90 days' },
+    { key: '12m', label: '12 months', from: addDays(today, -365), to: today, note: 'the last year' },
+    { key: 'all', label: 'All time', from: opened, to: today, note: 'since this card opened' },
+  ];
+
+  const win = windows.find((w) => w.key === sp.window) ?? windows[0]!;
+
+  const a = analyseCard(snap, card.name, win.from, win.to);
 
   const href = (w: string) =>
     `/cards/${encodeURIComponent(card.name)}/analysis?window=${w}`;
@@ -55,7 +86,7 @@ export default async function CardAnalysisPage({
     <Page>
       <PageHeader
         title={`${card.name} · where it went`}
-        subtitle={`${formatDay(a.from)} to ${formatDay(a.to)} · ${a.charges.count} charges`}
+        subtitle={`${formatDay(a.from)} to ${formatDay(a.to)} · ${win.note} · ${a.charges.count} ${a.charges.count === 1 ? 'charge' : 'charges'}`}
         action={
           <Link
             href={`/cards/${encodeURIComponent(card.name)}`}
@@ -68,7 +99,7 @@ export default async function CardAnalysisPage({
 
       <Panel className="mb-4">
         <div className="mb-3 flex flex-wrap items-center gap-1.5">
-          {WINDOWS.map((w) => (
+          {windows.map((w) => (
             <Link
               key={w.key}
               href={href(w.key)}
