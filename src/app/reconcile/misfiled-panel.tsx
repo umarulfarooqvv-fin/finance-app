@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ChevronDown, Search, WalletCards } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Search, WalletCards } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { formatDay, formatDayShort } from '@/lib/time';
 import { round2 } from '@/lib/money';
@@ -322,10 +322,18 @@ export function MisfiledPanel({
                             mine && 'bg-[var(--color-pos-soft)]',
                           )}
                         >
-                          {/* Already on this card: nothing to tick, because
-                              there is nowhere to move it to. */}
+                          {/* Already on this card: a check where the checkbox
+                              would be, because there is nowhere to move it to.
+                              The same mark the pairing column uses for a row
+                              the statement confirms, so "covered" looks the
+                              same wherever it is shown. At 3.8:1 on the tint
+                              it clears the 3:1 a graphic needs, which small
+                              text in the same green would not. */}
                           {mine ? (
-                            <span className="h-4 w-4 shrink-0" aria-hidden="true" />
+                            <CheckCircle2
+                              className="h-4 w-4 shrink-0 text-[var(--color-pos)]"
+                              aria-hidden="true"
+                            />
                           ) : (
                             <input
                               type="checkbox"
