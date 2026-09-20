@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { creditLedger } from '@/lib/credit';
-import { cycleFor, dueStatus } from '@/lib/cycles';
+import { cycleFor, cycleOverridesFrom, dueStatus } from '@/lib/cycles';
 import { cardStatement, statementHistory, statementView } from '@/lib/statement';
 import type { Card } from '@/lib/types';
 import { fixtureTransactions, income, makeSnapshot, tx } from './helpers.ts';
@@ -370,4 +370,48 @@ test('the opening balance is not reported as a shortfall on the first row', () =
   assert.ok(rows.length > 0);
   assert.equal(rows[0]!.carriedIn, 0, 'the opening balance is not a shortfall');
   assert.equal(rows[0]!.opening, 2662.72, 'but it is still shown as the opening');
+});
+
+test('the history reports the bank figures and the gap on each one', () => {
+  // Charges agree to the rupee; the opening balance does not, because the
+  // error is inherited from an earlier cycle. That is the case line matching
+  // cannot see and the summary box exists to catch.
+  const snap = makeSnapshot({
+    transactions: [
+      spend('2026-02-10T10:00:00', 1000),
+      payBill('2026-03-05T10:00:00', 900),
+      spend('2026-03-10T10:00:00', 500),
+    ],
+    config: {
+      statement_cycles: {
+        Coral: {
+          '2026-03-25': {
+            actual: 500,
+            summary: { previousBalance: 900, charges: 500, payments: 900 },
+          },
+        },
+      },
+    },
+  });
+  const credit = creditLedger(snap);
+  const rows = statementHistory(
+    snap, tracked, '2026-03-25', credit.outstandingByTx, cycleOverridesFrom(snap.config), 6,
+  );
+  const march = rows.find((r) => r.cycle.statementEnd === '2026-03-25')!;
+
+  assert.ok(march.bank, 'the bank figures are carried through');
+  assert.equal(march.bank.charges, 500);
+  assert.equal(march.bank.diff.charges, 0, 'charges agree');
+  assert.equal(march.bank.diff.payments, 0, 'payments agree');
+  assert.equal(march.bank.diff.opening, 100, 'but the app opens 100 higher than the bank');
+  assert.equal(march.bank.diff.due, 100, 'so the due is out by the same 100');
+});
+
+test('a cycle with no statement recorded carries no bank figures', () => {
+  // Nothing to compare against beats comparing the app with itself, which
+  // would agree every time and mean nothing.
+  const snap = makeSnapshot({ transactions: [spend('2026-03-10T10:00:00', 500)] });
+  const credit = creditLedger(snap);
+  const rows = statementHistory(snap, tracked, '2026-03-25', credit.outstandingByTx, {}, 6);
+  assert.ok(rows.every((r) => r.bank === null));
 });

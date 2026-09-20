@@ -94,6 +94,9 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
   const history = statementHistory(
     snap, card, today, creditLedger(snap).outstandingByTx, overrides,
   );
+
+  // Whether any statement on this card has had its summary box recorded.
+  const checkedAny = history.some((h) => h.bank !== null);
   const recorded = reconcileRecorded(snap, card);
   const statementDates = recentStatementDates(card, today, 6);
   /* The bank's own figure for the cycle on screen, when it has been entered
@@ -285,6 +288,8 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
                 <Th align="right">Paid</Th>
                 <Th align="right">Closing</Th>
                 <Th align="right">Left over</Th>
+                {/* Only worth a column once a statement has been recorded. */}
+                {checkedAny ? <Th align="right">vs bank</Th> : null}
               </tr>
             </thead>
             <tbody>
@@ -305,6 +310,49 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
                       <span className="text-xs text-[var(--color-ink-3)]">&mdash;</span>
                     )}
                   </Td>
+                  {checkedAny ? (
+                    <Td align="right">
+                      {h.bank === null ? (
+                        <span className="text-[11px] text-[var(--color-ink-3)]">not checked</span>
+                      ) : Math.abs(h.bank.diff.due) < 0.005
+                        && Math.abs(h.bank.diff.opening) < 0.005 ? (
+                        <Badge tone="good">matches</Badge>
+                      ) : (
+                        /* Name the figure that disagrees, not just that one
+                           does. An opening-balance gap means the error is in
+                           an EARLIER cycle; a charges gap means it is here. */
+                        <span className="flex flex-col items-end gap-0.5 text-[11px]">
+                          {Math.abs(h.bank.diff.opening) >= 0.005 ? (
+                            <span className="text-[var(--color-neg)]">
+                              opening{' '}
+                              <span className="sensitive num">
+                                {h.bank.diff.opening > 0 ? '+' : ''}
+                                {h.bank.diff.opening.toFixed(2)}
+                              </span>
+                            </span>
+                          ) : null}
+                          {Math.abs(h.bank.diff.charges) >= 0.005 ? (
+                            <span className="text-[var(--color-neg)]">
+                              charges{' '}
+                              <span className="sensitive num">
+                                {h.bank.diff.charges > 0 ? '+' : ''}
+                                {h.bank.diff.charges.toFixed(2)}
+                              </span>
+                            </span>
+                          ) : null}
+                          {Math.abs(h.bank.diff.payments) >= 0.005 ? (
+                            <span className="text-[var(--color-neg)]">
+                              paid{' '}
+                              <span className="sensitive num">
+                                {h.bank.diff.payments > 0 ? '+' : ''}
+                                {h.bank.diff.payments.toFixed(2)}
+                              </span>
+                            </span>
+                          ) : null}
+                        </span>
+                      )}
+                    </Td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

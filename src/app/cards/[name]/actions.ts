@@ -70,6 +70,57 @@ export const recordStatementAction = guardedAction(
 );
 
 /**
+ * Record the bank's whole summary box for one statement.
+ *
+ * Takes the four figures together because three of them only mean anything
+ * beside the fourth, and a half-saved summary would be compared as if whole.
+ * `actual` is set from `totalDue` as well, so the existing boundary
+ * reconciliation keeps working off one stored number rather than two that
+ * could disagree.
+ */
+export const recordSummaryAction = guardedAction(
+  {
+    name: 'statement.summary',
+    revalidate: MONEY_PATHS,
+    validate: (input: {
+      card: string; statementDate: string;
+      previousBalance: number; charges: number; payments: number; totalDue: number;
+    }) => {
+      const errors: Record<string, string> = {};
+      if (!input.card?.trim()) errors['card'] = 'Missing card.';
+      if (!validDay(input.statementDate ?? '')) errors['statementDate'] = 'That is not a real date.';
+      for (const k of ['previousBalance', 'charges', 'payments', 'totalDue'] as const) {
+        const v = input[k];
+        if (typeof v !== 'number' || !Number.isFinite(v)) errors[k] = 'That is not a valid amount.';
+      }
+      return Object.keys(errors).length ? errors : null;
+    },
+  },
+  async (
+    input: {
+      card: string; statementDate: string;
+      previousBalance: number; charges: number; payments: number; totalDue: number;
+    },
+    ctx,
+  ) => {
+    await patchCycle(input.card, input.statementDate, {
+      actual: input.totalDue,
+      summary: {
+        previousBalance: input.previousBalance,
+        charges: input.charges,
+        payments: input.payments,
+      },
+    });
+    await logEvent('statement.summary', {
+      card: input.card, statementDate: input.statementDate,
+      previousBalance: input.previousBalance, charges: input.charges,
+      payments: input.payments, totalDue: input.totalDue, by: ctx.actor,
+    });
+    return { card: input.card, statementDate: input.statementDate };
+  },
+);
+
+/**
  * Pin the cut-off for one statement.
  *
  * Normally set from a reconciliation verdict rather than by hand: the bank's

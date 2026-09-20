@@ -370,6 +370,22 @@ export type HistoryRow = {
   /** Opening less what was paid in the cycle: what the previous bill left
       behind. Zero when that bill was cleared. */
   carriedIn: number;
+  /**
+   * What the bank said, when its statement has been recorded, and how far the
+   * app is from it on each figure.
+   *
+   * `opening` is the one that matters most and the one line-matching cannot
+   * reach: a cycle whose charges agree to the rupee can still open at the
+   * wrong balance, because that balance was inherited. The first month where
+   * this is non-zero is where the error entered.
+   */
+  bank: {
+    opening: number;
+    charges: number;
+    payments: number;
+    due: number;
+    diff: { opening: number; charges: number; payments: number; due: number };
+  } | null;
 };
 
 export function statementHistory(
@@ -384,6 +400,23 @@ export function statementHistory(
     .map((cycle) => {
       const m = cardStatement(snapshot, card, cycle.statementEnd, outstandingByTx, overrides)
         .cycleMath;
+      const o = overrides[card.name]?.[cycle.statementEnd];
+      const sum = o?.summary;
+      const bank = sum && typeof o?.actual === 'number'
+        ? {
+            opening: sum.previousBalance,
+            charges: sum.charges,
+            payments: sum.payments,
+            due: o.actual,
+            diff: {
+              opening: round2(m.openingBalance - sum.previousBalance),
+              charges: round2(m.cycleSpends - sum.charges),
+              payments: round2(m.cycleRepayments - sum.payments),
+              due: round2(m.closingBalance - o.actual),
+            },
+          }
+        : null;
+
       return {
         cycle,
         opening: m.openingBalance,
@@ -393,6 +426,7 @@ export function statementHistory(
         // Never negative: paying MORE than the old bill is paying this cycle's
         // spending early, which is not something left behind.
         carriedIn: round2(Math.max(0, m.openingBalance - m.cycleRepayments)),
+        bank,
       };
     })
     /* Stop at the card's opening date. Cycles before it are all zero — the

@@ -351,3 +351,99 @@ export function parseStatement(text: string, opts: ParseOptions = {}): ParseResu
 
   return { lines: out, skipped, ambiguousDates };
 }
+
+/* ===========================================================================
+   The four figures in a statement's summary box.
+
+   Matching lines against entries answers "is every charge accounted for". It
+   cannot answer "is the balance right", because a wrong balance is inherited
+   from an EARLIER cycle — the lines of this one all match and the total is
+   still out. That is exactly how 106.40 rode along on a Coral bill for seven
+   months: every line reconciled, the opening balance did not.
+
+   Banks print the answer at the top of every statement:
+
+     Previous Balance   Purchases/Charges   Cash Advances   Payments/Credits
+        2,962.72            6,842.25            0.00           2,962.72
+
+   Reading it turns four separate comparisons into one glance, and the FIRST
+   month where the opening balance disagrees is the month the error entered.
+
+   Labels vary by bank, so matching is on the words that carry meaning rather
+   than an exact phrase, and the amounts may follow either on the same line or
+   on the next — the layout differs between a PDF copy and a screenshot
+   transcription. A block that does not yield all four is no block: half a
+   summary silently compared against a full one is worse than none.
+   =========================================================================== */
+
+export type StatementSummary = {
+  previousBalance: number;
+  charges: number;
+  payments: number;
+  /** What the bank says is owed. Usually previous + charges - payments, but it
+      is taken from the statement rather than derived, because a fee the app
+      cannot see would make the derivation quietly wrong. */
+  totalDue: number;
+};
+
+const LABELS: Record<keyof StatementSummary, RegExp> = {
+  previousBalance: /previous\s+balance|opening\s+balance|balance\s+b\/?f/i,
+  charges: /purchases?\s*\/?\s*charges?|new\s+spends?|total\s+spends?|debits?/i,
+  payments: /payments?\s*\/?\s*credits?|payments?\s+received|credits?/i,
+  totalDue: /total\s+amount\s+due|total\s+due|closing\s+balance|amount\s+payable/i,
+};
+
+/** Every amount on a line, in order, ignoring currency marks and separators. */
+function amountsOn(text: string): number[] {
+  const out: number[] = [];
+  for (const m of text.matchAll(/(?:^|[^\d.])(\d[\d,]*\.\d{2}|\d[\d,]{2,})(?![\d.])/g)) {
+    const n = Number(m[1]!.replace(/,/g, ''));
+    if (Number.isFinite(n)) out.push(n);
+  }
+  return out;
+}
+
+export function parseStatementSummary(text: string): StatementSummary | null {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const found: Partial<StatementSummary> = {};
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+
+    /* A label line carrying several labels is the header of a table whose
+       amounts are on the row beneath — the common PDF layout. Read them
+       positionally, in the order the labels appear, so "Cash Advances" in the
+       middle consumes its own column instead of shifting the rest. */
+    const here = (Object.keys(LABELS) as (keyof StatementSummary)[])
+      .map((k) => ({ k, at: line.search(LABELS[k]) }))
+      .filter((x) => x.at >= 0)
+      .sort((a, b) => a.at - b.at);
+
+    if (here.length >= 2) {
+      const cash = /cash\s+advances?/i.test(line) ? line.search(/cash\s+advances?/i) : -1;
+      const cols = [...here.map((x) => ({ k: x.k as keyof StatementSummary | null, at: x.at }))];
+      if (cash >= 0) cols.push({ k: null, at: cash });
+      cols.sort((a, b) => a.at - b.at);
+
+      const nums = amountsOn(line).length >= cols.length
+        ? amountsOn(line)
+        : amountsOn(lines[i + 1] ?? '');
+      if (nums.length >= cols.length) {
+        cols.forEach((c, n) => { if (c.k && found[c.k] === undefined) found[c.k] = nums[n]!; });
+        continue;
+      }
+    }
+
+    // One label, its amount on the same line or the next.
+    for (const k of Object.keys(LABELS) as (keyof StatementSummary)[]) {
+      if (found[k] !== undefined || !LABELS[k].test(line)) continue;
+      const n = amountsOn(line)[0] ?? amountsOn(lines[i + 1] ?? '')[0];
+      if (n !== undefined) found[k] = n;
+    }
+  }
+
+  const complete =
+    found.previousBalance !== undefined && found.charges !== undefined &&
+    found.payments !== undefined && found.totalDue !== undefined;
+  return complete ? (found as StatementSummary) : null;
+}

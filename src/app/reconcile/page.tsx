@@ -168,6 +168,7 @@ export default async function ReconcilePage({
         methods={[...ALL_METHODS]}
         card={card.name}
         periodYear={Number(cycle.periodEnd.slice(0, 4))}
+        statementDate={cycle.statementEnd}
       />
     </Page>
   );

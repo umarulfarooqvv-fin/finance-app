@@ -6,7 +6,9 @@ import {
   Undo2, Wand2, Wand,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { parseStatement, type StatementLine } from '@/lib/statement-parse';
+import {
+  parseStatement, parseStatementSummary, type StatementLine,
+} from '@/lib/statement-parse';
 import {
   chargeFlag, findOnOtherMethods, isBankCharge, reconcileStatement, suggestFor,
   type AppEntry, type Match,
@@ -19,6 +21,7 @@ import { inputClass } from '@/components/ui/field';
 import { Badge, Dot, Empty, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import { reassignMethodAction } from './actions';
+import { recordSummaryAction } from '@/app/cards/[name]/actions';
 
 /* ===========================================================================
    Reconciling a pasted statement, line by line.
@@ -56,7 +59,7 @@ type ManualLink = { id: string; statement: StatementLine[]; app: AppEntry[] };
 export type CardEntry = AppEntry & { method: string; methodColor: string | null };
 
 export function ReconcileClient({
-  entries, elsewhere, methods, card, periodYear,
+  entries, elsewhere, methods, card, periodYear, statementDate,
 }: {
   entries: CardEntry[];
   /** Entries in the same window filed against a different method. */
@@ -64,6 +67,8 @@ export function ReconcileClient({
   methods: string[];
   card: string;
   periodYear: number;
+  /** The cycle being checked — where a summary read off the paste is saved. */
+  statementDate: string;
 }) {
   const router = useRouter();
   const { notify } = useToast();
@@ -120,6 +125,31 @@ export function ReconcileClient({
     () => parseStatement(submitted, { dateOrder, assumeYear: periodYear }),
     [submitted, dateOrder, periodYear],
   );
+
+  /* The same paste, read for its summary box as well as its rows. Line
+     matching says whether every charge is accounted for; only these four
+     figures say whether the BALANCE is, and a wrong balance comes from an
+     earlier cycle where this month's lines all match. */
+  const summary = useMemo(() => parseStatementSummary(submitted), [submitted]);
+  const [savingSummary, setSavingSummary] = useState(false);
+  const [savedSummary, setSavedSummary] = useState(false);
+
+  async function saveSummary() {
+    if (!summary) return;
+    setSavingSummary(true);
+    const r = await recordSummaryAction({
+      card, statementDate,
+      previousBalance: summary.previousBalance,
+      charges: summary.charges,
+      payments: summary.payments,
+      totalDue: summary.totalDue,
+    });
+    setSavingSummary(false);
+    if (!r.ok) { notify('error', r.error); return; }
+    setSavedSummary(true);
+    notify('success', `Statement summary recorded for ${card}.`);
+    router.refresh();
+  }
 
   const auto = useMemo(
     () => reconcileStatement(parsed.lines, entries, { tolerance }),
@@ -506,6 +536,58 @@ export function ReconcileClient({
               </p>
             ) : null}
           </Panel>
+
+          {/* ---- The summary box, if the paste carried one ---------------- */}
+          {summary ? (
+            <Panel className="mb-4">
+              <SectionTitle>The bank&rsquo;s own figures</SectionTitle>
+              <p className="mb-3 text-xs text-[var(--color-ink-2)]">
+                Read from the summary box in what you pasted. Recording these lets the card&rsquo;s
+                statement history compare every cycle against the bank — and an opening balance
+                that disagrees points at an <strong className="font-medium">earlier</strong> month,
+                which matching lines can never show.
+              </p>
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {([
+                  /* Only charges and payments have a counterpart in the rows.
+                     The previous balance comes from LAST month and the total
+                     due includes it, so neither can be cross-checked here. */
+                  ['Previous balance', summary.previousBalance, null],
+                  ['Charges', summary.charges, auto.totals.statementDebit],
+                  ['Payments', summary.payments, auto.totals.statementCredit],
+                  ['Total due', summary.totalDue, null],
+                ] as [string, number, number | null][]).map(([label, value, pasted]) => (
+                  <div
+                    key={label}
+                    className="min-w-0 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] px-2.5 py-2"
+                  >
+                    <div className="truncate text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-3)]">
+                      {label}
+                    </div>
+                    <div className="mt-1"><Money value={value} size="lg" /></div>
+                    {/* A summary whose charges disagree with the rows pasted
+                        beneath it means the paste is incomplete — worth saying
+                        before the figure is recorded as the bank's. */}
+                    {pasted !== null && Math.abs(pasted - value) >= 0.005 ? (
+                      <div className="mt-0.5 text-[11px] text-[var(--color-warn)]">
+                        rows total <span className="sensitive num">{pasted.toFixed(2)}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--color-line)] pt-3">
+                <span className="min-w-0 flex-1 text-[11px] text-[var(--color-ink-3)]">
+                  Saved against {card}&rsquo;s {formatDayShort(statementDate)} statement.
+                </span>
+                <Button size="sm" pending={savingSummary} onClick={saveSummary}>
+                  {savedSummary ? 'Recorded' : 'Record these figures'}
+                </Button>
+              </div>
+            </Panel>
+          ) : null}
 
           {/* ---- The findings -------------------------------------------- */}
           {charges.length > 0 ? (

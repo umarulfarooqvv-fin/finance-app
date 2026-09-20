@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { parseStatement } from '@/lib/statement-parse';
+import { parseStatement, parseStatementSummary } from '@/lib/statement-parse';
 
 /* ===========================================================================
    Reading a pasted statement.
@@ -209,4 +209,75 @@ test('stitching gives up rather than reaching indefinitely', () => {
   );
   assert.equal(r.lines.length, 0, 'the amount was too far away to belong to that date');
   assert.ok(r.skipped.length > 0);
+});
+
+/* ---------------------------------------------------------------------------
+   The summary box.
+
+   Line matching says whether every charge is accounted for. Only the summary
+   says whether the BALANCE is right — a balance is wrong because of an earlier
+   cycle, so this month's lines can all match while the total is still out.
+   Every case here is taken from a real ICICI Coral statement.
+   --------------------------------------------------------------------------- */
+
+test('reads the four figures from the table layout', () => {
+  // The PDF prints labels on one line and amounts beneath.
+  const s = parseStatementSummary(`
+STATEMENT SUMMARY
+Previous Balance Purchases / Charges Cash Advances Payments / Credits
+₹2,962.72 ₹6,842.25 ₹0.00 ₹2,962.72
+Total Amount due
+₹6,842.25
+`);
+  assert.ok(s);
+  assert.equal(s.previousBalance, 2962.72);
+  assert.equal(s.charges, 6842.25);
+  assert.equal(s.payments, 2962.72);
+  assert.equal(s.totalDue, 6842.25);
+});
+
+test('Cash Advances takes its own column rather than shifting the rest', () => {
+  // It sits BETWEEN charges and payments. Skipping it as a label while its
+  // amount stays in the row would read payments as 0.00.
+  const s = parseStatementSummary(`
+Previous Balance Purchases / Charges Cash Advances Payments / Credits
+₹6,001.13 ₹2,620.20 ₹0.00 ₹6,001.13
+Total Amount due ₹2,620.20
+`);
+  assert.ok(s);
+  assert.equal(s.charges, 2620.20);
+  assert.equal(s.payments, 6001.13, 'payments must not pick up the cash-advance column');
+});
+
+test('reads a one-label-per-line layout too', () => {
+  // What a screenshot transcription tends to produce.
+  const s = parseStatementSummary(`
+Previous Balance: 4,372.70
+Purchases / Charges: 2,647.30
+Payments / Credits: 4,372.70
+Total Amount Due: 2,647.30
+`);
+  assert.ok(s);
+  assert.deepEqual(s, {
+    previousBalance: 4372.70, charges: 2647.30, payments: 4372.70, totalDue: 2647.30,
+  });
+});
+
+test('half a summary is no summary', () => {
+  // Comparing a partial block against a full one silently reports a
+  // difference that is an artefact of the parse, not of the money.
+  assert.equal(parseStatementSummary('Previous Balance 1,000.00\nTotal Amount Due 2,000.00'), null);
+  assert.equal(parseStatementSummary('just some transaction rows\n25/08/2026 SHOP 450.00'), null);
+});
+
+test('the total is taken from the statement, not derived', () => {
+  // previous + charges - payments would be 1,100 here; the bank says 1,150
+  // because of a fee the app cannot see. The bank's own number wins.
+  const s = parseStatementSummary(`
+Previous Balance Purchases / Charges Cash Advances Payments / Credits
+1,000.00 600.00 0.00 500.00
+Total Amount Due 1,150.00
+`);
+  assert.ok(s);
+  assert.equal(s.totalDue, 1150.00);
 });

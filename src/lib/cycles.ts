@@ -51,6 +51,20 @@ export type CycleOverride = {
   boundary?: StatementBoundary;
   /** What the bank actually billed, when known. Drives reconciliation. */
   actual?: number;
+  /**
+   * The rest of the bank's summary box, when a statement has been read.
+   *
+   * `actual` alone answers "is the total right". These answer WHERE it went
+   * wrong: a balance is wrong because of an earlier cycle, so a month whose
+   * charges match to the rupee can still open at the wrong figure. Holding
+   * the opening balance makes the first divergent month visible instead of
+   * inferred.
+   */
+  summary?: {
+    previousBalance: number;
+    charges: number;
+    payments: number;
+  };
   note?: string;
 };
 
