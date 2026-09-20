@@ -22,10 +22,29 @@
    =========================================================================== */
 
 /** Endpoints exempt from the PIN because each carries its OWN authentication.
-    /api/entry and /api/import check INGEST_TOKEN; /api/alerts checks
-    CRON_SECRET. Anything added here MUST authenticate itself — the PIN is the
-    only other gate in front of the whole app. */
-const PUBLIC_PATHS = ['/lock', '/api/lock', '/api/alerts', '/api/entry', '/api/import'];
+
+    /api/entry and /api/import check INGEST_TOKEN. /api/cron/reminders checks
+    CRON_SECRET, and /api/calendar checks CALENDAR_TOKEN — both must be out
+    here because neither caller can hold a PIN cookie: Vercel Cron sends a
+    bearer header and nothing else, and iOS Calendar refetches the feed on its
+    own schedule with no session at all. Behind the PIN they answered 401 to
+    the only two clients they exist for.
+
+    Both refuse EVERYONE when their secret is unset, which is what makes them
+    safe to exempt: the failure mode is a silent feed, never an open one.
+
+    Anything added here MUST authenticate itself — the PIN is the only other
+    gate in front of the whole app. /api/push/subscribe is deliberately NOT
+    here: it is called from the app with a session, and a device-registration
+    endpoint reachable without one would let a stranger attach their phone to
+    these reminders.
+
+    /api/alerts was v2's ntfy endpoint and no longer exists; its exemption is
+    removed rather than left as a hole pointing at nothing. */
+const PUBLIC_PATHS = [
+  '/lock', '/api/lock', '/api/entry', '/api/import',
+  '/api/calendar', '/api/cron',
+];
 
 /** Exempt at EXACTLY this path, and not below it.
 

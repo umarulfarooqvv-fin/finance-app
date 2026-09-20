@@ -38,7 +38,7 @@ test('the lock screen itself is reachable, or nobody could ever unlock', async (
 test('endpoints with their own auth stay exempt', async () => {
   process.env['APP_ACCESS_KEY'] = PIN;
   // Each of these authenticates itself: INGEST_TOKEN or CRON_SECRET.
-  for (const path of ['/api/entry', '/api/import', '/api/alerts']) {
+  for (const path of ['/api/entry', '/api/import', '/api/calendar', '/api/cron/reminders']) {
     assert.ok(passedThrough(await proxy(req(path))), `${path} should be exempt`);
   }
 });
@@ -145,4 +145,25 @@ test('the capture upload is exempt, but serving a capture back is not', async ()
   const served = await proxy(req('/api/capture/cap-abc123'));
   assert.ok(!passedThrough(served), 'serving an image must stay behind the lock');
   assert.equal(served.status, 401);
+});
+
+/* Found against the real deployment: the feed answered 401 to the only two
+   clients it exists for. Neither can hold a PIN cookie — Vercel Cron sends a
+   bearer header and nothing else, and iOS Calendar refetches on its own
+   schedule with no session at all. */
+test('the reminder endpoints are reachable without a PIN cookie', async () => {
+  process.env.APP_ACCESS_KEY = 'pin-1234';
+  for (const path of ['/api/calendar?token=x', '/api/cron/reminders']) {
+    const res = await proxy(new Request(`https://x.test${path}`));
+    assert.equal(res.status, 200, `${path} must not be intercepted by the PIN`);
+    assert.equal(res.headers.get('x-middleware-next'), '1');
+  }
+});
+
+/* The other half of the same rule: registering a device is a session action,
+   and an open one would let a stranger attach their phone to these reminders. */
+test('registering a push device stays behind the PIN', async () => {
+  process.env.APP_ACCESS_KEY = 'pin-1234';
+  const res = await proxy(new Request('https://x.test/api/push/subscribe', { method: 'POST' }));
+  assert.equal(res.status, 401);
 });

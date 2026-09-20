@@ -20,3 +20,7 @@ data/
 # `build`, so tracking it put a meaningless diff in 33 commits and guaranteed a
 # conflict on any rebase.
 *.tsbuildinfo
+# Added by the Vercel CLI on link. Kept, but .env.example is committed
+# documentation of every variable and must stay visible.
+.env*
+!.env.example
