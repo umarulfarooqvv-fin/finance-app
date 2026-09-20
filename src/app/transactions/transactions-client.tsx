@@ -101,7 +101,14 @@ export function TransactionsClient({
           back up to change a filter or add an entry. */}
       <div
         ref={barRef}
-        className="sticky top-0 z-30 -mx-4 mb-3 border-b border-[var(--color-line)] bg-[var(--color-surface)] px-4 pb-3 sm:-mx-5 sm:px-5"
+        /* The bar owns its own vertical padding rather than sitting inside the
+           panel's. Once stuck, the panel's top padding has scrolled away with
+           the panel, and a search field flush against the top of the screen is
+           the result. Owning it means the same breathing room in both states.
+
+           Rounded at the top to match the panel it is flush with, which also
+           reads correctly once it detaches and floats. */
+        className="sticky top-0 z-30 -mx-4 mb-3 rounded-t-[var(--radius-card)] border-b border-[var(--color-line)] bg-[var(--color-surface)] px-4 pb-3 pt-4 sm:-mx-5 sm:px-5 sm:pt-5"
       >
         {toolbar}
         <div className="mt-3 flex justify-end">

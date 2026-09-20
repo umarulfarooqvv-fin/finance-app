@@ -106,7 +106,9 @@ export default async function TransactionsPage({
           frozen to the top of it — they were a separate panel above, which
           scrolled away on a list thousands of rows long. */}
       <Panel padded={false}>
-        <div className="p-4 sm:p-5">
+        {/* No top padding here: the frozen bar supplies its own, so the spacing
+            above the search field survives the panel scrolling away. */}
+        <div className="px-4 pb-4 sm:px-5 sm:pb-5">
           <TransactionsClient
             groups={dayGroups}
             defaultTs={nowIST()}
