@@ -316,7 +316,10 @@ export function MisfiledPanel({
                           key={c.id}
                           className={cx(
                             'flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 last:border-b-0',
-                            mine && 'bg-[var(--color-raised)]',
+                            /* Green, the same tint a matched row gets in the
+                               pairing column: this one is already on the bill,
+                               so it is covered and needs nothing. */
+                            mine && 'bg-[var(--color-pos-soft)]',
                           )}
                         >
                           {/* Already on this card: nothing to tick, because
@@ -334,7 +337,12 @@ export function MisfiledPanel({
                           )}
                           <span className="min-w-0 flex-1 truncate text-sm">
                             {c.description}
-                            <span className="ml-1.5 text-[11px] text-[var(--color-ink-3)]">
+                            <span
+                              className={cx(
+                                'ml-1.5 text-[11px]',
+                                mine ? 'text-[var(--color-ink-2)]' : 'text-[var(--color-ink-3)]',
+                              )}
+                            >
                               {c.category}
                             </span>
                           </span>
@@ -342,7 +350,12 @@ export function MisfiledPanel({
                               Its card bills on a different day from this one,
                               so this is a different statement, not the same
                               period under another name. */}
-                          <Badge tone={mine ? 'good' : 'neutral'}>
+                          {/* Neutral even on a covered row: the `good` tone's
+                              fill IS pos-soft, which is now the row's own
+                              background, so the chip would dissolve into it.
+                              The row colour carries "covered"; the chip only
+                              has to stay legible. */}
+                          <Badge tone="neutral">
                             {c.methodColor ? <Dot color={c.methodColor} size={7} /> : null}
                             {c.method}
                             {!mine && c.fromStatement ? ` \u00b7 ${statementLabel(c.fromStatement)}` : ''}
@@ -353,7 +366,9 @@ export function MisfiledPanel({
                             tone={c.direction === 'credit' ? 'credit' : 'debt'}
                           />
                           {mine ? (
-                            <span className="text-[11px] text-[var(--color-ink-3)]">on this bill</span>
+                            <span className="text-[11px] font-medium text-[var(--color-ink-2)]">
+                              on this bill
+                            </span>
                           ) : (
                             <Button
                               size="sm"
