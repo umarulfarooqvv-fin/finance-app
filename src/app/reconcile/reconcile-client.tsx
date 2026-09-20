@@ -22,6 +22,7 @@ import { Badge, Dot, Empty, Money, Panel, SectionTitle, cx } from '@/components/
 import { useToast } from '@/components/ui/toast';
 import { reassignMethodAction } from './actions';
 import { recordSummaryAction } from '@/app/cards/[name]/actions';
+import { StatementPromptCard } from './prompt-card';
 
 /* ===========================================================================
    Reconciling a pasted statement, line by line.
@@ -363,6 +364,8 @@ export function ReconcileClient({
           read properly, so a running-balance column or a reference number is not mistaken for the
           amount. The text stays in your browser.
         </p>
+
+        <StatementPromptCard />
 
         <textarea
           value={text}

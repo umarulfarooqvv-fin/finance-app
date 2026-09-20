@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import { parseStatement, parseStatementSummary } from '@/lib/statement-parse';
+import { EXAMPLE, STATEMENT_PROMPT } from '@/lib/statement-prompt';
 
 /* ===========================================================================
    Reading a pasted statement.
@@ -280,4 +281,45 @@ Total Amount Due 1,150.00
 `);
   assert.ok(s);
   assert.equal(s.totalDue, 1150.00);
+});
+
+/* ---------------------------------------------------------------------------
+   The prompt and the parser have to agree.
+
+   The prompt tells an assistant what shape to hand back for a statement the
+   app cannot read itself — a screenshot, or a PDF it has no access to. Nothing
+   stops that shape drifting away from what the parser accepts except a test
+   that runs the one through the other.
+   --------------------------------------------------------------------------- */
+
+test('the example in the prompt parses to exactly what it shows', () => {
+  const summary = parseStatementSummary(EXAMPLE);
+  assert.ok(summary, 'the summary box the prompt asks for is readable');
+  assert.deepEqual(summary, {
+    previousBalance: 6842.25, charges: 4372.70, payments: 6842.25, totalDue: 4372.70,
+  });
+
+  const { lines, skipped } = parseStatement(EXAMPLE, { dateOrder: 'dmy' });
+  assert.equal(skipped.length, 0, 'no transaction line is unreadable');
+  assert.equal(lines.length, 4);
+
+  // Amounts survive to the paisa, and CR is read as money coming back.
+  assert.deepEqual(
+    lines.map((l) => [l.day, l.amount, l.direction]),
+    [
+      ['2026-01-31', 30.00, 'debit'],
+      ['2026-02-05', 649.19, 'debit'],
+      ['2026-02-11', 73.39, 'debit'],
+      ['2026-02-12', 6842.25, 'credit'],
+    ],
+  );
+});
+
+test('the prompt states the rules that keep the data trustworthy', () => {
+  /* Not style policing: each of these is a way a model is "helpful" that
+     silently corrupts money — and the reason the app re-checks the totals
+     afterwards rather than trusting the output. */
+  for (const rule of [/never round/i, /never guess/i, /do not total/i, /do not merge/i, /UNREADABLE/]) {
+    assert.match(STATEMENT_PROMPT, rule);
+  }
 });

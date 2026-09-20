@@ -173,6 +173,29 @@ function looksLikeHeader(text: string): boolean {
   return hits.size >= 2;
 }
 
+/* ---------------------------------------------------------------------------
+   The summary box is not unreadable, it is simply not a transaction.
+
+   The paste now carries it deliberately — it is where the balance check comes
+   from — and its three lines have no date, so without this every paste would
+   report "3 lines could not be read" about the part it was asked for. A
+   warning that fires on correct input trains the reader to ignore the one that
+   matters.
+   --------------------------------------------------------------------------- */
+
+const SUMMARY_LABEL =
+  /previous\s+balance|opening\s+balance|purchases?\s*\/?\s*charges?|cash\s+advances?|payments?\s*\/?\s*credits?|total\s+amount\s+due|total\s+due|amount\s+payable|statement\s+summary|minimum\s+amount/i;
+
+/** Only amounts, separators and currency marks — the row under a label line. */
+const AMOUNTS_ONLY = /^[\s₹rs.,|\d()+-]*$/i;
+
+function isSummaryLine(text: string, prevWasSummary: boolean): boolean {
+  if (SUMMARY_LABEL.test(text)) return true;
+  // The amounts belonging to a label line directly above, which on their own
+  // would be indistinguishable from a malformed transaction.
+  return prevWasSummary && text.trim() !== '' && AMOUNTS_ONLY.test(text);
+}
+
 /* ===========================================================================
    Statements that put one transaction across several lines.
 
@@ -248,6 +271,9 @@ export function joinWrappedRows(rawLines: string[], opts: ParseOptions): Logical
 export function parseStatement(text: string, opts: ParseOptions = {}): ParseResult {
   const out: StatementLine[] = [];
   const skipped: ParseResult['skipped'] = [];
+  // Whether the previous line was part of the summary box, so the amounts
+  // row beneath its labels is recognised as belonging to it.
+  let inSummary = false;
   let ambiguousDates = 0;
 
   joinWrappedRows(text.split(/\r?\n/), opts).forEach((row) => {
@@ -261,6 +287,8 @@ export function parseStatement(text: string, opts: ParseOptions = {}): ParseResu
     const date = findDate(flat, opts);
     if (!date) {
       if (looksLikeHeader(flat)) return;
+      if (isSummaryLine(flat, inSummary)) { inSummary = true; return; }
+      inSummary = false;
       skipped.push({ line, raw: rawLine, why: 'no date found' });
       return;
     }
