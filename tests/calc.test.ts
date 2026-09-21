@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateAmount, isExpression } from '@/lib/calc';
+import { evaluateAmount, insertOperator, isExpression } from '@/lib/calc';
 import { parseUserAmount } from '@/lib/money';
 
 const ok = (s: string) => {
@@ -115,5 +115,43 @@ describe('isExpression', () => {
     expect(isExpression('-50')).toBe(false);
     expect(isExpression('450+230')).toBe(true);
     expect(isExpression('60x3')).toBe(true);
+  });
+});
+
+/* The operators are buttons because a numeric keypad cannot type them, so the
+   insert has to behave the way a calculator's does. */
+describe('insertOperator', () => {
+  const at = (v: string, i: number, op: string) => insertOperator(v, i, i, op);
+
+  it('appends at the end', () => {
+    expect(at('450', 3, '+')).toEqual({ value: '450+', caret: 4 });
+  });
+
+  it('inserts at the caret, not the end', () => {
+    expect(at('450230', 3, '+')).toEqual({ value: '450+230', caret: 4 });
+  });
+
+  /* Tapping + then × means ×. Without this a mistyped tap becomes a syntax
+     error the reader has to find and delete, and the total vanishes until
+     they do. */
+  it('replaces a trailing operator instead of stacking one on it', () => {
+    expect(at('450+', 4, '×')).toEqual({ value: '450×', caret: 4 });
+    expect(at('450×', 4, '÷')).toEqual({ value: '450÷', caret: 4 });
+    expect(at('450-', 4, '+')).toEqual({ value: '450+', caret: 4 });
+  });
+
+  it('replaces a selection', () => {
+    expect(insertOperator('450+230', 3, 7, '×')).toEqual({ value: '450×', caret: 4 });
+  });
+
+  it('survives a caret beyond the text', () => {
+    expect(at('450', 99, '+')).toEqual({ value: '450+', caret: 4 });
+  });
+
+  it('produces something the evaluator can read', () => {
+    const a = at('450', 3, '+');
+    const b = insertOperator(`${a.value}230`, 7, 7, '×');
+    expect(evaluateAmount(`${b.value}2`).ok).toBe(true);
+    expect(evaluateAmount('450+230×2')).toMatchObject({ ok: true, amount: 910 });
   });
 });

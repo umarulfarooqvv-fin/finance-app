@@ -173,3 +173,33 @@ export function evaluateAmount(text: string | number | null | undefined): CalcRe
     expression: isExpression(raw),
   };
 }
+
+/* Any operator this app writes or accepts, for the trailing-operator rule. */
+const TRAILING_OP = /[+\-*/x\u00d7\u00f7]\s*$/i;
+
+/**
+ * Put an operator into an expression at the caret.
+ *
+ * REPLACES A TRAILING OPERATOR rather than appending to it, which is what
+ * every calculator does: tapping + and then × means ×, not "+×". Without it a
+ * mistyped tap becomes a syntax error the reader then has to find and delete,
+ * and the running total disappears until they do.
+ *
+ * Returns the new text and where the caret belongs in it.
+ */
+export function insertOperator(
+  value: string,
+  start: number,
+  end: number,
+  op: string,
+): { value: string; caret: number } {
+  const lo = Math.max(0, Math.min(start, value.length));
+  const hi = Math.max(lo, Math.min(end, value.length));
+
+  let before = value.slice(0, lo);
+  const after = value.slice(hi);
+
+  if (TRAILING_OP.test(before)) before = before.replace(TRAILING_OP, '');
+
+  return { value: before + op + after, caret: before.length + op.length };
+}

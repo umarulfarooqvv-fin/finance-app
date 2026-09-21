@@ -1,7 +1,8 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { Equal } from 'lucide-react';
-import { evaluateAmount, isExpression } from '@/lib/calc';
+import { evaluateAmount, insertOperator, isExpression } from '@/lib/calc';
 import { inputClass } from '@/components/ui/field';
 
 /* ===========================================================================
@@ -21,7 +22,20 @@ import { inputClass } from '@/components/ui/field';
    The expression stays in the box while it is being edited rather than being
    replaced by its total, so a wrong figure can be corrected in place instead
    of retyped from nothing.
+
+   THE OPERATORS ARE BUTTONS because a phone showing a numeric keypad has no
+   way to type them. Reaching + or × means switching to the letter keyboard
+   and back for every term, which is enough friction to make the feature not
+   worth using — so the keypad stays numeric and the four symbols sit under
+   the box.
    =========================================================================== */
+
+const OPERATORS = [
+  { op: '+', label: 'add' },
+  { op: '-', label: 'subtract' },
+  { op: '\u00d7', label: 'multiply by' },
+  { op: '\u00f7', label: 'divide by' },
+] as const;
 
 export function AmountField({
   id = 'amount', name = 'amount', value, onChange, error, autoFocus = false, placeholder = '0.00',
@@ -37,12 +51,38 @@ export function AmountField({
   const showing = isExpression(value) && value.trim() !== '';
   const result = showing ? evaluateAmount(value) : null;
 
+  const box = useRef<HTMLInputElement>(null);
+  /* Where the caret should land once the new value has rendered. Held in a ref
+     rather than state: it is not something the UI draws, and making it state
+     would render the field twice for every tap. */
+  const caret = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (caret.current === null || !box.current) return;
+    box.current.setSelectionRange(caret.current, caret.current);
+    caret.current = null;
+  });
+
+  function insert(op: string) {
+    const el = box.current;
+    const start = el?.selectionStart ?? value.length;
+    const end = el?.selectionEnd ?? value.length;
+
+    const next = insertOperator(value, start, end, op);
+    caret.current = next.caret;
+    onChange(next.value);
+    el?.focus();
+  }
+
   return (
     <>
       <input
+        ref={box}
         id={id}
         name={name}
-        inputMode="text"
+        /* Numeric keypad, because that is what nearly every entry needs. The
+           operators are buttons precisely so this can stay decimal. */
+        inputMode="decimal"
         autoComplete="off"
         autoFocus={autoFocus}
         value={value}
@@ -52,6 +92,25 @@ export function AmountField({
         aria-describedby={showing ? `${id}-calc` : undefined}
         className={`${inputClass(error)} num text-lg`}
       />
+
+      <div className="mt-1.5 flex items-center gap-1.5">
+        {OPERATORS.map(({ op, label }) => (
+          <button
+            key={op}
+            type="button"
+            tabIndex={-1}
+            aria-label={label}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => insert(op)}
+            className="num h-8 w-9 rounded-[var(--radius-field)] border border-[var(--color-line)] text-sm text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-line-strong)] hover:bg-[var(--color-raised)] active:bg-[var(--color-raised)]"
+          >
+            {op}
+          </button>
+        ))}
+        <span className="ml-1 text-[11px] text-[var(--color-ink-3)]">
+          to add several figures
+        </span>
+      </div>
 
       {/* Only once there is arithmetic to report. A running total under every
           plain figure would be noise on the common case. */}
