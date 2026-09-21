@@ -48,3 +48,66 @@ export async function assignRepayment(
   });
   return { id, person: value };
 }
+
+/* ===========================================================================
+   Recording that money came back.
+
+   A repayment is only known to the ledger when it was logged as income or as a
+   Credit Return row. Cash handed over in person never was, so the balance sits
+   there reading as outstanding — and the Ledgers page has to keep saying "not
+   recorded as repaid" about money that came back years ago.
+
+   This writes the missing half. It records a REPAYMENT, never a deletion: the
+   lending stays in the ledger, the repayment stands beside it, and the two net
+   to nothing. Erasing the lending instead would make a real transaction
+   disappear from a year's spending and from the card it was charged to.
+
+   Each one carries its own id so it can be undone, and so recording the same
+   settlement twice does not halve a balance that was only owed once.
+   =========================================================================== */
+
+export type ManualRepayment = {
+  id: string;
+  person: string;
+  ts: string;
+  amount: number;
+  note?: string;
+};
+
+export async function recordManualRepayment(
+  entry: ManualRepayment,
+  ctx: Actor,
+): Promise<{ id: string }> {
+  if (!entry.person.trim()) throw new Error('Which person?');
+  if (!(entry.amount > 0)) throw new Error('A repayment has to be more than nothing.');
+
+  await updateConfigKey<CreditConfig>(CREDIT_KEY, (current) => {
+    const manual = [...(current.manual ?? [])];
+    // Same id twice is a repeat press, not a second repayment.
+    if (manual.some((m) => m.id === entry.id)) return current;
+    manual.push(entry);
+    return { ...current, manual };
+  });
+
+  await logEvent('credit.manual-repayment', {
+    id: entry.id,
+    person: entry.person,
+    amount: entry.amount,
+    by: ctx.actor,
+    via: ctx.via,
+  });
+  return { id: entry.id };
+}
+
+/** Undo one hand-recorded repayment. The lending it settled comes back. */
+export async function removeManualRepayment(id: string, ctx: Actor): Promise<{ id: string }> {
+  if (!id.trim()) throw new Error('Which repayment?');
+
+  await updateConfigKey<CreditConfig>(CREDIT_KEY, (current) => ({
+    ...current,
+    manual: (current.manual ?? []).filter((m) => m.id !== id),
+  }));
+
+  await logEvent('credit.manual-repayment.remove', { id, by: ctx.actor, via: ctx.via });
+  return { id };
+}

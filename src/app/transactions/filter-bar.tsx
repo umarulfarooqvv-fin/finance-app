@@ -28,8 +28,8 @@ export type InitialFilters = {
   q?: string;
   month: string;
   day: string;
-  category: string;
-  method: string;
+  category: string[];
+  method: string[];
   min?: string;
   max?: string;
   upcoming: boolean;
@@ -44,6 +44,16 @@ export type InitialFilters = {
    TRANSFER_CATEGORIES carries the legacy spellings ("Credit Card",
    "Investment", "Savings") that older rows still use; they are offered
    because filtering has to be able to reach rows that exist. */
+
+/** The param value for a list, or undefined so the key leaves the URL. */
+const asParam = (values: string[]): string | undefined =>
+  values.length > 0 ? values.join(',') : undefined;
+
+const withValue = (values: string[], add: string): string | undefined =>
+  asParam([...new Set([...values, add])]);
+
+const without = (values: string[], drop: string): string | undefined =>
+  asParam(values.filter((v) => v !== drop));
 
 export function FilterBar({
   months, initial, narrowed, matched, total, spend,
@@ -74,12 +84,30 @@ export function FilterBar({
   /* An amount bound is still a figure on screen, so it goes through the same
      blur as every other one rather than being special-cased. The label is a
      node, not a string, so the guard can wrap just the number. */
-  const chips: { key: string; label: ReactNode; clear: Record<string, undefined> }[] = [];
+  /* `clear` is what the chip's X applies. It is not always "remove the key":
+     dropping one of several categories leaves the others, so the value can be
+     a shorter list rather than undefined. */
+  const chips: { key: string; label: ReactNode; clear: Record<string, string | undefined> }[] = [];
   if (initial.q) chips.push({ key: 'q', label: `“${initial.q}”`, clear: { q: undefined } });
   if (initial.day) chips.push({ key: 'day', label: formatDay(initial.day), clear: { day: undefined } });
   else if (initial.month) chips.push({ key: 'month', label: formatMonth(initial.month), clear: { month: undefined } });
-  if (initial.category) chips.push({ key: 'cat', label: initial.category, clear: { cat: undefined } });
-  if (initial.method) chips.push({ key: 'method', label: `from ${initial.method}`, clear: { method: undefined } });
+  /* One chip per chosen value, each removable on its own — a single chip
+     saying "3 categories" would make removing one of them impossible without
+     opening the panel again. */
+  for (const c of initial.category) {
+    chips.push({
+      key: `cat-${c}`,
+      label: c,
+      clear: { cat: without(initial.category, c) },
+    });
+  }
+  for (const m of initial.method) {
+    chips.push({
+      key: `method-${m}`,
+      label: `from ${m}`,
+      clear: { method: without(initial.method, m) },
+    });
+  }
   if (initial.min) {
     chips.push({
       key: 'min',
@@ -110,7 +138,7 @@ export function FilterBar({
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search remarks, category or method"
+              placeholder="Search remarks, category, method or amount"
               aria-label="Search transactions"
               className={cx(inputClass(), 'pl-9')}
             />
@@ -182,35 +210,47 @@ export function FilterBar({
             />
           </label>
 
+          {/* Choose several. The select ADDS and the chips REMOVE, rather than
+              a multi-select box: twenty-two categories will not fit as a wall
+              of chips, and a native multiple-select is close to unusable on a
+              phone. Several chosen means ANY of them. */}
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">Category</span>
+            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">
+              Category{initial.category.length > 0 ? ` · ${initial.category.length}` : ''}
+            </span>
             <select
-              value={initial.category}
-              onChange={(e) => set({ cat: e.target.value || undefined })}
+              value=""
+              onChange={(e) => e.target.value && set({ cat: withValue(initial.category, e.target.value) })}
               className={inputClass()}
             >
-              <option value="">Any category</option>
+              <option value="">{initial.category.length > 0 ? 'Add another…' : 'Any category'}</option>
               <optgroup label="Spending">
-                {SPEND_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                {SPEND_CATEGORIES.filter((c) => !initial.category.includes(c))
+                  .map((c) => <option key={c} value={c}>{c}</option>)}
               </optgroup>
               <optgroup label="Bill paid to a card">
-                {CARD_NAMES.map((c) => <option key={c} value={c}>{c}</option>)}
+                {CARD_NAMES.filter((c) => !initial.category.includes(c))
+                  .map((c) => <option key={c} value={c}>{c}</option>)}
               </optgroup>
               <optgroup label="Transfers">
-                {TRANSFER_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                {TRANSFER_CATEGORIES.filter((c) => !initial.category.includes(c))
+                  .map((c) => <option key={c} value={c}>{c}</option>)}
               </optgroup>
             </select>
           </label>
 
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">Paid with</span>
+            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">
+              Paid with{initial.method.length > 0 ? ` · ${initial.method.length}` : ''}
+            </span>
             <select
-              value={initial.method}
-              onChange={(e) => set({ method: e.target.value || undefined })}
+              value=""
+              onChange={(e) => e.target.value && set({ method: withValue(initial.method, e.target.value) })}
               className={inputClass()}
             >
-              <option value="">Any method</option>
-              {ALL_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+              <option value="">{initial.method.length > 0 ? 'Add another…' : 'Any method'}</option>
+              {ALL_METHODS.filter((m) => !initial.method.includes(m))
+                .map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           </label>
 

@@ -21,8 +21,10 @@ export type Filters = {
   month: string;
   /** "YYYY-MM-DD", or '' for any day. A day always wins over a month. */
   day: string;
-  category: string;
-  method: string;
+  /** Chosen categories. Empty means any; several mean any OF those. */
+  category: string[];
+  /** Chosen methods. Empty means any. */
+  method: string[];
   /** Inclusive bounds on the absolute amount, or null for unbounded. */
   min: number | null;
   max: number | null;
@@ -35,6 +37,17 @@ export type RawParams = Record<string, string | string[] | undefined>;
 
 const str = (v: string | string[] | undefined): string =>
   (typeof v === 'string' ? v : '').trim();
+
+/* A multi-valued param, as ONE comma-separated value.
+
+   Repeated keys (?cat=Food&cat=Fuel) would work too, but a single value keeps
+   the URL short enough to read and to send to yourself — which is the whole
+   reason the filter state lives in the URL at all. Blanks are dropped so a
+   trailing comma cannot become a filter matching nothing. */
+const list = (v: string | string[] | undefined): string[] => {
+  const raw = Array.isArray(v) ? v.join(',') : str(v);
+  return [...new Set(raw.split(',').map((x) => x.trim()).filter(Boolean))];
+};
 
 /** A bound is only a bound if it is a real, non-negative number. */
 function bound(v: string | string[] | undefined): number | null {
@@ -55,8 +68,8 @@ export function readFilters(sp: RawParams): Filters {
     // Anything malformed is ignored rather than applied half-understood.
     month: MONTH_RE.test(month) ? month : '',
     day: DAY_RE.test(day) ? day : '',
-    category: str(sp['cat']),
-    method: str(sp['method']),
+    category: list(sp['cat']),
+    method: list(sp['method']),
     min: bound(sp['min']),
     max: bound(sp['max']),
     upcoming: str(sp['upcoming']) === '1',
@@ -67,7 +80,33 @@ export function readFilters(sp: RawParams): Filters {
 
 /** Is anything actually narrowing the list? Drives the "clear all" affordance. */
 export function isNarrowed(f: Filters): boolean {
-  return Boolean(f.q || f.month || f.day || f.category || f.method || f.min !== null || f.max !== null);
+  return Boolean(
+    f.q || f.month || f.day || f.category.length > 0 || f.method.length > 0
+    || f.min !== null || f.max !== null,
+  );
+}
+
+/**
+ * Does this row match what was typed?
+ *
+ * Text matches the remarks, category and method. A query that is a NUMBER also
+ * matches the amount — typing "649" to find a charge you remember the price of
+ * is the obvious thing to try, and before this it silently found nothing.
+ *
+ * The amount match is a substring of the plain figure, so "649" finds 649.19
+ * and 1,649.00 alike. The At least / At most bounds are there for when an
+ * exact range is what is wanted; this is for remembering.
+ */
+function matchesText(t: Transaction, q: string): boolean {
+  if (looseIncludes(`${t.remarks} ${t.category} ${t.method}`, q)) return true;
+
+  const digits = q.replace(/[,\s₹]/g, '');
+  if (!/^\d+(\.\d+)?$/.test(digits)) return false;
+
+  const amount = t.amount;
+  if (amount == null) return false;
+  // Both forms, so "649" matches 649 and "649.19" matches it too.
+  return String(amount).includes(digits) || amount.toFixed(2).includes(digits);
 }
 
 export function applyFilters(
@@ -85,8 +124,10 @@ export function applyFilters(
       if (t.ts.slice(0, 10) !== f.day) return false;
     } else if (f.month && monthKey(t.ts) !== f.month) return false;
 
-    if (f.category && t.category !== f.category) return false;
-    if (f.method && t.method !== f.method) return false;
+    // Several selected means ANY of them, which is the only reading that makes
+    // "Food and Fuel" a wider question rather than an impossible one.
+    if (f.category.length > 0 && !f.category.includes(t.category)) return false;
+    if (f.method.length > 0 && !f.method.includes(t.method)) return false;
 
     /* Bounds compare the magnitude. Every amount in this ledger is stored
        positive and the direction lives in `kind`, so a sign test here would
@@ -100,7 +141,7 @@ export function applyFilters(
     /* Folded, not lower-cased. Remarks that came through the Google Sheet
        carry a curled apostrophe, so "Sheya's" typed into the search box found
        nothing and the row read as deleted rather than as unfindable. */
-    if (f.q && !looseIncludes(`${t.remarks} ${t.category} ${t.method}`, f.q)) return false;
+    if (f.q && !matchesText(t, f.q)) return false;
     return true;
   });
 }

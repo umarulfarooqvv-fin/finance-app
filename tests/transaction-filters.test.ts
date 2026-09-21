@@ -134,3 +134,61 @@ test('an empty override removes the parameter instead of blanking it', () => {
   assert.equal(queryString({ cat: 'Food' }, { cat: '' }), '?');
   assert.ok(queryString({ cat: 'Food', method: 'Fi' }, { cat: undefined }).includes('method=Fi'));
 });
+
+/* --- Several at once ------------------------------------------------------ */
+
+/* Two categories is a WIDER question, not an impossible one: "Food and
+   Personal" means either, because no row is both. Reading it as "and" would
+   always return nothing, which looks exactly like a month with no spending. */
+test('several categories mean ANY of them', () => {
+  assert.equal(run({ cat: 'Food' }).length, 2);
+  assert.equal(run({ cat: 'Personal' }).length, 1);
+  assert.equal(run({ cat: 'Food,Personal' }).length, 3);
+});
+
+test('several methods mean ANY of them', () => {
+  assert.equal(run({ method: 'Fi,Cash' }).length, 3);
+});
+
+test('a multi-select still narrows across the two together', () => {
+  // Food or Personal, but only on Scapia.
+  assert.equal(run({ cat: 'Food,Personal', method: 'Scapia' }).length, 1);
+});
+
+test('blanks and repeats in the list are ignored rather than matching nothing', () => {
+  assert.equal(run({ cat: 'Food,,Food, ' }).length, 2);
+  assert.deepEqual(readFilters({ cat: 'Food,,Food' }).category, ['Food']);
+});
+
+test('an empty list is the same as no filter at all', () => {
+  assert.equal(run({ cat: '' }).length, run({}).length);
+  assert.equal(isNarrowed(readFilters({ cat: '' })), false);
+  assert.equal(isNarrowed(readFilters({ cat: 'Food' })), true);
+});
+
+/* --- Searching by amount -------------------------------------------------- */
+
+/* Typing the price you remember is the obvious thing to try, and before this
+   it silently found nothing. */
+test('a numeric query searches the amount as well as the text', () => {
+  assert.equal(run({ q: '1799' }).length, 1);
+  assert.equal(run({ q: '1799' })[0]!.remarks, 'Shirts');
+});
+
+test('a partial figure finds it, so the exact paisa need not be remembered', () => {
+  assert.equal(run({ q: '2620' })[0]!.remarks, 'Cleared');
+  assert.equal(run({ q: '2620.2' })[0]!.remarks, 'Cleared');
+});
+
+test('commas and a rupee sign in the query are ignored', () => {
+  assert.equal(run({ q: '₹1,799' }).length, 1);
+});
+
+test('a text query still searches text, and does not become an amount', () => {
+  assert.equal(run({ q: 'Shirts' }).length, 1);
+  assert.equal(run({ q: 'Food' }).length, 2);
+});
+
+test('a number that matches nothing returns nothing rather than everything', () => {
+  assert.equal(run({ q: '987654' }).length, 0);
+});

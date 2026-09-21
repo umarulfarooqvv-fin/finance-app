@@ -1,6 +1,7 @@
 import { getSnapshot } from '@/lib/snapshot';
 import { creditLedger } from '@/lib/credit';
 import { recovery, STALE_DAYS } from '@/lib/recovery';
+import { SettleButton } from './settle-button';
 import { debtLedger } from '@/lib/debts';
 import { emiPlans, emiSummary } from '@/lib/emi';
 import { dayOf, formatDay } from '@/lib/time';
@@ -109,6 +110,7 @@ export default async function LedgersPage() {
                   {Math.round(p.recovered * 100)}% back &middot; oldest {p.oldestAge}d
                 </span>
                 <Money value={p.outstanding} size="sm" tone="debt" className="font-semibold" />
+                <SettleButton person={p.person} outstanding={p.outstanding} />
               </li>
             ))}
           </ul>

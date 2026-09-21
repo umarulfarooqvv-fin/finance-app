@@ -118,6 +118,11 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
       }
     : null;
 
+  /* Below zero means the card is holding money of yours, not that something
+     is broken. Named once so the headline, the badge and the tiles cannot
+     disagree about it. */
+  const inCredit = row.totalDebtLive < -0.005;
+
   const m = row.cycleMath;
   const checked = row.verified.verified + row.verified.unverified;
 
@@ -165,9 +170,24 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
               <Dot color={cardColor(card.slot)} />
               Total balance now
             </div>
-            <Money value={row.totalDebtLive} size="display" className="mt-1 block" />
+            {/* An overpaid card carries a CREDIT, and the engine reports it as
+                a negative balance — correctly, because clamping it at zero
+                would misstate the reserve. But "-5.90" under the words TOTAL
+                BALANCE reads as a fault rather than as money sitting with the
+                bank, so the sign is spelled out instead of shown. */}
+            <Money
+              value={Math.abs(row.totalDebtLive)}
+              size="display"
+              tone={inCredit ? 'credit' : 'auto'}
+              className="mt-1 block"
+            />
             <p className="mt-2 text-sm text-[var(--color-ink-2)]">
-              {row.remainingDueBill > 0 ? (
+              {inCredit ? (
+                <>
+                  <strong className="font-semibold text-[var(--color-pos)]">In credit</strong> —
+                  the card owes you this. It comes off your next bill.
+                </>
+              ) : row.remainingDueBill > 0 ? (
                 <>
                   <strong className="sensitive font-semibold text-[var(--color-ink)]">
                     {money(row.remainingDueBill)}
@@ -179,7 +199,9 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
               )}
             </p>
           </div>
-          {row.status === 'overdue' ? (
+          {inCredit ? (
+            <Badge tone="good">In credit</Badge>
+          ) : row.status === 'overdue' ? (
             <Badge tone="bad">Overdue</Badge>
           ) : row.status === 'due-soon' ? (
             <Badge tone="warn">{row.daysLeft === 0 ? 'Due today' : `${row.daysLeft}d left`}</Badge>
@@ -193,7 +215,11 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
         <div className="mt-5 border-t border-[var(--color-line)] pt-4">
           <StatGrid cols={4}>
             <Stat label="On this bill" value={row.remainingDueBill} />
-            <Stat label="Unbilled since" value={row.unbilled} />
+            <Stat
+              label={row.unbilled < -0.005 ? 'Credit carried forward' : 'Unbilled since'}
+              value={Math.abs(row.unbilled)}
+              tone={row.unbilled < -0.005 ? 'credit' : 'neutral'}
+            />
             <Stat
               label="Utilisation"
               value={row.totalDebtLive <= 0 ? 'Nothing owed' : percent(row.utilization)}
