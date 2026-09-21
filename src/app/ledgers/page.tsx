@@ -1,5 +1,6 @@
 import { getSnapshot } from '@/lib/snapshot';
 import { creditLedger } from '@/lib/credit';
+import { recovery, STALE_DAYS } from '@/lib/recovery';
 import { debtLedger } from '@/lib/debts';
 import { emiPlans, emiSummary } from '@/lib/emi';
 import { dayOf, formatDay } from '@/lib/time';
@@ -23,6 +24,7 @@ export const dynamic = 'force-dynamic';
 export default async function LedgersPage() {
   const snap = await getSnapshot();
   const today = dayOf(snap.loadedAt);
+  const rec = recovery(snap, today);
 
   const credit = creditLedger(snap);
   const debts = debtLedger(snap);
@@ -64,6 +66,63 @@ export default async function LedgersPage() {
       </Panel>
 
       {/* ---- Credit given ------------------------------------------------- */}
+      {/* ---- What is going cold ----------------------------------------
+           The table below says who owes what. It cannot say which of those
+           balances is DRIFTING — and a small one untouched since winter is
+           the one that becomes money nobody mentions again. */}
+      {rec.people.length > 0 ? (
+        <Panel className="mt-4">
+          <SectionTitle>Worth chasing &middot; {rec.people.length}</SectionTitle>
+          <div className="mb-3 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <Stat label="Not recorded back" value={rec.outstanding} tone="debt" />
+            <Stat
+              label={`Quiet ${STALE_DAYS}+ days`}
+              value={rec.stale}
+              tone={rec.stale > 0.005 ? 'debt' : 'credit'}
+              hint={`${rec.staleCount} of ${rec.people.length}`}
+            />
+            <Stat
+              label="Matched nobody"
+              value={rec.unattached.amount}
+              tone={rec.unattached.count > 0 ? 'debt' : 'muted'}
+              hint={rec.unattached.count > 0 ? `${rec.unattached.count} repayments` : 'none'}
+            />
+          </div>
+
+          <ul className="flex flex-col">
+            {rec.people.slice(0, 8).map((p) => (
+              <li
+                key={p.person}
+                className="flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 text-sm last:border-b-0"
+              >
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  <Private>{p.person}</Private>
+                </span>
+                <Badge tone={p.flag === 'moving' ? 'good' : 'warn'}>
+                  {p.flag === 'nothing-back'
+                    ? 'nothing back'
+                    : p.flag === 'stalled'
+                      ? `quiet ${p.quietFor}d`
+                      : 'repaying'}
+                </Badge>
+                <span className="shrink-0 text-[11px] text-[var(--color-ink-3)]">
+                  {Math.round(p.recovered * 100)}% back &middot; oldest {p.oldestAge}d
+                </span>
+                <Money value={p.outstanding} size="sm" tone="debt" className="font-semibold" />
+              </li>
+            ))}
+          </ul>
+
+          <p className="mt-3 text-[11px] text-[var(--color-ink-3)]">
+            The ones that have gone quiet come first, largest of those at the top &mdash; sorting
+            by amount alone puts a healthily-repaying arrangement first, and sorting by silence
+            alone brings up trivial sums untouched for years. Every figure means{' '}
+            <em>not recorded as repaid</em>: cash handed back without being logged still reads as
+            outstanding here.
+          </p>
+        </Panel>
+      ) : null}
+
       <Panel className="mt-4">
         <SectionTitle>Owed to you</SectionTitle>
 

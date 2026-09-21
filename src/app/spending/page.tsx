@@ -11,6 +11,7 @@ import { delta, money } from '@/lib/format';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Badge, Empty, Panel, SectionTitle, Stat, StatGrid } from '@/components/ui/primitives';
 import { comparisonFor, granularity, readPeriod, type RawParams } from '@/lib/period';
+import { cardCost } from '@/lib/card-cost';
 import { PeriodPicker } from './period-picker';
 
 export const dynamic = 'force-dynamic';
@@ -55,6 +56,7 @@ export default async function SpendingPage({
      range would put a projection where a fact belongs. */
   const fc = period.kind === 'mtd' ? forecast(snap, today) : null;
 
+  const cost = cardCost(snap, period.from, period.to);
   const daily = dailySeries(snap, period.from, period.to);
   const byMonth = monthsWithin(rows, period.from, period.to);
   const trips = byTrip(rows);
@@ -112,6 +114,43 @@ export default async function SpendingPage({
           </p>
         ) : null}
       </Panel>
+
+      {/* ---- What the cards charged for being used ---------------------
+           Surcharges and their tax are ordinary spend rows, so they are
+           already inside every total above — which is exactly why they are
+           invisible. One number is the only form in which anyone decides to
+           do something about them. */}
+      {cost.total > 0.005 ? (
+        <Panel className="mt-4">
+          <SectionTitle>What the cards cost &middot; {cost.count}</SectionTitle>
+          <div className="mb-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <Stat label="Fees and tax" value={cost.total} tone="debt" />
+            <Stat
+              label="Of your spending"
+              value={`${(cost.shareOfSpend * 100).toFixed(1)}%`}
+              hint={`${period.label.toLowerCase()}`}
+            />
+            <Stat
+              label="Could change"
+              value={cost.avoidable}
+              tone={cost.avoidable > 0.005 ? 'debt' : 'neutral'}
+              hint="not tied to an instalment"
+            />
+            <Stat
+              label="Already committed"
+              value={cost.committed}
+              tone="muted"
+              hint="instalment charges"
+            />
+          </div>
+          <RankedBars data={cost.byCard} limit={6} hue="var(--color-warn)" onEmpty="No fees in this period" />
+          <p className="mt-3 text-[11px] text-[var(--color-ink-3)]">
+            Split because the two answer different questions: an instalment&rsquo;s charges were
+            agreed when the plan started and run to its end, while a fuel surcharge is a choice
+            about which card goes into which pump and can stop this week.
+          </p>
+        </Panel>
+      ) : null}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Panel>
