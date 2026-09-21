@@ -10,7 +10,7 @@ import { cn } from '@/lib/cn';
    form that loses focus is a form that loses an entry. */
 
 export function Dialog({
-  open, onOpenChange, title, description, children, footer, wide,
+  open, onOpenChange, title, description, children, footer, wide, onEscapeKeyDown,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -19,12 +19,23 @@ export function Dialog({
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /**
+   * Radix's own escape hook, forwarded.
+   *
+   * A popover INSIDE the dialog — the remarks suggestion list — needs Escape
+   * to close itself and not the dialog behind it. It cannot do that from
+   * where it sits: Radix listens on `document` in the CAPTURE phase, so the
+   * dialog has already decided before any descendant's handler runs. Calling
+   * preventDefault here is the only place that decision can be changed.
+   */
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
 }) {
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] data-[state=open]:animate-in" />
         <RadixDialog.Content
+          onEscapeKeyDown={onEscapeKeyDown}
           className={cn(
             'fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-pop)]',
             wide ? 'max-w-2xl' : 'max-w-md',

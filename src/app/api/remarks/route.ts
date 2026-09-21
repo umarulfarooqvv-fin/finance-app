@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { getSnapshot } from '@/lib/snapshot';
+import { frequentPairs, type EntryPair } from '@/lib/entry-hints';
+import { dayOf } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +19,11 @@ export const dynamic = 'force-dynamic';
    last time it was used, because the form has no use for those and this reply
    should carry the least that does the job.
 
+   It also returns the METHOD AND CATEGORY PAIRINGS used most, recency
+   weighted, for the two dropdowns above the remarks field. Same request,
+   because both are read from one snapshot and a second round trip to answer
+   half of the same question is a second thing to fail.
+
    Session-guarded: these are the user's own descriptions, which name people
    and places and are nobody else's business.
    =========================================================================== */
@@ -32,6 +39,8 @@ export type RemarkSuggestion = {
 };
 
 const LIMIT = 400;
+/** Four fits one row on a phone without wrapping. */
+const PAIRS = 4;
 
 export async function GET(): Promise<Response> {
   const auth = await requireSession();
@@ -60,5 +69,7 @@ export async function GET(): Promise<Response> {
     .sort((a, b) => (a.last < b.last ? 1 : a.last > b.last ? -1 : b.used - a.used))
     .slice(0, LIMIT);
 
-  return NextResponse.json({ ok: true, suggestions });
+  const pairs: EntryPair[] = frequentPairs(snap, dayOf(snap.loadedAt), PAIRS);
+
+  return NextResponse.json({ ok: true, suggestions, pairs });
 }

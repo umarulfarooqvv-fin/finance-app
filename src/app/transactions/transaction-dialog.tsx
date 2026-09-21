@@ -10,6 +10,10 @@ import { useToast } from '@/components/ui/toast';
 import { VoiceInput } from '@/components/entry/voice-input';
 import { RemarkSearch } from '@/components/entry/remark-search';
 import { AmountField, amountToSubmit } from '@/components/entry/amount-field';
+import { PairHints } from '@/components/entry/pair-hints';
+import type { EntryPair } from '@/lib/entry-hints';
+import type { RemarkSuggestion } from '@/app/api/remarks/route';
+import { foldForSearch } from '@/lib/search-text';
 import { createTransactionAction, updateTransactionAction } from './actions';
 
 /* ===========================================================================
@@ -92,6 +96,47 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
   // One key per opening of the dialog. Re-submitting after a network error
   // reuses it, so a request that actually succeeded cannot become two rows.
   const [clientKey, setClientKey] = useState(() => crypto.randomUUID());
+
+  /* The history, fetched once per opening and shared by the two things that
+     need it: the method/category hints and the remarks search. */
+  /* Whether the remarks suggestion list is up. Escape belongs to whichever
+     of the two is on top, and only the dialog can arbitrate — Radix decides
+     in the capture phase, before anything inside it is consulted. */
+  const [listOpen, setListOpen] = useState(false);
+  const [pairs, setPairs] = useState<EntryPair[]>([]);
+  const [history, setHistory] = useState<RemarkSuggestion[] | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    void fetch('/api/remarks')
+      .then((r) => r.json())
+      .then((j: { ok: boolean; suggestions?: RemarkSuggestion[]; pairs?: EntryPair[] }) => {
+        if (!live || !j.ok) return;
+        setPairs(j.pairs ?? []);
+        setHistory(j.suggestions ?? []);
+      })
+      .catch(() => {
+        // Hints are a convenience. Losing them must not break the form, so a
+        // failure leaves the dropdowns exactly as they were before.
+        if (live) { setPairs([]); setHistory([]); }
+      });
+    return () => { live = false; };
+  }, [open]);
+
+  /* What this exact wording has been filed as before, when it has. Evidence
+     beats popularity: "Breakfast" is Fi/Food whatever the overall ranking
+     says, and a remark never used before gets no opinion at all. */
+  const remarkPair = useMemo(() => {
+    const q = foldForSearch(form.remarks);
+    if (q.length < 2 || !history) return null;
+    const hit = history.find((h) => foldForSearch(h.remarks) === q);
+    return hit
+      ? { method: hit.method, category: hit.category, weight: 0, count: hit.used, lastOn: hit.last }
+      : null;
+  }, [form.remarks, history]);
+
+  const shownPairs = remarkPair ? [remarkPair] : pairs;
 
   /* The draft is read through a ref, and `draft` is deliberately NOT a
      dependency of the effect below. A caller passing an inline object literal
@@ -228,6 +273,10 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
       open={open}
       onOpenChange={onOpenChange}
       title={editing ? 'Edit entry' : 'New entry'}
+      onEscapeKeyDown={(e) => {
+        // The suggestion list closes itself; the entry behind it survives.
+        if (listOpen) e.preventDefault();
+      }}
       description={
         editing
           ? 'Changing an entry clears its verified tick — it is no longer the row you reconciled.'
@@ -293,6 +342,17 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
           </Field>
         </div>
 
+        <PairHints
+          pairs={shownPairs}
+          method={form.method}
+          category={form.category}
+          note={remarkPair ? `\u201c${form.remarks.trim()}\u201d is usually` : undefined}
+          onPick={({ method, category }) => {
+            setForm((f) => ({ ...f, method, category }));
+            setUncertain((u) => u.filter((x) => x !== 'method' && x !== 'category'));
+          }}
+        />
+
         {meaning ? (
           <p className="rounded-[var(--radius-field)] bg-[var(--color-raised)] px-3 py-2 text-[11px] text-[var(--color-ink-2)]">
             {meaning}
@@ -323,6 +383,8 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
             value={form.remarks}
             error={errors['remarks']}
             onChange={set('remarks')}
+            history={history}
+            onListOpenChange={setListOpen}
             /* A picked remark brings its category, but ONLY into an empty
                field. A category already chosen — by hand, by the voice parser,
                or by the statement draft this dialog was opened from — is an

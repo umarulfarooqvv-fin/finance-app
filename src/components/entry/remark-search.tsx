@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { History, RotateCw } from 'lucide-react';
 import type { RemarkSuggestion } from '@/app/api/remarks/route';
 import { nextInSeries } from '@/lib/recurring';
@@ -33,7 +33,7 @@ import { inputClass } from '@/components/ui/field';
 type Filled = { remarks: string; category: string };
 
 export function RemarkSearch({
-  value, onChange, onPick, error, id,
+  value, onChange, onPick, error, id, history, onListOpenChange,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -41,25 +41,47 @@ export function RemarkSearch({
   onPick: (filled: Filled) => void;
   error?: string;
   id: string;
+  /**
+   * The history, when the surrounding form already has it.
+   *
+   * The dialog needs the same reply for its method/category hints, so it
+   * fetches once and hands the result down. Undefined means "nobody has it" —
+   * then this fetches for itself on first focus, so the component still works
+   * anywhere it is dropped.
+   */
+  history?: RemarkSuggestion[] | null;
+  /** Told when the list opens or closes, so a dialog can keep Escape for it. */
+  onListOpenChange?: (open: boolean) => void;
 }) {
-  const [all, setAll] = useState<RemarkSuggestion[] | null>(null);
-  const [open, setOpen] = useState(false);
+  const [fetched, setFetched] = useState<RemarkSuggestion[] | null>(null);
+  const [open, setOpenState] = useState(false);
+
+  /* Every route to opening or closing goes through here, so the parent can
+     never hold a stale idea of whether the list is up — which is what decides
+     who gets the next Escape. */
+  const setOpen = useCallback((next: boolean) => {
+    setOpenState(next);
+    onListOpenChange?.(next);
+  }, [onListOpenChange]);
   const box = useRef<HTMLDivElement>(null);
 
-  /* Fetched once, on first focus rather than on mount. The list is the user's
-     whole history of descriptions and most entries never open it — a voice
-     entry or a statement draft arrives with the field already filled. */
+  const provided = history !== undefined;
+  const all = provided ? history ?? null : fetched;
+
+  /* Fetched on first focus rather than on mount: the list is the whole history
+     of descriptions, and most entries never open it — a voice entry or a
+     statement draft arrives with the field already filled. */
   useEffect(() => {
-    if (!open || all !== null) return;
+    if (provided || !open || fetched !== null) return;
     let live = true;
     void fetch('/api/remarks')
       .then((r) => r.json())
       .then((j: { ok: boolean; suggestions?: RemarkSuggestion[] }) => {
-        if (live) setAll(j.ok && j.suggestions ? j.suggestions : []);
+        if (live) setFetched(j.ok && j.suggestions ? j.suggestions : []);
       })
-      .catch(() => live && setAll([]));
+      .catch(() => live && setFetched([]));
     return () => { live = false; };
-  }, [open, all]);
+  }, [provided, open, fetched]);
 
   // Clicking away closes the list; the typed text is kept either way.
   useEffect(() => {
@@ -108,7 +130,12 @@ export function RemarkSearch({
         autoComplete="off"
         onChange={(e) => { onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
+        /* Closes the list. It does NOT try to stop the dialog behind it —
+           Radix decides that in the capture phase, before this runs — so the
+           dialog is told separately, through onListOpenChange, and declines
+           the same Escape itself. */
         onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
+
         placeholder="What was it for?"
         aria-expanded={open}
         aria-controls={`${id}-past`}
