@@ -23,8 +23,44 @@ import type { FieldErrors } from '@/lib/action-result';
    pressing Import twice — or once on a flaky connection — resolves to the same
    id rather than doubling the batch. That is the same guarantee the entry
    dialog has, and the reason the amounts on this app can be trusted after a
-   retry.
+   retry. It does NOT protect against a row that was typed by hand months ago:
+   that one has a different id, which is what the duplicate check on the page
+   is for.
+
+   AN UNSORTED ROW IS ALLOWED THROUGH, and only here. A month of statement rows
+   turns up expenses nobody can file from a merchant string alone, and refusing
+   the whole batch over them is how an expense ends up recorded nowhere at all
+   — which is worse than one filed as unsorted and flagged. `buildRow` already
+   marks it needs_review, because `classify` returns kind 'unknown' for a
+   category it does not know, so it surfaces on Settings until it is fixed.
+
+   The shared rule in lib/validation is deliberately NOT relaxed to do this.
+   There, a blank category is a question someone is standing in front of; here
+   it is a gap in a paste. Putting a flag on the shared rule would let any
+   future caller opt out of it by accident, so the exception lives at the one
+   call site that wants it — visible, and exactly one field wide.
    =========================================================================== */
+
+/**
+ * Validate one pasted row, forgiving a blank category and nothing else.
+ *
+ * An UNRECOGNISED category is still refused: blank means "not filed yet",
+ * while "Foood" means something went wrong, and storing it would create a
+ * category out of a typo.
+ */
+function validateImportRow(
+  row: ImportInput['rows'][number],
+  today: string,
+): FieldErrors | null {
+  const errors = validateTransaction(row as TransactionInput, today);
+  if (!errors) return null;
+
+  const keys = Object.keys(errors);
+  const onlyCategoryMissing =
+    keys.length === 1 && keys[0] === 'category' && row.category.trim() === '';
+
+  return onlyCategoryMissing ? null : errors;
+}
 
 export type ImportInput = {
   rows: {
@@ -40,6 +76,8 @@ export type ImportInput = {
 export type ImportOutcome = {
   saved: number;
   duplicates: number;
+  /** Of those saved, how many went in with no category and need filing. */
+  unsorted: number;
   failed: { remarks: string; ts: string; error: string }[];
 };
 
@@ -61,7 +99,7 @@ export const importEntriesAction = guardedAction(
          broken row is refused before any of it is written rather than
          half-way through. */
       for (const r of input.rows) {
-        const errors = validateTransaction(r as TransactionInput, r.ts.slice(0, 10));
+        const errors = validateImportRow(r, r.ts.slice(0, 10));
         if (errors) {
           const first = Object.values(errors)[0] ?? 'Invalid row.';
           return { rows: `${r.remarks || 'A row'} on ${r.ts.slice(0, 10)}: ${first}` };
@@ -75,10 +113,10 @@ export const importEntriesAction = guardedAction(
     // Re-checked against the SERVER's date, never the client's.
     const { today } = await currentSnapshot();
 
-    const out: ImportOutcome = { saved: 0, duplicates: 0, failed: [] };
+    const out: ImportOutcome = { saved: 0, duplicates: 0, unsorted: 0, failed: [] };
 
     for (const row of input.rows) {
-      const errors = validateTransaction(row as TransactionInput, today);
+      const errors = validateImportRow(row, today);
       if (errors) {
         out.failed.push({
           remarks: row.remarks,
@@ -90,8 +128,12 @@ export const importEntriesAction = guardedAction(
 
       try {
         const result = await createTransaction(row as TransactionInput & { clientKey: string }, ctx, 'import');
-        if (result.duplicate) out.duplicates += 1;
-        else out.saved += 1;
+        if (result.duplicate) {
+          out.duplicates += 1;
+        } else {
+          out.saved += 1;
+          if (row.category.trim() === '') out.unsorted += 1;
+        }
       } catch (err) {
         out.failed.push({
           remarks: row.remarks,

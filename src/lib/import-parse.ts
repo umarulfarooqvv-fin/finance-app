@@ -1,6 +1,7 @@
 import { evaluateAmount } from '@/lib/calc';
 import { foldForSearch } from '@/lib/search-text';
-import { ALL_CATEGORIES, ALL_METHODS } from '@/lib/types';
+import { ALL_CATEGORIES } from '@/lib/types';
+import { resolveMethod, type BankMethods } from '@/lib/bank-methods';
 import type { Day } from '@/lib/time';
 
 /* ===========================================================================
@@ -97,9 +98,10 @@ function match(value: string, allowed: readonly string[]): string | null {
 
 export function parseImport(
   text: string,
-  opts: { dateOrder?: 'dmy' | 'mdy' } = {},
+  opts: { dateOrder?: 'dmy' | 'mdy'; bankMethods?: BankMethods } = {},
 ): ImportParse {
   const dateOrder = opts.dateOrder ?? 'dmy';
+  const bankMethods = opts.bankMethods ?? {};
   const rows: ImportRow[] = [];
   const skipped: ImportSkip[] = [];
 
@@ -140,11 +142,15 @@ export function parseImport(
 
     const issues: ImportIssue[] = [];
 
+    /* The method column may hold the BANK's own label — "Federal 2788" — rather
+       than this app's name for the account, because that is what a UPI history
+       prints. The configured mapping turns one into the other; an unmapped or
+       ambiguous label is still reported rather than guessed at. */
     let method = '';
     if (methodRaw.trim() === '' || /^unreadable$/i.test(methodRaw)) {
       issues.push('no-method');
     } else {
-      const hit = match(methodRaw, ALL_METHODS);
+      const hit = resolveMethod(methodRaw, bankMethods);
       if (hit) method = hit;
       else issues.push('unknown-method');
     }
@@ -175,7 +181,21 @@ export function parseImport(
   return { rows, skipped };
 }
 
-/** True when every row has a method and a category the app recognises. */
+/**
+ * True when every row can be saved.
+ *
+ * A METHOD IS REQUIRED; a category is not. Without a method the money lands
+ * on no card and no account, so the row would be recorded and still be wrong
+ * everywhere it matters. A missing category only means the expense is not
+ * filed yet: it still counts against the card, it is flagged for review, and
+ * it can be sorted later — which is far better than refusing the batch and
+ * leaving the expense recorded nowhere at all.
+ */
 export function readyToImport(rows: ImportRow[]): boolean {
-  return rows.length > 0 && rows.every((r) => r.method !== '' && r.category !== '');
+  return rows.length > 0 && rows.every((r) => r.method !== '');
+}
+
+/** Rows that will go in unfiled, so the page can say how many before saving. */
+export function unsortedCount(rows: ImportRow[]): number {
+  return rows.filter((r) => r.category === '').length;
 }

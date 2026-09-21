@@ -3,6 +3,9 @@ import { cardColor } from '@/lib/statement';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, SectionTitle } from '@/components/ui/primitives';
 import { AccountSettings, CardSettings } from './settings-client';
+import { BankMethodSettings } from './bank-methods-client';
+import { bankMethodsFrom } from '@/lib/bank-methods';
+import { ALL_METHODS } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +45,22 @@ export default async function SettingsPage() {
           recorded since, minus everything paid out of the account since — so it is only as accurate
           as the logging. Setting a recent date and the balance on that date is what makes the Money
           page meaningful.
+        </p>
+      </Panel>
+
+      <Panel className="mt-4">
+        <SectionTitle>What each bank calls your accounts</SectionTitle>
+        <p className="mb-3 text-xs text-[var(--color-ink-2)]">
+          A UPI or bank statement names an account the way the BANK does &mdash; &ldquo;Federal
+          2788&rdquo; &mdash; while this app calls it Fi. Map them once and a pasted batch fills in
+          its own payment method instead of arriving with none.
+        </p>
+        <BankMethodSettings mapping={bankMethodsFrom(snap.config)} methods={[...ALL_METHODS]} />
+        <p className="mt-3 text-[11px] text-[var(--color-ink-3)]">
+          Include the account digits exactly as the statement prints them. Several accounts at one
+          bank is the normal case here, and a label that could mean two of them is reported as
+          unknown rather than guessed &mdash; a wrong method moves money onto the wrong card, and
+          nothing afterwards looks wrong.
         </p>
       </Panel>
 

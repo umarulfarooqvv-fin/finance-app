@@ -1,6 +1,9 @@
 'use server';
 
 import { guardedAction, MONEY_PATHS } from '@/lib/actions';
+import { writeConfigKey } from '@/lib/config';
+import { ALL_METHODS } from '@/lib/types';
+import type { FieldErrors } from '@/lib/action-result';
 import { currentSnapshot } from '@/lib/views';
 import { saveAccountSettings, saveCardSettings } from '@/lib/settings';
 import {
@@ -53,5 +56,41 @@ export const saveAccountSettingsAction = guardedAction(
     const errors = validateAccountSettings(input, await serverToday());
     if (errors) throw new Error(Object.values(errors)[0] ?? 'Invalid settings.');
     return saveAccountSettings(input, ctx);
+  },
+);
+
+/* ===========================================================================
+   The bank-label mapping.
+
+   A UPI history names an account the way the bank does — "Federal 2788" —
+   and this ledger names it Fi. Nothing in either string hints at the other,
+   so the importer needs to be told once.
+
+   Stored whole rather than merged key by key: removing a line is as much an
+   edit as adding one, and a merge could never express a deletion.
+   =========================================================================== */
+
+export const saveBankMethodsAction = guardedAction(
+  {
+    name: 'settings.bank-methods.save',
+    revalidate: REVALIDATE,
+    validate: (input: { mapping: Record<string, string> }): FieldErrors | null => {
+      if (!input.mapping || typeof input.mapping !== 'object') {
+        return { mapping: 'Nothing to save.' };
+      }
+      for (const [label, method] of Object.entries(input.mapping)) {
+        if (!label.trim()) return { mapping: 'A bank label cannot be blank.' };
+        if (!(ALL_METHODS as readonly string[]).includes(method)) {
+          return { mapping: `"${method}" is not a payment method this app knows.` };
+        }
+      }
+      return null;
+    },
+  },
+  async (input) => {
+    const clean: Record<string, string> = {};
+    for (const [label, method] of Object.entries(input.mapping)) clean[label.trim()] = method;
+    await writeConfigKey('bank_methods', clean);
+    return clean;
   },
 );

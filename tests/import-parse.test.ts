@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseImport, readyToImport } from '@/lib/import-parse';
+import { parseImport, readyToImport, unsortedCount } from '@/lib/import-parse';
 import { IMPORT_EXAMPLE, IMPORT_PROMPT } from '@/lib/import-prompt';
 
 describe('parseImport', () => {
@@ -130,7 +130,9 @@ describe('the prompt and the parser agree', () => {
     expect(rows.map((r) => r.amount)).toEqual([450, 1250, 300, 649.19]);
     // The parking line deliberately has no category, to show the blank case.
     expect(rows[2]!.issues).toEqual(['no-category']);
-    expect(readyToImport(rows)).toBe(false);
+    // It does NOT block the batch: it goes in unfiled and flagged.
+    expect(readyToImport(rows)).toBe(true);
+    expect(unsortedCount(rows)).toBe(1);
   });
 
   it('shows the hospital case the feature exists for', () => {
@@ -154,9 +156,76 @@ describe('the prompt and the parser agree', () => {
 });
 
 describe('readyToImport', () => {
-  it('is false while anything is missing, and false when empty', () => {
+  it('is false when there is nothing to import', () => {
     expect(readyToImport([])).toBe(false);
-    const { rows } = parseImport('14/09/2026 | 450 | Fi | Food | Tea');
+  });
+
+  it('is true for a complete row', () => {
+    expect(readyToImport(parseImport('14/09/2026 | 450 | Fi | Food | Tea').rows)).toBe(true);
+  });
+
+  /* Without a method the money lands on no card and no account, so the row
+     would be recorded and still wrong everywhere it matters. */
+  it('is false while a method is missing', () => {
+    expect(readyToImport(parseImport('14/09/2026 | 450 |  | Food | Tea').rows)).toBe(false);
+  });
+
+  /* A missing category only means not-yet-filed. Refusing the batch over it
+     is how the expense ends up recorded nowhere at all. */
+  it('is true with no category, and says how many are unfiled', () => {
+    const { rows } = parseImport(
+      ['14/09/2026 | 450 | Fi | Food | Tea', '14/09/2026 | 300 | Cash |  | Parking'].join('\n'),
+    );
     expect(readyToImport(rows)).toBe(true);
+    expect(unsortedCount(rows)).toBe(1);
+  });
+});
+
+/* --- Bank labels in the method column ------------------------------------ */
+
+/* A UPI history prints the account the way the BANK names it. Without the
+   mapping every such row arrives with no method, and a row with no method
+   lands on no card and no account. */
+describe('a pasted bank label', () => {
+  const bankMethods = {
+    'Federal 2788': 'Fi',
+    'Utkarsh XX24': 'Super Money',
+    'CSB XX06': 'Edge',
+    'Federal XX16': 'Scapia',
+  };
+
+  it('resolves to the account it maps to', () => {
+    const { rows } = parseImport('12/09/2026 | 1580 | Federal 2788 | Medicine | Hospital', { bankMethods });
+    expect(rows[0]).toMatchObject({ method: 'Fi', issues: [] });
+  });
+
+  it('keeps two accounts at one bank apart', () => {
+    const { rows } = parseImport(
+      ['12/09/2026 | 100 | Federal 2788 | Food | A', '12/09/2026 | 200 | Federal XX16 | Food | B'].join('\n'),
+      { bankMethods },
+    );
+    expect(rows.map((r) => r.method)).toEqual(['Fi', 'Scapia']);
+  });
+
+  /* Three Federal accounts means "Federal" alone is unanswerable, and picking
+     one would be a coin toss with money on it. */
+  it('flags an ambiguous bank rather than choosing one', () => {
+    const { rows } = parseImport('12/09/2026 | 100 | Federal | Food | A', { bankMethods });
+    expect(rows[0]!.method).toBe('');
+    expect(rows[0]!.issues).toContain('unknown-method');
+  });
+
+  it('still accepts a method written the app’s own way', () => {
+    expect(parseImport('12/09/2026 | 100 | Fi | Food | A', { bankMethods }).rows[0]!.method).toBe('Fi');
+  });
+
+  it('flags a bank nobody has mapped', () => {
+    const { rows } = parseImport('12/09/2026 | 100 | HDFC 1234 | Food | A', { bankMethods });
+    expect(rows[0]!.issues).toContain('unknown-method');
+  });
+
+  it('works with no mapping configured at all', () => {
+    expect(parseImport('12/09/2026 | 100 | Fi | Food | A').rows[0]!.method).toBe('Fi');
+    expect(parseImport('12/09/2026 | 100 | Federal 2788 | Food | A').rows[0]!.method).toBe('');
   });
 });

@@ -1,6 +1,7 @@
 import { getSnapshot } from '@/lib/snapshot';
 import { nowIST } from '@/lib/time';
 import { ALL_CATEGORIES, ALL_METHODS } from '@/lib/types';
+import { bankMethodsFrom } from '@/lib/bank-methods';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { ImportClient } from './import-client';
 
@@ -34,6 +35,7 @@ export default async function ImportPage() {
         methods={[...ALL_METHODS]}
         categories={[...ALL_CATEGORIES]}
         serverNow={nowIST()}
+        bankMethods={bankMethodsFrom(snap.config)}
         entryCount={snap.transactions.filter((t) => !t.deleted).length}
       />
     </Page>

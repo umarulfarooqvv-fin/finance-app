@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Check, Copy, FileWarning, Trash2 } from 'lucide-react';
-import { parseImport, readyToImport, type ImportRow } from '@/lib/import-parse';
+import { AlertTriangle, Check, Copy, FileWarning, History, Trash2 } from 'lucide-react';
+import { parseImport, readyToImport, unsortedCount, type ImportRow } from '@/lib/import-parse';
+import type { BankMethods } from '@/lib/bank-methods';
 import { IMPORT_EXAMPLE, IMPORT_PROMPT } from '@/lib/import-prompt';
 import { formatDayShort } from '@/lib/time';
 import { Badge, Empty, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
@@ -27,15 +28,31 @@ import { importEntriesAction } from './actions';
    totalled as one occasion again. So: tick the rows, set the description once.
    =========================================================================== */
 
-type Draft = ImportRow & { key: string; time: string };
+type MatchLevel = 'exact' | 'likely' | 'new';
+
+type Existing = {
+  ts: string; amount: number; method: string; category: string; remarks: string;
+} | null;
+
+type Draft = ImportRow & {
+  key: string;
+  time: string;
+  /** What the ledger says about this row. 'new' until the check has answered. */
+  level: MatchLevel;
+  existing: Existing;
+  /** Ticked rows are the ones that will be saved. */
+  include: boolean;
+};
 
 export function ImportClient({
-  methods, categories, serverNow, entryCount,
+  methods, categories, serverNow, entryCount, bankMethods,
 }: {
   methods: string[];
   categories: string[];
   serverNow: string;
   entryCount: number;
+  /** Bank labels this ledger knows, so a pasted "Federal 2788" fills itself. */
+  bankMethods: BankMethods;
 }) {
   const router = useRouter();
   const { notify } = useToast();
@@ -48,21 +65,77 @@ export function ImportClient({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [bulkRemark, setBulkRemark] = useState('');
+  const [checking, setChecking] = useState(false);
 
   function read() {
-    const parsed = parseImport(text, { dateOrder });
+    const parsed = parseImport(text, { dateOrder, bankMethods });
     /* Noon, like every other date this app writes without a time: an entry at
        00:00 on a bill date sits exactly on the boundary between two
        statements, which is the one timestamp whose cycle depends on a rule. */
-    setDrafts(parsed.rows.map((r) => ({ ...r, key: `r${r.line}`, time: '12:00:00' })));
+    const fresh: Draft[] = parsed.rows.map((r) => ({
+      ...r, key: `r${r.line}`, time: '12:00:00',
+      level: 'new', existing: null, include: true,
+    }));
+    setDrafts(fresh);
     setSkipped(parsed.skipped);
     setPicked(new Set());
+    void checkAgainstLedger(fresh);
+  }
+
+  /* Ask the ledger which of these it already has. The idempotency key stops a
+     paste doubling ITSELF; it cannot know about a row typed by hand in August,
+     which has a different id and would sail straight through.
+
+     An EXACT match is unticked by default — same day, amount, method, filing
+     and wording is the same expense. A LIKELY one stays ticked: the app cannot
+     tell a duplicate from a second ₹250 on a busy Tuesday, and quietly
+     dropping a real expense is the worse mistake. */
+  async function checkAgainstLedger(rows: Draft[]) {
+    if (rows.length === 0) return;
+    setChecking(true);
+    try {
+      const res = await fetch('/api/import/check', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          rows: rows.map((r) => ({
+            line: r.line, day: r.day, amount: r.amount,
+            method: r.method, category: r.category, remarks: r.remarks,
+          })),
+        }),
+      });
+      const json = (await res.json()) as {
+        ok: boolean;
+        matches?: { line: number; level: MatchLevel; existing: Existing }[];
+      };
+      if (!json.ok || !json.matches) return;
+
+      const byLine = new Map(json.matches.map((m) => [m.line, m]));
+      setDrafts((d) => (d ?? []).map((r) => {
+        const m = byLine.get(r.line);
+        if (!m) return r;
+        return { ...r, level: m.level, existing: m.existing, include: m.level !== 'exact' };
+      }));
+    } catch {
+      // The check is a safeguard, not a gate. Losing it must not stop an
+      // import — it only means the duplicate badges do not appear.
+      notify('error', 'Could not check for entries you already have. Import still works.');
+    } finally {
+      setChecking(false);
+    }
   }
 
   const rows = drafts ?? [];
-  const ready = readyToImport(rows);
-  const total = rows.reduce((a, r) => a + r.amount, 0);
-  const incomplete = rows.filter((r) => !r.method || !r.category).length;
+  /* Only the ticked rows are saved, so everything below counts those. An
+     untick is how a row already in the ledger is left out without deleting it
+     from the table, where it still explains itself. */
+  const chosen = rows.filter((r) => r.include);
+  const ready = readyToImport(chosen);
+  const total = chosen.reduce((a, r) => a + r.amount, 0);
+  const noMethod = chosen.filter((r) => !r.method).length;
+  const unsorted = unsortedCount(chosen);
+  const already = rows.filter((r) => r.level === 'exact').length;
+  const maybe = rows.filter((r) => r.level === 'likely').length;
 
   const set = (key: string, patch: Partial<Draft>) =>
     setDrafts((d) => (d ?? []).map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -91,7 +164,7 @@ export function ImportClient({
   function save() {
     startTransition(async () => {
       const result = await importEntriesAction({
-        rows: rows.map((r) => ({
+        rows: chosen.map((r) => ({
           clientKey: keyFor(r),
           ts: `${r.day}T${r.time}`,
           amount: String(r.amount),
@@ -103,8 +176,9 @@ export function ImportClient({
 
       if (!result.ok) { notify('error', result.error); return; }
 
-      const { saved, duplicates, failed } = result.data;
+      const { saved, duplicates, unsorted: unfiled, failed } = result.data;
       const parts = [`${saved} saved`];
+      if (unfiled > 0) parts.push(`${unfiled} unfiled`);
       if (duplicates > 0) parts.push(`${duplicates} already there`);
       if (failed.length > 0) parts.push(`${failed.length} refused`);
       notify(failed.length > 0 ? 'error' : 'success', parts.join(' · '));
@@ -242,7 +316,7 @@ export function ImportClient({
           <SectionTitle
             action={
               <Button onClick={save} pending={pending} disabled={!ready}>
-                Import {rows.length} {rows.length === 1 ? 'entry' : 'entries'}
+                Import {chosen.length} {chosen.length === 1 ? 'entry' : 'entries'}
               </Button>
             }
           >
@@ -253,17 +327,34 @@ export function ImportClient({
             <span className="text-[var(--color-ink-2)]">
               Totalling <Money value={total} size="sm" tone="debt" className="font-semibold" />
             </span>
-            {incomplete > 0 ? (
+            {noMethod > 0 ? (
               <span className="flex items-center gap-1.5 text-[var(--color-warn)]">
                 <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
-                {incomplete} still {incomplete === 1 ? 'needs' : 'need'} a method or category
+                {noMethod} still {noMethod === 1 ? 'needs' : 'need'} a method &mdash; without one the
+                money lands on no card
               </span>
             ) : (
               <span className="flex items-center gap-1.5 text-[var(--color-pos)]">
                 <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                Every row is complete
+                Ready to import
               </span>
             )}
+            {unsorted > 0 ? (
+              <span className="text-[var(--color-ink-3)]">
+                {unsorted} will go in <strong className="text-[var(--color-ink-2)]">unfiled</strong>
+                {' '}and show on Settings until sorted
+              </span>
+            ) : null}
+            {checking ? (
+              <span className="text-[var(--color-ink-3)]">checking what you already have&hellip;</span>
+            ) : already + maybe > 0 ? (
+              <span className="flex items-center gap-1.5 text-[var(--color-ink-3)]">
+                <History className="h-3.5 w-3.5" aria-hidden="true" />
+                {already > 0 ? `${already} already recorded, unticked` : null}
+                {already > 0 && maybe > 0 ? ' · ' : null}
+                {maybe > 0 ? `${maybe} possibly already there` : null}
+              </span>
+            ) : null}
           </div>
 
           {/* ---- Bulk edit: the reason this page exists ------------------ */}
@@ -323,13 +414,16 @@ export function ImportClient({
 
           <ul className="flex flex-col">
             {rows.map((r) => {
-              const missing = !r.method || !r.category;
+              const dup = r.level !== 'new';
               return (
                 <li
                   key={r.key}
                   className={cx(
                     'flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 text-sm last:border-b-0',
                     picked.has(r.key) && 'bg-[var(--color-accent-soft)]',
+                    // A row left out is dimmed rather than removed: it still
+                    // explains itself, and can be put back with one tap.
+                    !r.include && 'opacity-45',
                   )}
                 >
                   <input
@@ -368,7 +462,34 @@ export function ImportClient({
                     {categories.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                   <Money value={r.amount} size="sm" tone="debt" />
-                  {missing ? <Badge tone="warn">needs a choice</Badge> : null}
+
+                  {!r.method ? <Badge tone="warn">needs a method</Badge> : null}
+                  {r.method && !r.category ? <Badge tone="neutral">unfiled</Badge> : null}
+
+                  {dup ? (
+                    <span
+                      className="flex shrink-0 items-center gap-1.5"
+                      title={
+                        r.existing
+                          ? `Already recorded: ${r.existing.remarks || r.existing.category} · ${r.existing.method} · ${r.existing.ts.slice(0, 10)}`
+                          : undefined
+                      }
+                    >
+                      <Badge tone={r.level === 'exact' ? 'good' : 'warn'}>
+                        {r.level === 'exact' ? 'already recorded' : 'possibly a repeat'}
+                      </Badge>
+                      <label className="flex items-center gap-1 text-[11px] text-[var(--color-ink-3)]">
+                        <input
+                          type="checkbox"
+                          checked={r.include}
+                          onChange={() => set(r.key, { include: !r.include })}
+                          aria-label={`Import the row on ${r.day} anyway`}
+                          className="h-3.5 w-3.5 accent-[var(--color-accent)]"
+                        />
+                        import
+                      </label>
+                    </span>
+                  ) : null}
                   <Button
                     variant="ghost"
                     size="icon"
