@@ -18,6 +18,7 @@ import type { MisfiledCandidate } from '@/lib/misfiled';
 import { round2 } from '@/lib/money';
 import { Button } from '@/components/ui/button';
 import { inputClass } from '@/components/ui/field';
+import { cn } from '@/lib/cn';
 import { Badge, Dot, Empty, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import { reassignMethodAction } from './actions';
@@ -431,7 +432,7 @@ export function ReconcileClient({
           spellCheck={false}
           placeholder={PLACEHOLDER}
           aria-label="Statement rows"
-          className={cx(inputClass(), 'min-h-[9rem] resize-y font-mono text-[11px] leading-relaxed')}
+          className={cn(inputClass(), 'min-h-[9rem] resize-y font-mono text-[11px] leading-relaxed')}
         />
 
         <div className="mt-3 flex flex-wrap items-end gap-3">
@@ -718,7 +719,7 @@ export function ReconcileClient({
                       disabled={moving === e.id}
                       aria-label={`Move ${e.description} to another payment method`}
                       onChange={(ev) => ev.target.value && move(e.id, ev.target.value, e.description)}
-                      className={cx(inputClass(), 'w-[6.5rem] shrink-0 text-[11px]')}
+                      className={cn(inputClass(), 'w-[6.5rem] shrink-0 text-[11px]')}
                     >
                       <option value="">Move to&hellip;</option>
                       {methods.filter((m) => m !== card).map((m) => (
@@ -1140,7 +1141,7 @@ export function ReconcileClient({
                                   disabled={moving === e.id}
                                   aria-label={`Move ${e.description} to another payment method`}
                                   onChange={(ev) => ev.target.value && move(e.id, ev.target.value, e.description)}
-                                  className={cx(inputClass(), 'w-[6.5rem] shrink-0 text-[11px]')}
+                                  className={cn(inputClass(), 'w-[6.5rem] shrink-0 text-[11px]')}
                                 >
                                   <option value="">Move to…</option>
                                   {methods.filter((m) => m !== card).map((m) => (

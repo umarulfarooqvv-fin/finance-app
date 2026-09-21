@@ -8,6 +8,7 @@ import { formatDay, formatDayShort } from '@/lib/time';
 import { round2 } from '@/lib/money';
 import { Button } from '@/components/ui/button';
 import { inputClass } from '@/components/ui/field';
+import { cn } from '@/lib/cn';
 import { Badge, Dot, Money, Panel, cx } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import { reassignMethodAction } from './actions';
@@ -362,7 +363,7 @@ export function MisfiledPanel({
               onChange={(e) => setQ(e.target.value)}
               placeholder="Filter by description or category…"
               aria-label="Filter entries"
-              className={cx(inputClass(), 'text-xs')}
+              className={cn(inputClass(), 'text-xs')}
             />
           </label>
 

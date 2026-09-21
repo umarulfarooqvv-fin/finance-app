@@ -6,7 +6,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import type { BankMethods } from '@/lib/bank-methods';
 import { Button } from '@/components/ui/button';
 import { inputClass } from '@/components/ui/field';
-import { cx } from '@/components/ui/primitives';
+import { cn } from '@/lib/cn';
 import { useToast } from '@/components/ui/toast';
 import { saveBankMethodsAction } from './actions';
 
@@ -67,14 +67,14 @@ export function BankMethodSettings({
               onChange={(e) => set(l.id, { label: e.target.value })}
               placeholder="Federal 2788"
               aria-label="Bank label as printed"
-              className={cx(inputClass(), 'min-w-0 flex-1 basis-40 font-mono text-xs')}
+              className={cn(inputClass(), 'min-w-0 flex-1 basis-40 font-mono text-xs')}
             />
             <span className="shrink-0 text-xs text-[var(--color-ink-3)]">&rarr;</span>
             <select
               value={l.method}
               onChange={(e) => set(l.id, { method: e.target.value })}
               aria-label={`Account for ${l.label || 'this bank label'}`}
-              className={cx(inputClass(), 'w-36 shrink-0 text-xs')}
+              className={cn(inputClass(), 'w-36 shrink-0 text-xs')}
             >
               <option value="">Choose&hellip;</option>
               {methods.map((m) => <option key={m} value={m}>{m}</option>)}

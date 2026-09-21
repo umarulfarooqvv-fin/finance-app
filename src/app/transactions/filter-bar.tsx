@@ -8,7 +8,7 @@ import { formatDay, formatMonth } from '@/lib/time';
 import { money } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { inputClass } from '@/components/ui/field';
-import { cx } from '@/components/ui/primitives';
+import { cn } from '@/lib/cn';
 
 /* ===========================================================================
    Narrowing the list.
@@ -140,7 +140,7 @@ export function FilterBar({
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search remarks, category, method or amount"
               aria-label="Search transactions"
-              className={cx(inputClass(), 'pl-9')}
+              className={cn(inputClass(), 'pl-9')}
             />
           </div>
           <Button type="submit" size="sm">Search</Button>
@@ -261,7 +261,7 @@ export function FilterBar({
               onBlur={(e) => set({ min: e.target.value.trim() || undefined })}
               inputMode="decimal"
               placeholder="0"
-              className={cx(inputClass(), 'num')}
+              className={cn(inputClass(), 'num')}
             />
           </label>
 
@@ -272,7 +272,7 @@ export function FilterBar({
               onBlur={(e) => set({ max: e.target.value.trim() || undefined })}
               inputMode="decimal"
               placeholder="No limit"
-              className={cx(inputClass(), 'num')}
+              className={cn(inputClass(), 'num')}
             />
           </label>
         </div>

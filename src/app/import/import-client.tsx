@@ -2,14 +2,15 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Check, Copy, FileWarning, History, Trash2 } from 'lucide-react';
+import { AlertTriangle, Check, Columns2, Copy, FileWarning, History, Trash2 } from 'lucide-react';
 import { parseImport, readyToImport, unsortedCount, type ImportRow } from '@/lib/import-parse';
 import type { BankMethods } from '@/lib/bank-methods';
 import { IMPORT_EXAMPLE, IMPORT_PROMPT } from '@/lib/import-prompt';
 import { formatDayShort } from '@/lib/time';
-import { Badge, Empty, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
+import { Empty, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import { inputClass } from '@/components/ui/field';
+import { cn } from '@/lib/cn';
 import { useToast } from '@/components/ui/toast';
 import { importEntriesAction } from './actions';
 
@@ -30,9 +31,12 @@ import { importEntriesAction } from './actions';
 
 type MatchLevel = 'exact' | 'likely' | 'new';
 
-type Existing = {
-  ts: string; amount: number; method: string; category: string; remarks: string;
-} | null;
+/** An entry the ledger already holds. */
+type Ledger = {
+  id: string; ts: string; amount: number; method: string; category: string; remarks: string;
+};
+
+type Existing = Ledger | null;
 
 type Draft = ImportRow & {
   key: string;
@@ -66,6 +70,11 @@ export function ImportClient({
   const [copied, setCopied] = useState(false);
   const [bulkRemark, setBulkRemark] = useState('');
   const [checking, setChecking] = useState(false);
+  /* Everything the ledger already holds across the pasted window, and whether
+     to show it. A badge saying "already recorded" asks to be trusted; the
+     entries themselves can be read. */
+  const [ledger, setLedger] = useState<Ledger[]>([]);
+  const [compare, setCompare] = useState(false);
 
   function read() {
     const parsed = parseImport(text, { dateOrder, bankMethods });
@@ -79,6 +88,7 @@ export function ImportClient({
     setDrafts(fresh);
     setSkipped(parsed.skipped);
     setPicked(new Set());
+    setLedger([]);
     void checkAgainstLedger(fresh);
   }
 
@@ -106,9 +116,12 @@ export function ImportClient({
       });
       const json = (await res.json()) as {
         ok: boolean;
+        existing?: Ledger[];
         matches?: { line: number; level: MatchLevel; existing: Existing }[];
       };
       if (!json.ok || !json.matches) return;
+
+      setLedger(json.existing ?? []);
 
       const byLine = new Map(json.matches.map((m) => [m.line, m]));
       setDrafts((d) => (d ?? []).map((r) => {
@@ -155,6 +168,42 @@ export function ImportClient({
 
   const allPicked = rows.length > 0 && picked.size === rows.length;
 
+  /* Grouped by day, because every transaction list in this app is. A flat run
+     of seventy rows gives no sense of WHEN, which is the thing being checked
+     against the ledger. */
+  /* Which recorded entries the matcher has already spoken for. The rest are
+     the interesting ones: money that IS in the ledger for these days and is
+     nowhere in the paste — usually cash, or a transfer the bank statement
+     never saw. */
+  const claimed = new Set(rows.map((r) => r.existing?.id).filter(Boolean) as string[]);
+
+  const groups = (() => {
+    const byRow = new Map<string, Draft[]>();
+    for (const r of rows) byRow.set(r.day, [...(byRow.get(r.day) ?? []), r]);
+
+    const byLedger = new Map<string, Ledger[]>();
+    if (compare) {
+      for (const t of ledger) {
+        const d = t.ts.slice(0, 10);
+        byLedger.set(d, [...(byLedger.get(d) ?? []), t]);
+      }
+    }
+
+    const days = [...new Set([...byRow.keys(), ...byLedger.keys()])].sort();
+    return days.map((day) => {
+      const items = byRow.get(day) ?? [];
+      const mine = byLedger.get(day) ?? [];
+      return {
+        day,
+        items,
+        mine,
+        total: items.reduce((a, r) => a + (r.include ? r.amount : 0), 0),
+        recorded: mine.reduce((a, t) => a + t.amount, 0),
+        chosen: items.filter((r) => r.include).length,
+      };
+    });
+  })();
+
   /* A key derived from the row's own content, so pressing Import twice — or
      once on a flaky connection — resolves to the same row rather than doubling
      the batch. */
@@ -187,6 +236,8 @@ export function ImportClient({
         setText('');
         setDrafts(null);
         setSkipped([]);
+        setLedger([]);
+        setCompare(false);
       } else {
         // Keep only what did not land, so a second press cannot double what did.
         const bad = new Set(failed.map((f) => `${f.ts}|${f.remarks}`));
@@ -256,7 +307,7 @@ export function ImportClient({
           spellCheck={false}
           aria-label="Rows to import"
           placeholder={IMPORT_EXAMPLE}
-          className={cx(inputClass(), 'min-h-[8rem] resize-y font-mono text-[11px] leading-relaxed')}
+          className={cn(inputClass(), 'min-h-[8rem] resize-y font-mono text-[11px] leading-relaxed')}
         />
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
@@ -274,7 +325,10 @@ export function ImportClient({
           {drafts ? (
             <Button
               variant="ghost"
-              onClick={() => { setText(''); setDrafts(null); setSkipped([]); setPicked(new Set()); }}
+              onClick={() => {
+                setText(''); setDrafts(null); setSkipped([]);
+                setPicked(new Set()); setLedger([]); setCompare(false);
+              }}
             >
               Clear
             </Button>
@@ -348,11 +402,25 @@ export function ImportClient({
             {checking ? (
               <span className="text-[var(--color-ink-3)]">checking what you already have&hellip;</span>
             ) : already + maybe > 0 ? (
-              <span className="flex items-center gap-1.5 text-[var(--color-ink-3)]">
+              <span className="flex flex-wrap items-center gap-1.5 text-[var(--color-ink-3)]">
                 <History className="h-3.5 w-3.5" aria-hidden="true" />
                 {already > 0 ? `${already} already recorded, unticked` : null}
                 {already > 0 && maybe > 0 ? ' · ' : null}
                 {maybe > 0 ? `${maybe} possibly already there` : null}
+                {/* The maybes are left ticked on purpose, but judging them one
+                    at a time across forty rows is its own reason to give up. */}
+                {maybe > 0 ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() =>
+                      setDrafts((d) => (d ?? []).map((r) =>
+                        r.level === 'likely' ? { ...r, include: false } : r))
+                    }
+                  >
+                    Untick those {maybe} too
+                  </Button>
+                ) : null}
               </span>
             ) : null}
           </div>
@@ -370,7 +438,7 @@ export function ImportClient({
                   onChange={(e) => setBulkRemark(e.target.value)}
                   placeholder="Description for all selected"
                   aria-label="Description for all selected rows"
-                  className={cx(inputClass(), 'min-w-0 flex-1 text-xs')}
+                  className={cn(inputClass(), 'min-w-0 flex-1 text-xs')}
                 />
                 <Button
                   size="sm"
@@ -383,7 +451,7 @@ export function ImportClient({
                   value=""
                   aria-label="Set the method for all selected rows"
                   onChange={(e) => e.target.value && applyToPicked({ method: e.target.value })}
-                  className={cx(inputClass(), 'w-32 shrink-0 text-xs')}
+                  className={cn(inputClass(), 'w-32 shrink-0 text-xs')}
                 >
                   <option value="">Set method…</option>
                   {methods.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -392,7 +460,7 @@ export function ImportClient({
                   value=""
                   aria-label="Set the category for all selected rows"
                   onChange={(e) => e.target.value && applyToPicked({ category: e.target.value })}
-                  className={cx(inputClass(), 'w-36 shrink-0 text-xs')}
+                  className={cn(inputClass(), 'w-36 shrink-0 text-xs')}
                 >
                   <option value="">Set category…</option>
                   {categories.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -401,84 +469,121 @@ export function ImportClient({
             </div>
           ) : null}
 
-          <div className="mb-2 flex items-center gap-2 text-[11px] text-[var(--color-ink-3)]">
-            <input
-              type="checkbox"
-              checked={allPicked}
-              onChange={() => setPicked(allPicked ? new Set() : new Set(rows.map((r) => r.key)))}
-              aria-label="Select every row"
-              className="h-4 w-4 accent-[var(--color-accent)]"
-            />
-            Select all
+          <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-[var(--color-line)] pt-2.5 text-[11px] text-[var(--color-ink-3)]">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={allPicked}
+                onChange={() => setPicked(allPicked ? new Set() : new Set(rows.map((r) => r.key)))}
+                aria-label="Select every row"
+                className="h-4 w-4 accent-[var(--color-accent)]"
+              />
+              Select all, to set them together
+            </label>
+            {ledger.length > 0 ? (
+              <>
+                <span aria-hidden="true">&middot;</span>
+                <Button size="sm" variant="ghost" onClick={() => setCompare((c) => !c)}>
+                  <Columns2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  {compare
+                    ? 'Hide what is already recorded'
+                    : `Show the ${ledger.length} entries already in these days`}
+                </Button>
+              </>
+            ) : null}
           </div>
 
-          <ul className="flex flex-col">
-            {rows.map((r) => {
-              const dup = r.level !== 'new';
-              return (
-                <li
-                  key={r.key}
-                  className={cx(
-                    'flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] py-2 text-sm last:border-b-0',
-                    picked.has(r.key) && 'bg-[var(--color-accent-soft)]',
-                    // A row left out is dimmed rather than removed: it still
-                    // explains itself, and can be put back with one tap.
-                    !r.include && 'opacity-45',
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={picked.has(r.key)}
-                    onChange={() => toggle(r.key)}
-                    aria-label={`Select ${r.remarks || 'row'} on ${r.day}`}
-                    className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-                  />
-                  <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
-                    {formatDayShort(r.day)}
+          {/* One line per entry, grouped by day. Two selects and a description
+              on one row need the width, so the grid collapses to two lines on
+              a narrow screen rather than the five it used to take. */}
+          {groups.map((g) => (
+            <section key={g.day}>
+              <h3 className="-mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
+                <span className="text-xs font-semibold">
+                  {formatDayShort(g.day)}
+                  <span className="ml-2 font-normal text-[var(--color-ink-3)]">
+                    {g.chosen} of {g.items.length}
                   </span>
-                  <input
-                    value={r.remarks}
-                    onChange={(e) => set(r.key, { remarks: e.target.value })}
-                    placeholder="What was it for?"
-                    aria-label={`Description for the row on ${r.day}`}
-                    className={cx(inputClass(), 'min-w-0 flex-1 basis-40 text-xs')}
-                  />
-                  <select
-                    value={r.method}
-                    onChange={(e) => set(r.key, { method: e.target.value })}
-                    aria-label={`Method for the row on ${r.day}`}
-                    className={cx(inputClass(), 'w-28 shrink-0 text-xs', !r.method && 'border-[var(--color-warn)]')}
-                  >
-                    <option value="">Method…</option>
-                    {methods.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                  <select
-                    value={r.category}
-                    onChange={(e) => set(r.key, { category: e.target.value })}
-                    aria-label={`Category for the row on ${r.day}`}
-                    className={cx(inputClass(), 'w-32 shrink-0 text-xs', !r.category && 'border-[var(--color-warn)]')}
-                  >
-                    <option value="">Category…</option>
-                    {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <Money value={r.amount} size="sm" tone="debt" />
+                </span>
+                {g.total > 0 ? (
+                  <Money value={g.total} size="sm" tone="debt" className="font-semibold" />
+                ) : (
+                  <span className="text-xs text-[var(--color-ink-3)]">nothing to add</span>
+                )}
+              </h3>
 
-                  {!r.method ? <Badge tone="warn">needs a method</Badge> : null}
-                  {r.method && !r.category ? <Badge tone="neutral">unfiled</Badge> : null}
+              <div className={cx(compare && 'gap-x-5 sm:grid sm:grid-cols-2')}>
+              <ul className="flex min-w-0 flex-col">
+                {g.items.map((r) => (
+                  <li
+                    key={r.key}
+                    className={cx(
+                      'border-b border-[var(--color-line)] py-1.5 last:border-b-0',
+                      picked.has(r.key) && 'bg-[var(--color-accent-soft)]',
+                      !r.include && 'opacity-50',
+                    )}
+                  >
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                      <input
+                        type="checkbox"
+                        checked={picked.has(r.key)}
+                        onChange={() => toggle(r.key)}
+                        aria-label={`Select ${r.remarks || 'row'} on ${r.day}`}
+                        className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
+                      />
+                      <input
+                        value={r.remarks}
+                        onChange={(e) => set(r.key, { remarks: e.target.value })}
+                        placeholder="What was it for?"
+                        aria-label={`Description for the row on ${r.day}`}
+                        className={cn(inputClass(), 'min-w-0 flex-1 basis-40 border-0 bg-transparent px-1 py-1 text-xs')}
+                      />
+                      {/* One group, so the controls wrap TOGETHER onto a second
+                          line when the column is halved for the comparison —
+                          two tidy lines rather than five stacked ones. */}
+                      <span className="flex shrink-0 items-center gap-1">
+                      <select
+                        value={r.method}
+                        onChange={(e) => set(r.key, { method: e.target.value })}
+                        aria-label={`Method for the row on ${r.day}`}
+                        className={cn(
+                          inputClass(), 'w-[6.5rem] shrink-0 px-1.5 py-1 text-[11px]',
+                          !r.method && 'border-[var(--color-warn)]',
+                        )}
+                      >
+                        <option value="">Method…</option>
+                        {methods.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                      <select
+                        value={r.category}
+                        onChange={(e) => set(r.key, { category: e.target.value })}
+                        aria-label={`Category for the row on ${r.day}`}
+                        className={cn(inputClass(), 'w-[7.5rem] shrink-0 px-1.5 py-1 text-[11px]')}
+                      >
+                        <option value="">Unfiled</option>
+                        {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <span className="w-[4.5rem] shrink-0 text-right">
+                        <Money value={r.amount} size="sm" tone="debt" />
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Drop the row on ${r.day}`}
+                        onClick={() => {
+                          setDrafts((d) => (d ?? []).filter((x) => x.key !== r.key));
+                          setPicked((p) => { const n = new Set(p); n.delete(r.key); return n; });
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Button>
+                      </span>
+                    </div>
 
-                  {dup ? (
-                    <span
-                      className="flex shrink-0 items-center gap-1.5"
-                      title={
-                        r.existing
-                          ? `Already recorded: ${r.existing.remarks || r.existing.category} · ${r.existing.method} · ${r.existing.ts.slice(0, 10)}`
-                          : undefined
-                      }
-                    >
-                      <Badge tone={r.level === 'exact' ? 'good' : 'warn'}>
-                        {r.level === 'exact' ? 'already recorded' : 'possibly a repeat'}
-                      </Badge>
-                      <label className="flex items-center gap-1 text-[11px] text-[var(--color-ink-3)]">
+                    {/* What it matched, said out loud rather than hidden in a
+                        tooltip — the whole decision rests on this line. */}
+                    {r.existing ? (
+                      <label className="mt-0.5 flex flex-wrap items-center gap-1.5 pl-6 text-[11px]">
                         <input
                           type="checkbox"
                           checked={r.include}
@@ -486,25 +591,72 @@ export function ImportClient({
                           aria-label={`Import the row on ${r.day} anyway`}
                           className="h-3.5 w-3.5 accent-[var(--color-accent)]"
                         />
-                        import
+                        <span className={r.level === 'exact' ? 'text-[var(--color-pos)]' : 'text-[var(--color-warn)]'}>
+                          {r.level === 'exact' ? 'Already recorded' : 'Possibly already there'}
+                        </span>
+                        <span className="text-[var(--color-ink-3)]">
+                          as &ldquo;{r.existing.remarks || r.existing.category}&rdquo; on{' '}
+                          {r.existing.method}
+                          {r.level === 'likely' && r.method && r.existing.method !== r.method
+                            ? ` — you pasted ${r.method}`
+                            : null}
+                        </span>
                       </label>
-                    </span>
-                  ) : null}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Drop the row on ${r.day}`}
-                    onClick={() => {
-                      setDrafts((d) => (d ?? []).filter((x) => x.key !== r.key));
-                      setPicked((p) => { const n = new Set(p); n.delete(r.key); return n; });
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
+                    ) : null}
+                  </li>
+                ))}
+                {compare && g.items.length === 0 ? (
+                  <li className="py-2 text-[11px] text-[var(--color-ink-3)]">
+                    Nothing pasted for this day.
+                  </li>
+                ) : null}
+              </ul>
+
+              {/* ---- The same day, as the ledger already has it ---------- */}
+              {compare ? (
+                <div className="mt-1 min-w-0 border-t border-dashed border-[var(--color-line)] pt-1 sm:mt-0 sm:border-t-0 sm:border-l sm:border-solid sm:pl-5 sm:pt-0">
+                  <span className="flex items-baseline justify-between gap-2 py-1 text-[11px] font-medium uppercase tracking-wide text-[var(--color-ink-3)]">
+                    Already recorded
+                    {g.recorded > 0 ? <Money value={g.recorded} size="sm" tone="muted" /> : null}
+                  </span>
+                  {g.mine.length === 0 ? (
+                    <p className="py-1 text-[11px] text-[var(--color-ink-3)]">
+                      Nothing on this day yet.
+                    </p>
+                  ) : (
+                    <ul className="flex flex-col">
+                      {g.mine.map((t) => (
+                        <li
+                          key={t.id}
+                          className="flex items-center gap-2 border-b border-[var(--color-line)] py-1.5 text-[11px] last:border-b-0"
+                        >
+                          {/* A tick means a pasted row claimed this one, so the
+                              two lists line up and nothing is being counted
+                              twice. No tick means the ledger has an expense the
+                              paste never mentioned — cash, usually. */}
+                          {claimed.has(t.id) ? (
+                            <Check className="h-3.5 w-3.5 shrink-0 text-[var(--color-pos)]" aria-label="matched by a pasted row" />
+                          ) : (
+                            <span className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          )}
+                          <span className="min-w-0 flex-1 truncate">
+                            {t.remarks || <span className="text-[var(--color-ink-3)]">no description</span>}
+                          </span>
+                          <span className="shrink-0 text-[var(--color-ink-3)]">
+                            {t.method}{t.category ? ` · ${t.category}` : ''}
+                          </span>
+                          <span className="w-20 shrink-0 text-right">
+                            <Money value={t.amount} size="sm" tone="muted" />
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+              </div>
+            </section>
+          ))}
 
           <p className="mt-3 border-t border-[var(--color-line)] pt-2.5 text-[11px] text-[var(--color-ink-3)]">
             Each row is saved under a key made from its own date, amount and wording, so pressing

@@ -17,15 +17,26 @@ import type { Snapshot, Transaction } from '@/lib/types';
 
    TWO TIERS, because certainty differs:
 
-     exact   day, amount, method, category and wording all agree. This is the
-             same expense; skipping it is safe and it is skipped by default.
+     exact   the day, the amount AND the account all agree. That is the same
+             expense; it is unticked by default.
 
-     likely  the day and the amount agree, but the wording or the filing does
-             not. A statement says "SWIGGY BANGALORE" where you typed
-             "Dinner", and that IS the same expense — but so is a genuine
-             second ₹250 on a busy day. It is flagged and LEFT SELECTED,
-             because the app cannot tell those apart and quietly dropping a
-             real expense is the worse mistake.
+     likely  the day and the amount agree but the account does not, or the
+             paste does not say which account. Flagged and LEFT TICKED,
+             because the app cannot tell that from a genuine second ₹250 on a
+             busy day, and quietly dropping a real expense is the worse
+             mistake.
+
+   THE WORDING IS DELIBERATELY NOT PART OF THE STRONG TIER, and that is the
+   correction that matters. A bank names an expense the way the MERCHANT does
+   — "Max Retail 4617" where the ledger says "Shirts (Banglore Trip)" — so
+   requiring the descriptions to agree made the strong tier unreachable for
+   the one source it exists to read, and every row came back merely "possibly"
+   a repeat. Neither is the category, which is often the thing the import is
+   filling in.
+
+   What is left — same day, same amount, same account — is a coincidence worth
+   about as much as two identical payments from one card on one day, which the
+   multiset below already handles by pairing them off one for one.
 
    It only ever labels. Nothing here excludes a row on its own.
    =========================================================================== */
@@ -53,12 +64,11 @@ const SEP = String.fromCharCode(31);
 
 const paise = (n: number) => Math.round(n * 100);
 
-const exactKey = (day: string, amount: number, method: string, category: string, remarks: string) =>
-  [day, paise(amount), foldForSearch(method), foldForSearch(category), foldForSearch(remarks)].join(SEP);
+/* Day, amount, account. Not the wording, and not the category — see above. */
+const exactKey = (day: string, amount: number, method: string) =>
+  [day, paise(amount), foldForSearch(method)].join(SEP);
 
-/* The loose key deliberately drops the wording AND the filing: a statement
-   describes an expense differently from the person who lived it, and the
-   category is often the thing being corrected by the import. */
+/** Day and amount alone, for when the account is unknown or differs. */
 const looseKey = (day: string, amount: number) => [day, paise(amount)].join(SEP);
 
 /**
@@ -90,7 +100,7 @@ export function matchAgainstLedger(
   const byLoose = new Map<string, Transaction[]>();
   for (const t of candidates) {
     const day = t.ts!.slice(0, 10);
-    const e = exactKey(day, t.amount!, t.method, t.category, t.remarks ?? '');
+    const e = exactKey(day, t.amount!, t.method);
     const l = looseKey(day, t.amount!);
     byExact.set(e, [...(byExact.get(e) ?? []), t]);
     byLoose.set(l, [...(byLoose.get(l) ?? []), t]);
@@ -113,7 +123,9 @@ export function matchAgainstLedger(
   };
 
   for (const r of rows) {
-    const hit = take(byExact, exactKey(r.day, r.amount, r.method, r.category, r.remarks));
+    /* A row with no account cannot reach the strong tier: "same day, same
+       amount, account unknown" is not the same claim as "same account". */
+    const hit = r.method ? take(byExact, exactKey(r.day, r.amount, r.method)) : null;
     if (hit) {
       out.set(r.line, { level: 'exact', existing: hit });
       continue;

@@ -65,14 +65,33 @@ export async function POST(req: Request): Promise<Response> {
   const snap = await getSnapshot();
   const matches = matchAgainstLedger(rows, snap);
 
+  /* Everything already recorded across the pasted window, so the page can put
+     the two lists beside each other. Deciding whether a row is a duplicate
+     from a badge alone asks the reader to trust the match; showing what is
+     actually there lets them check it. */
+  const days = rows.map((r) => r.day).sort();
+  const lo = days[0] ?? '';
+  const hi = days[days.length - 1] ?? '';
+  const inWindow = snap.transactions
+    .filter((t) => !t.deleted && t.ts && t.amount != null
+      && t.ts.slice(0, 10) >= lo && t.ts.slice(0, 10) <= hi)
+    .map((t) => ({
+      id: t.id, ts: t.ts!, amount: t.amount!, method: t.method,
+      category: t.category, remarks: t.remarks ?? '',
+    }))
+    .sort((a, b) => (a.ts < b.ts ? -1 : 1));
+
   return NextResponse.json({
     ok: true,
+    window: { from: lo, to: hi },
+    existing: inWindow,
     matches: [...matches.entries()].map(([line, m]) => ({
       line,
       level: m.level,
       // Enough to show WHAT it matched, without shipping the whole row.
       existing: m.existing
         ? {
+            id: m.existing.id,
             ts: m.existing.ts,
             amount: m.existing.amount,
             method: m.existing.method,

@@ -30,13 +30,27 @@ describe('matchAgainstLedger', () => {
       .toEqual(['exact']);
   });
 
-  /* A statement describes an expense differently from the person who lived
-     it, and the category is often the thing the import is correcting. */
-  it('calls it likely when the day and amount agree but the wording does not', () => {
-    expect(levels([row({ remarks: 'SWIGGY BANGALORE' })], [recorded({ remarks: 'Dinner' })]))
-      .toEqual(['likely']);
-    expect(levels([row({ category: 'Personal' })], [recorded({ category: 'Food' })]))
-      .toEqual(['likely']);
+  /* THE CORRECTION THAT MATTERS. A bank names an expense the way the MERCHANT
+     does — "Max Retail 4617" where the ledger says "Shirts (Banglore Trip)" —
+     so requiring the wording to agree made the strong tier unreachable for
+     the one source it exists to read. Same day, same amount, same account IS
+     the same expense. */
+  it('calls it exact when the wording differs but day, amount and account agree', () => {
+    expect(levels([row({ remarks: 'MAX RETAIL 4617' })], [recorded({ remarks: 'Shirts' })]))
+      .toEqual(['exact']);
+    // The category is often the very thing the import is filling in.
+    expect(levels([row({ category: '' })], [recorded({ category: 'Food' })]))
+      .toEqual(['exact']);
+  });
+
+  /* A different account on the same day for the same amount is a different
+     payment, and the app must not untick it. */
+  it('drops to likely when the account differs', () => {
+    expect(levels([row({ method: 'Edge' })], [recorded({ method: 'Fi' })])).toEqual(['likely']);
+  });
+
+  it('drops to likely when the paste does not say which account', () => {
+    expect(levels([row({ method: '' })], [recorded({ method: 'Fi' })])).toEqual(['likely']);
   });
 
   it('calls it new when nothing on that day matches the amount', () => {
@@ -58,8 +72,8 @@ describe('matchAgainstLedger', () => {
      however they were matched. */
   it('does not let one entry be claimed twice across the two tiers', () => {
     const rows = [
-      row({ line: 1, remarks: 'Something else' }), // likely, claims the entry
-      row({ line: 2 }),                            // exact would have claimed it too
+      row({ line: 1, method: '' }),  // likely — no account, claims the entry
+      row({ line: 2 }),              // exact would have claimed it too
     ];
     const got = levels(rows, [recorded()]);
     expect(got.filter((l) => l !== 'new')).toHaveLength(1);
@@ -91,10 +105,10 @@ describe('matchAgainstLedger', () => {
     expect(levels([row()], [])).toEqual(['new']);
   });
 
-  /* A row imported without a category still has to be findable as a duplicate
-     if the same paste is run twice. */
-  it('matches a row that has no category or method yet', () => {
-    const blank = row({ category: '', method: '' });
-    expect(levels([blank], [recorded({ category: '', method: '' })])).toEqual(['exact']);
+  /* A row imported unfiled still has to be findable if the same paste is run
+     twice — the category is not part of the strong tier, so it does not have
+     to have been filled in first. */
+  it('matches a row that went in unfiled', () => {
+    expect(levels([row({ category: '' })], [recorded({ category: '' })])).toEqual(['exact']);
   });
 });
