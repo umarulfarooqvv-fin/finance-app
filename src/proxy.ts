@@ -23,7 +23,7 @@
 
 /** Endpoints exempt from the PIN because each carries its OWN authentication.
 
-    /api/entry and /api/import check INGEST_TOKEN. /api/cron/reminders checks
+    /api/entry checks INGEST_TOKEN. /api/cron/reminders checks
     CRON_SECRET, and /api/calendar checks CALENDAR_TOKEN — both must be out
     here because neither caller can hold a PIN cookie: Vercel Cron sends a
     bearer header and nothing else, and iOS Calendar refetches the feed on its
@@ -39,10 +39,14 @@
     endpoint reachable without one would let a stranger attach their phone to
     these reminders.
 
-    /api/alerts was v2's ntfy endpoint and no longer exists; its exemption is
-    removed rather than left as a hole pointing at nothing. */
+    /api/alerts was v2's ntfy endpoint and /api/import was v2's bulk upload;
+    neither exists in v3. Their exemptions are removed rather than left as
+    holes pointing at nothing — a hole aimed at a missing route becomes an
+    unauthenticated route the day someone creates it. Bulk import is now the
+    /import PAGE, which is behind the PIN and writes through guardedAction
+    like every other screen. */
 const PUBLIC_PATHS = [
-  '/lock', '/api/lock', '/api/entry', '/api/import',
+  '/lock', '/api/lock', '/api/entry',
   '/api/calendar', '/api/cron',
 ];
 

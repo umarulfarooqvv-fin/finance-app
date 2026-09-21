@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, BellRing, BookOpen, Camera, CreditCard, Home, LineChart, MessageCircleQuestion, Scale, ScanLine, Search, Settings, Smartphone, TrendingUp, Wallet, type LucideIcon,
+  ArrowLeftRight, BellRing, BookOpen, Camera, CreditCard, Home, LineChart, MessageCircleQuestion, Scale, ScanLine, Search, Settings, Smartphone, TrendingUp, Upload, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 /* ===========================================================================
@@ -150,6 +150,15 @@ export const NAV_SECTIONS: NavSection[] = [
         keywords: ['reconcile', 'statement', 'bank', 'credit card', 'match', 'paste',
                    'extra charge', 'fee', 'compare', 'verify'],
         match: ['/reconcile'],
+      },
+      {
+        label: 'Import a batch',
+        href: '/import',
+        icon: Upload,
+        hint: 'Paste many entries at once, from screenshots or a spreadsheet',
+        keywords: ['import', 'bulk', 'batch', 'paste', 'backlog', 'missed', 'catch up',
+                   'screenshot', 'upi', 'csv', 'spreadsheet', 'many', 'several'],
+        match: ['/import'],
       },
       {
         label: 'Reminders',

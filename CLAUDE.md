@@ -148,6 +148,11 @@ per-request dedupe.
      and the deploy failed; on Next 16 Proxy defaults to Node and setting the
      option *throws*. Same rule, new reason.
   The session cookie holds a SHA-256 derivation, never the PIN itself.
+- **Bulk import.** `/import` — paste many entries at once, preview and edit
+  them in a table, then save through `importEntriesAction`. The prompt handed
+  to an assistant lives in `lib/import-prompt` and carries the app's own
+  method and category lists; `lib/import-parse` reads what comes back. (v2's
+  `/api/import` does not exist in v3.)
 - **Reminders.** `/reminders`, `/api/cron/reminders` (Vercel Cron, 08:00 IST)
   and `/api/calendar` (an .ics feed). See `docs/REMINDERS.md` — and note that
   `docs/DEPLOY.md` section 4 describes v2's ntfy alerts, which v3 does not have.
@@ -219,7 +224,7 @@ See `.env.example` for the full list with notes. The essentials:
 
 - `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` — required; without them the app
   renders empty states rather than crashing. The service key is **server-only**.
-- `INGEST_TOKEN` — guards `/api/entry` and `/api/import`.
+- `INGEST_TOKEN` — guards `/api/entry`.
 - `APP_ACCESS_KEY` — the PIN. Unset locally = no lock.
 - `ENTRY_AI` — optional model fallback for voice entry. Default `off`.
 - `ANTHROPIC_API_KEY` — required for `/ask` only.

@@ -38,7 +38,7 @@ test('the lock screen itself is reachable, or nobody could ever unlock', async (
 test('endpoints with their own auth stay exempt', async () => {
   process.env['APP_ACCESS_KEY'] = PIN;
   // Each of these authenticates itself: INGEST_TOKEN or CRON_SECRET.
-  for (const path of ['/api/entry', '/api/import', '/api/calendar', '/api/cron/reminders']) {
+  for (const path of ['/api/entry', '/api/calendar', '/api/cron/reminders']) {
     assert.ok(passedThrough(await proxy(req(path))), `${path} should be exempt`);
   }
 });
@@ -166,4 +166,15 @@ test('registering a push device stays behind the PIN', async () => {
   process.env.APP_ACCESS_KEY = 'pin-1234';
   const res = await proxy(new Request('https://x.test/api/push/subscribe', { method: 'POST' }));
   assert.equal(res.status, 401);
+});
+
+/* v2's bulk upload. It does not exist in v3 — bulk import is the /import page,
+   behind the PIN — and a hole in the lock aimed at a missing route becomes an
+   unauthenticated route the day somebody creates one. */
+test('the retired v2 endpoints are no longer holes in the lock', async () => {
+  process.env.APP_ACCESS_KEY = 'pin-1234';
+  for (const path of ['/api/import', '/api/alerts']) {
+    const res = await proxy(new Request(`https://x.test${path}`, { method: 'POST' }));
+    assert.equal(res.status, 401, `${path} must not be exempt`);
+  }
 });
