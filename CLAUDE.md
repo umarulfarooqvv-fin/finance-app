@@ -183,10 +183,18 @@ Two separate paths, with different requirements:
   vision.ts` is a separate config from `ENTRY_AI` — a vision-capable model is
   a different, shorter list from a fast free text model. Off by default; the
   "Copy the prompt" panel on `/import` works without it, pasted by hand into
-  any assistant. Reads a fresh upload (`/api/import/vision`) or a capture
-  already in the Inbox (`/api/inbox/convert`, which reads the stored bytes
-  and never changes the capture's own status) into the same pipe-delimited
-  text a person would paste — it fills the textarea, nothing more.
+  any assistant. Three ways in: a fresh upload on `/import`
+  (`/api/import/vision`), a capture read on demand (`/api/inbox/convert`),
+  and — the usual one — **automatically on arrival**: `/api/capture`
+  schedules the read with `after()` so the Shortcut's response is not held up,
+  and the inbox opens with "3 rows read" already on the tile.
+  `src/lib/capture-drafts.ts` stores each reading in `app_config` under
+  `capture_drafts` (no migration, and a photo's bytes are immutable so its
+  reading is too), pruned when the capture is used or discarded.
+  **The reading never becomes an entry by itself.** It is text handed to
+  `/import` via `sessionStorage` (`lib/import-handoff`), which still demands
+  the same read-and-confirm as a paste. Only a clean import (nothing refused)
+  retires the source photos, via `retireCapturesAction`.
 
 None of the three paths write. Each produces a draft that a person confirms,
 because speech recognition mishears numbers routinely, a guessed payment

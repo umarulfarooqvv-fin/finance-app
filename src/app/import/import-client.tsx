@@ -13,6 +13,8 @@ import { inputClass } from '@/components/ui/field';
 import { cn } from '@/lib/cn';
 import { useToast } from '@/components/ui/toast';
 import { importEntriesAction } from './actions';
+import { retireCapturesAction } from '@/app/inbox/actions';
+import { IMPORT_DRAFT_KEY, type HandedOver } from '@/lib/import-handoff';
 
 /* ===========================================================================
    The table between a paste and the ledger.
@@ -48,9 +50,6 @@ type Draft = ImportRow & {
   include: boolean;
 };
 
-/** Where a capture converted from the Inbox waits for this page to pick it up. */
-export const IMPORT_DRAFT_KEY = 'pfm:import-draft';
-
 export function ImportClient({
   methods, categories, serverNow, entryCount, bankMethods, visionEnabled, visionLabel,
 }: {
@@ -84,17 +83,31 @@ export function ImportClient({
   const [converting, setConverting] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
-  /* Text handed over from the Inbox: a photo already converted there arrives
-     here the same way a paste would, so it goes through the identical read
-     and duplicate check rather than a separate path of its own. */
+  /* Rows handed over from the Inbox: a photo read there arrives here the same
+     way a paste would, so it goes through the identical read, duplicate check
+     and confirmation rather than a shortcut of its own.
+
+     The photo ids ride along, so that once these rows are actually saved the
+     pictures they were read from can stop waiting in the inbox. */
+  const [fromInbox, setFromInbox] = useState<string[]>([]);
   useEffect(() => {
-    let draft = '';
-    try { draft = sessionStorage.getItem(IMPORT_DRAFT_KEY) ?? ''; } catch { /* private browsing */ }
-    if (!draft) return;
+    let raw = '';
+    try { raw = sessionStorage.getItem(IMPORT_DRAFT_KEY) ?? ''; } catch { /* private browsing */ }
+    if (!raw) return;
     try { sessionStorage.removeItem(IMPORT_DRAFT_KEY); } catch { /* private browsing */ }
-    setText((t) => (t.trim() ? `${t.trim()}
-${draft}` : draft));
-    notify('success', 'Added the rows converted from your Inbox photos below.');
+
+    let handed: HandedOver;
+    try {
+      handed = JSON.parse(raw) as HandedOver;
+    } catch {
+      // An older hand-off was the bare text. Still perfectly importable.
+      handed = { text: raw, captureIds: [] };
+    }
+    if (!handed.text?.trim()) return;
+
+    setText((t) => (t.trim() ? `${t.trim()}\n${handed.text}` : handed.text));
+    setFromInbox(handed.captureIds ?? []);
+    notify('success', 'Rows read from your Inbox photos. Check them, then Import.');
   }, []);
 
   async function convertPhotos() {
@@ -109,8 +122,7 @@ ${draft}` : draft));
         notify('error', json.error ?? 'Could not read those photos.');
         return;
       }
-      setText((t) => (t.trim() ? `${t.trim()}
-${json.text}` : json.text!));
+      setText((t) => (t.trim() ? `${t.trim()}\n${json.text}` : json.text!));
       setPhotos([]);
       if (photoInputRef.current) photoInputRef.current.value = '';
       notify('success', 'Photos converted — check the rows below before reading them.');
@@ -283,6 +295,16 @@ ${json.text}` : json.text!));
       notify(failed.length > 0 ? 'error' : 'success', parts.join(' · '));
 
       if (failed.length === 0) {
+        /* Everything landed, so the photos these rows were read from have
+           done their job and can leave the inbox. Only on a clean import: a
+           photo whose row was refused is still the only record of it. */
+        if (fromInbox.length > 0 && result.data.ids.length > 0) {
+          const retired = await retireCapturesAction({
+            ids: fromInbox,
+            transactionId: result.data.ids[0]!,
+          });
+          if (retired.ok) setFromInbox([]);
+        }
         setText('');
         setDrafts(null);
         setSkipped([]);

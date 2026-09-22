@@ -152,7 +152,10 @@ export const RECIPES: Recipe[] = [
       'The same photo sent twice is one capture — the id is derived from the image itself, so a ' +
         'retry cannot fill the inbox with duplicates of one receipt.',
       'Photos are stored privately and only ever served back through this app while you are signed ' +
-        'in. Nothing reads them automatically; you look at the picture and type what it says.',
+        'in. With IMPORT_AI set, a new photo is sent to that provider to be read into draft rows — ' +
+        'it is the one thing that leaves; with it off, nothing reads them and you type what you see.',
+      'Either way the reading is a DRAFT. No entry is created from a photo without you confirming ' +
+        'it, so a misread amount cannot reach the ledger on its own.',
     ],
   },
 ];

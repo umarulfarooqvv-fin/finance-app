@@ -79,6 +79,10 @@ export type ImportOutcome = {
   /** Of those saved, how many went in with no category and need filing. */
   unsorted: number;
   failed: { remarks: string; ts: string; error: string }[];
+  /** Ids of the rows that are now in the ledger, including ones that were
+      already there — so a caller can point a capture at the entry it became
+      whether this press or a previous one actually wrote it. */
+  ids: string[];
 };
 
 /** Above this a paste is more likely a mistake than an evening's backlog. */
@@ -113,7 +117,7 @@ export const importEntriesAction = guardedAction(
     // Re-checked against the SERVER's date, never the client's.
     const { today } = await currentSnapshot();
 
-    const out: ImportOutcome = { saved: 0, duplicates: 0, unsorted: 0, failed: [] };
+    const out: ImportOutcome = { saved: 0, duplicates: 0, unsorted: 0, failed: [], ids: [] };
 
     for (const row of input.rows) {
       const errors = validateImportRow(row, today);
@@ -128,6 +132,7 @@ export const importEntriesAction = guardedAction(
 
       try {
         const result = await createTransaction(row as TransactionInput & { clientKey: string }, ctx, 'import');
+        out.ids.push(result.id);
         if (result.duplicate) {
           out.duplicates += 1;
         } else {

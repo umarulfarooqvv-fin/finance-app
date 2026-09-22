@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { capturesReady, listCaptures } from '@/lib/captures';
 import { visionConfig } from '@/lib/ai/vision';
+import { readCaptureDrafts } from '@/lib/capture-drafts';
 import { nowIST } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, SectionTitle } from '@/components/ui/primitives';
@@ -28,6 +29,10 @@ export default async function InboxPage() {
   const ready = await capturesReady();
   const rows = ready ? await listCaptures('pending') : [];
   const vision = visionConfig();
+  /* What the AI already read out of each waiting photo, mostly at the moment
+     it arrived. Loaded here so the inbox opens with the rows on screen rather
+     than fetching them once it is up. */
+  const drafts = vision.name !== 'off' ? await readCaptureDrafts() : {};
 
   const h = await headers();
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? '';
@@ -39,6 +44,8 @@ export default async function InboxPage() {
     ts: r.ts,
     note: r.note ?? '',
     bytes: r.bytes,
+    draft: drafts[r.id]?.text ?? null,
+    draftError: drafts[r.id]?.error ?? null,
   }));
 
   return (

@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { insertCapture } from '@/lib/captures';
+import { readCaptureIntoDraft } from '@/lib/capture-drafts';
 import {
   deleteObject, extensionFor, idFromBytes, isAllowedImage, MAX_IMAGE_BYTES, putObject, storageConfigured,
 } from '@/lib/storage';
@@ -154,6 +155,20 @@ export async function POST(req: Request): Promise<Response> {
       await deleteObject(path);
       throw err;
     }
+
+    /* Read it into rows WITHOUT being asked, after the phone has its reply.
+       The Shortcut is one tap at a till and must not wait on a model; `after`
+       runs once the response is out, so by the time the inbox is opened the
+       rows are already there to confirm. A failure is recorded on the draft
+       and shown in the inbox — it never affects this response, because the
+       photo itself is safely stored either way. */
+    after(async () => {
+      try {
+        await readCaptureIntoDraft(id);
+      } catch (err) {
+        console.error('[capture-draft]', id, err instanceof Error ? err.message : err);
+      }
+    });
 
     return NextResponse.json({ ok: true, id, ts, bytes: bytes.byteLength });
   } catch (err) {

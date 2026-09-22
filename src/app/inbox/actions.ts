@@ -2,6 +2,7 @@
 
 import { guardedAction, MONEY_PATHS } from '@/lib/actions';
 import { detachPhoto, discardCapture, markUsed } from '@/lib/captures';
+import { forgetCaptureDrafts } from '@/lib/capture-drafts';
 
 /* ===========================================================================
    Server actions for the capture inbox.
@@ -20,6 +21,8 @@ export const discardCaptureAction = guardedAction(
   },
   async (input, ctx) => {
     await discardCapture(input.id, ctx);
+    // The photo is gone, so the rows read out of it describe nothing.
+    await forgetCaptureDrafts([input.id]);
     return { id: input.id };
   },
 );
@@ -47,6 +50,46 @@ export const linkCaptureAction = guardedAction(
   },
   async (input, ctx) => {
     await markUsed(input.id, input.transactionId, ctx);
+    // It is an entry now; the draft it was waiting to become has served.
+    await forgetCaptureDrafts([input.id]);
     return { id: input.id };
+  },
+);
+
+/**
+ * Retire the photos a batch of imported rows came from.
+ *
+ * One photo can produce several rows — a bill with three lines on it — and a
+ * capture records the single entry it became, so it is linked to the first of
+ * them. That keeps the picture reachable from the ledger (the entry shows a
+ * camera) instead of the photo sitting in the inbox forever, re-offering rows
+ * that are already filed.
+ *
+ * Called only after an import that refused nothing. A partial import leaves
+ * every photo where it is: re-offering a row is a nuisance, losing the
+ * receipt for one that never saved is not.
+ */
+export const retireCapturesAction = guardedAction(
+  {
+    name: 'capture.retire',
+    revalidate: REVALIDATE,
+    validate: (input: { ids: string[]; transactionId: string }) =>
+      Array.isArray(input.ids) && input.ids.length > 0 && input.transactionId?.trim()
+        ? null
+        : { ids: 'Missing photos or entry.' },
+  },
+  async (input, ctx) => {
+    const retired: string[] = [];
+    for (const id of input.ids) {
+      // One failure must not strand the rest — the entries are already saved.
+      try {
+        await markUsed(id, input.transactionId, ctx);
+        retired.push(id);
+      } catch {
+        /* Left in the inbox, which is the safe direction. */
+      }
+    }
+    await forgetCaptureDrafts(retired);
+    return { retired: retired.length };
   },
 );

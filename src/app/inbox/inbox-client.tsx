@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Sparkles, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Loader2, Plus, RotateCw, Sparkles, Trash2, X } from 'lucide-react';
 import { formatDayShort } from '@/lib/time';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -11,21 +11,43 @@ import { cx, Empty } from '@/components/ui/primitives';
 import { SafeImage } from '@/components/capture-image';
 import { TransactionDialog } from '@/app/transactions/transaction-dialog';
 import { discardCaptureAction, linkCaptureAction } from './actions';
-import { IMPORT_DRAFT_KEY } from '@/app/import/import-client';
+import { IMPORT_DRAFT_KEY } from '@/lib/import-handoff';
 
 /* ===========================================================================
    Photos waiting to become entries.
 
-   The photo is the prompt, not the data. Turning one into a transaction opens
-   the ORDINARY entry form with the capture's own timestamp filled in, so the
-   row lands dated when the money was actually spent rather than when there was
-   finally a minute to type it — which is the whole reason the photo was taken.
+   The photo is the prompt, not the data — and with IMPORT_AI set, the reading
+   has usually already happened: /api/capture reads each photo into rows the
+   moment it lands, so this page opens with "3 rows ready" rather than a
+   picture to squint at. Anything that missed that read (it arrived while the
+   provider was off, or the read failed) is picked up here on arrival.
 
-   Nothing here reads the image. No amount is inferred from a picture of a
-   bill; a person looks at it and types what it says.
+   WHAT IT PRODUCES IS STILL A DRAFT. Sending rows to /import writes nothing:
+   they land in the same table a paste lands in, to be read, corrected and
+   confirmed. A photo stops waiting only once an entry actually exists.
+
+   With no provider configured this is exactly what it always was: a picture,
+   and the ordinary entry form to type what it says.
    =========================================================================== */
 
-export type Capture = { id: string; ts: string; note: string; bytes: number };
+export type Capture = {
+  id: string;
+  ts: string;
+  note: string;
+  bytes: number;
+  /** Rows the AI read out of this photo, when it has been read. */
+  draft: string | null;
+  /** Why it could not be read, when that is what happened. */
+  draftError: string | null;
+};
+
+type DraftState = { text?: string; error?: string };
+
+/** How many unread photos one visit will read. A backlog of fifty should not
+    fire fifty calls at a free tier the moment the page opens. */
+const AUTO_READ_LIMIT = 8;
+
+const rowCount = (text: string) => text.split('\n').filter((l) => l.trim()).length;
 
 export function InboxClient({
   captures, defaultTs, visionEnabled, visionLabel,
@@ -45,9 +67,22 @@ export function InboxClient({
   const [zoomed, setZoomed] = useState<Capture | null>(null);
 
   /* Several photos can go to /import in one trip — a busy week's worth of
-     receipts, not just one at a time. */
+     receipts, not just one at a time. Nothing is ticked by default, and an
+     empty selection means "everything that is ready". */
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [converting, setConverting] = useState(false);
+
+  /* What has been read, starting from what the server already had. Kept here
+     as well so a read finishing on this page updates the tile without a
+     round trip through the server component. */
+  const [drafts, setDrafts] = useState<Record<string, DraftState>>(() => {
+    const seed: Record<string, DraftState> = {};
+    for (const c of captures) {
+      if (c.draft) seed[c.id] = { text: c.draft };
+      else if (c.draftError) seed[c.id] = { error: c.draftError };
+    }
+    return seed;
+  });
+  const [reading, setReading] = useState<Set<string>>(new Set());
 
   const toggleSelected = (id: string) =>
     setSelected((s) => {
@@ -57,32 +92,86 @@ export function InboxClient({
       return next;
     });
 
-  function convertToImport() {
-    if (selected.size === 0) return;
-    setConverting(true);
-    void (async () => {
-      try {
-        const res = await fetch('/api/inbox/convert', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ ids: [...selected] }),
+  /** Read these photos into rows, and remember the answers. */
+  async function read(ids: string[], refresh = false) {
+    if (ids.length === 0) return;
+    setReading((r) => new Set([...r, ...ids]));
+    try {
+      const res = await fetch('/api/inbox/convert', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ids, refresh }),
+      });
+      const json = (await res.json()) as {
+        ok: boolean;
+        drafts?: Record<string, DraftState>;
+        error?: string;
+      };
+      if (!json.ok || !json.drafts) {
+        // Recorded per photo rather than as a toast: a failure that belongs to
+        // one picture should be visible ON that picture when the page is next
+        // opened, not in a message that has since been dismissed.
+        const error = json.error ?? 'Could not read that photo.';
+        setDrafts((d) => {
+          const next = { ...d };
+          for (const id of ids) if (!next[id]?.text) next[id] = { error };
+          return next;
         });
-        const json = (await res.json()) as { ok: boolean; text?: string; error?: string };
-        if (!json.ok || !json.text) {
-          notify('error', json.error ?? 'Could not read those photos.');
-          return;
-        }
-        // The capture stays exactly as it is — pending, in this inbox — until
-        // an entry actually exists for it. This only hands its TEXT to
-        // /import, which is a draft, not a write.
-        try { sessionStorage.setItem(IMPORT_DRAFT_KEY, json.text); } catch { /* private browsing */ }
-        router.push('/import');
-      } catch {
-        notify('error', 'Could not reach the server. Check your connection.');
-      } finally {
-        setConverting(false);
+        return;
       }
-    })();
+      setDrafts((d) => ({ ...d, ...json.drafts }));
+    } catch {
+      setDrafts((d) => {
+        const next = { ...d };
+        for (const id of ids) if (!next[id]?.text) next[id] = { error: 'Could not reach the server.' };
+        return next;
+      });
+    } finally {
+      setReading((r) => {
+        const next = new Set(r);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
+    }
+  }
+
+  /* Anything that arrived without being read — while the provider was off, or
+     before any of this existed — is read on arrival here instead. Runs once
+     per set of photos rather than on every render, which the ref guards. */
+  const autoRead = useRef(false);
+  useEffect(() => {
+    if (!visionEnabled || autoRead.current) return;
+    const unread = captures
+      .filter((c) => !c.draft && !c.draftError)
+      .slice(0, AUTO_READ_LIMIT)
+      .map((c) => c.id);
+    if (unread.length === 0) return;
+    autoRead.current = true;
+    void read(unread);
+  }, [visionEnabled, captures]);
+
+  const readyIds = captures.filter((c) => drafts[c.id]?.text).map((c) => c.id);
+  /* Ticking nothing means "send everything that is ready" — the common case
+     is a handful of photos from one afternoon, all of them wanted. */
+  const sendIds = selected.size > 0
+    ? [...selected].filter((id) => drafts[id]?.text)
+    : readyIds;
+  const sendRows = sendIds.reduce((n, id) => n + rowCount(drafts[id]?.text ?? ''), 0);
+
+  /** Hand the rows to /import. Writes nothing: the capture stays waiting
+      until the entries it becomes are actually saved there. */
+  function sendToImport() {
+    if (sendIds.length === 0) return;
+    const text = sendIds.map((id) => drafts[id]?.text ?? '').filter(Boolean).join('\n');
+    try {
+      sessionStorage.setItem(IMPORT_DRAFT_KEY, JSON.stringify({ text, captureIds: sendIds }));
+    } catch {
+      // Private browsing: the rows cannot be carried across, so say so rather
+      // than landing on an empty /import with no explanation.
+      notify('error', 'This browser will not carry the rows across. Copy them by hand instead.');
+      return;
+    }
+    router.push('/import');
   }
 
   function discard(c: Capture) {
@@ -120,20 +209,26 @@ export function InboxClient({
   return (
     <>
       {visionEnabled ? (
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-[var(--color-ink-3)]">
-          <span>Tick a photo to read it straight into rows for /import, no typing.</span>
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] px-3 py-2.5">
+          <Button size="sm" disabled={sendIds.length === 0} onClick={sendToImport}>
+            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+            {sendIds.length === 0
+              ? 'Nothing read yet'
+              : `Review ${sendRows} ${sendRows === 1 ? 'row' : 'rows'} from ${sendIds.length} ${sendIds.length === 1 ? 'photo' : 'photos'}`}
+          </Button>
           {selected.size > 0 ? (
-            <>
-              <Button size="sm" pending={converting} onClick={convertToImport}>
-                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-                Convert {selected.size} to import rows
-              </Button>
-              <Button size="sm" variant="ghost" disabled={converting} onClick={() => setSelected(new Set())}>
-                Clear
-              </Button>
-            </>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+              Clear the {selected.size} ticked
+            </Button>
           ) : null}
-          <span className="text-[10px]">Read by {visionLabel}</span>
+          <span className="min-w-0 flex-1 text-[11px] text-[var(--color-ink-3)]">
+            {reading.size > 0
+              ? `Reading ${reading.size} ${reading.size === 1 ? 'photo' : 'photos'}…`
+              : selected.size > 0
+                ? 'Only the ticked photos. Nothing is saved until you confirm on the next screen.'
+                : 'Every photo that has been read. Nothing is saved until you confirm on the next screen.'}
+            {' '}Read by {visionLabel}.
+          </span>
         </div>
       ) : null}
 
@@ -186,6 +281,40 @@ export function InboxClient({
                 </div>
                 {c.note ? (
                   <p className="mt-1 line-clamp-2 text-[11px] text-[var(--color-ink-2)]">{c.note}</p>
+                ) : null}
+
+                {/* What the AI made of it, on the photo itself — a reading
+                    that failed belongs on the picture it failed to read,
+                    where it is still there on the next visit. */}
+                {visionEnabled ? (
+                  <div className="mt-1.5 text-[11px]">
+                    {reading.has(c.id) ? (
+                      <span className="flex items-center gap-1 text-[var(--color-ink-3)]">
+                        <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                        Reading…
+                      </span>
+                    ) : drafts[c.id]?.text ? (
+                      <span className="text-[var(--color-pos)]">
+                        {rowCount(drafts[c.id]!.text!)}{' '}
+                        {rowCount(drafts[c.id]!.text!) === 1 ? 'row read' : 'rows read'}
+                      </span>
+                    ) : drafts[c.id]?.error ? (
+                      <span className="flex flex-wrap items-center gap-1 text-[var(--color-warn)]">
+                        <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+                        <span className="line-clamp-2">{drafts[c.id]!.error}</span>
+                        <button
+                          type="button"
+                          onClick={() => void read([c.id], true)}
+                          className="inline-flex items-center gap-0.5 text-[var(--color-accent)]"
+                        >
+                          <RotateCw className="h-3 w-3" aria-hidden="true" />
+                          Retry
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="text-[var(--color-ink-3)]">Not read yet</span>
+                    )}
+                  </div>
                 ) : null}
               </div>
 
