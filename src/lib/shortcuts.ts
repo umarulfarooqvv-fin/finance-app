@@ -85,6 +85,13 @@ export const RECIPES: Recipe[] = [
         'method/category/remarks as text fields, and add one more field of type File pointing at ' +
         'a Take Photo or Select Photos action earlier in the Shortcut. A photo that fails to upload ' +
         'never undoes the entry — the money is already recorded either way.',
+      'To make the photo OPTIONAL rather than every time: add a Choose from Menu after "What ' +
+        'for?" — prompt "Attach a photo?", items "No" and "Yes". Leave the existing JSON step ' +
+        '(steps above) under "No". Under "Yes", add Take Photo (or Select Photos) then a SEPARATE ' +
+        'Get Contents of URL set to Form with the File field, as described above. Both branches ' +
+        'need their own x-token header — Choose from Menu branches do not share actions. Shortcuts ' +
+        'sets the multipart Content-Type itself when Request Body is Form, so remove any ' +
+        'Content-Type header you added by hand in that branch or the upload is rejected.',
       IDEMPOTENT,
     ],
   },
