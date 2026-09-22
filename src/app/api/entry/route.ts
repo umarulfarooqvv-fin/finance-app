@@ -3,6 +3,7 @@ import { invalidateSnapshot } from '@/lib/snapshot';
 import { insert, logEvent } from '@/lib/supabase';
 import { normaliseEntry, toRow } from '@/lib/entry';
 import { buildIncomeRow, incomeIdFromContent } from '@/lib/income';
+import { attachPhoto } from '@/lib/captures';
 import { isValidInstant, validateIncome, type IncomeInput } from '@/lib/validation';
 import { dayOf, nowIST } from '@/lib/time';
 
@@ -19,21 +20,41 @@ export const dynamic = 'force-dynamic';
    Send the token as the x-token HEADER. The ?token= query form still works for
    older Shortcut versions, but query strings are recorded in Vercel's request
    logs, so the header is the one to use.
+
+   A PHOTO IS OPTIONAL AND ADDITIVE. Posting multipart/form-data with a File
+   field attaches it to the entry this same request creates — one Shortcut
+   step instead of a separate trip through /api/capture and the inbox. If the
+   upload fails, the entry itself is not rolled back: the money already
+   landed, and a lost photo is a worse trade than a lost entry. The response
+   says which happened.
    =========================================================================== */
 
 function unauthorised() {
   return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 }
 
-async function readBody(req: Request): Promise<Record<string, string>> {
+type ParsedBody = { fields: Record<string, string>; photo: File | null };
+
+async function readBody(req: Request): Promise<ParsedBody> {
   const type = req.headers.get('content-type') ?? '';
   if (type.includes('application/json')) {
     const json = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-    return Object.fromEntries(Object.entries(json).map(([k, v]) => [k, String(v ?? '')]));
+    return {
+      fields: Object.fromEntries(Object.entries(json).map(([k, v]) => [k, String(v ?? '')])),
+      photo: null,
+    };
   }
+  // Handles both application/x-www-form-urlencoded and multipart/form-data —
+  // the latter is how a photo rides alongside the text fields.
   const form = await req.formData().catch(() => null);
-  if (!form) return {};
-  return Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]));
+  if (!form) return { fields: {}, photo: null };
+  const fields: Record<string, string> = {};
+  let photo: File | null = null;
+  for (const [k, v] of form.entries()) {
+    if (v instanceof File) { if (v.size > 0 && !photo) photo = v; }
+    else fields[k] = String(v);
+  }
+  return { fields, photo };
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -42,7 +63,11 @@ export async function POST(req: Request): Promise<Response> {
     const provided = req.headers.get('x-token') ?? new URL(req.url).searchParams.get('token');
     if (expected && provided !== expected) return unauthorised();
 
-    const body = await readBody(req);
+    const { fields: body, photo } = await readBody(req);
+
+    /* A photo posted alongside `type=income` has nowhere to attach — captures
+       point at a transaction, and income is a different table. Silently
+       dropped rather than rejecting the whole entry over an optional extra. */
 
     /* Income takes a different table and a different shape.
 
@@ -103,10 +128,32 @@ export async function POST(req: Request): Promise<Response> {
     invalidateSnapshot();
     await logEvent('entry.transaction', { id: entry.id, amount: entry.amount, kind: entry.kind });
 
+    /* Attached last, after the money is safely recorded. A photo that fails
+       to upload — a dropped connection, a bad file — must not undo an entry
+       that already landed; `photoError` says so without a 500. */
+    let photoError: string | null = null;
+    if (photo) {
+      const result = await attachPhoto({
+        bytes: await photo.arrayBuffer(),
+        mime: (photo.type || 'image/jpeg').toLowerCase(),
+        ts: entry.ts ?? nowIST(),
+        note: '',
+        transactionId: entry.id,
+        source: 'shortcut',
+        actor: 'shortcut',
+      }).catch((err: unknown) => ({
+        ok: false as const,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      }));
+      if (!result.ok) photoError = result.error;
+    }
+
     return NextResponse.json({
       ok: true,
       id: entry.id,
       kind: entry.kind,
+      photo: photo ? photoError === null : undefined,
+      photoError: photoError ?? undefined,
       card: entry.cardAffected,
       needsReview: entry.needsReview,
     });

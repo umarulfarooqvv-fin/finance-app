@@ -1,7 +1,7 @@
 'use server';
 
 import { guardedAction, MONEY_PATHS } from '@/lib/actions';
-import { discardCapture, markUsed } from '@/lib/captures';
+import { detachPhoto, discardCapture, markUsed } from '@/lib/captures';
 
 /* ===========================================================================
    Server actions for the capture inbox.
@@ -20,6 +20,19 @@ export const discardCaptureAction = guardedAction(
   },
   async (input, ctx) => {
     await discardCapture(input.id, ctx);
+    return { id: input.id };
+  },
+);
+
+/** Remove a photo already attached to an entry, from the entry form itself. */
+export const detachPhotoAction = guardedAction(
+  {
+    name: 'capture.detach',
+    revalidate: REVALIDATE,
+    validate: (input: { id: string }) => (input.id?.trim() ? null : { id: 'Missing photo.' }),
+  },
+  async (input, ctx) => {
+    await detachPhoto(input.id, ctx);
     return { id: input.id };
   },
 );

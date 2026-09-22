@@ -65,6 +65,10 @@ export const RECIPES: Recipe[] = [
       { name: 'category', required: true, note: 'What it was for — Food, Fuel, Family…' },
       { name: 'remarks', required: false, note: 'A short description.' },
       { name: 'ts', required: false, note: 'When it happened. Defaults to now.' },
+      {
+        name: 'the photo', required: false,
+        note: 'Optional — switch the body to Form and add a File field. Attached to this entry directly; it never goes through the inbox.',
+      },
     ],
     steps: [
       { action: 'Ask for Input', detail: 'Number — "How much?"' },
@@ -77,6 +81,10 @@ export const RECIPES: Recipe[] = [
       TS_NOTE,
       'A card name as the category means that card\'s BILL was paid, not that you spent on it. ' +
         '"method: Fi, category: Coral" is paying the Coral bill from Fi.',
+      'To attach a photo in the same step: change Request Body from JSON to Form, keep amount/' +
+        'method/category/remarks as text fields, and add one more field of type File pointing at ' +
+        'a Take Photo or Select Photos action earlier in the Shortcut. A photo that fails to upload ' +
+        'never undoes the entry — the money is already recorded either way.',
       IDEMPOTENT,
     ],
   },

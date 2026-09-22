@@ -30,6 +30,15 @@ export function storageConfigured(): boolean {
   return Boolean(baseUrl() && serviceKey());
 }
 
+/** SHA-256 of the image, so identical bytes are always the same object. A
+    Shortcut or a browser tab that retries on a bad connection re-sends the
+    same photo, and a random id would file it as a second one. */
+export async function idFromBytes(bytes: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `cap-${hex.slice(0, 24)}`;
+}
+
 export function extensionFor(mime: string): string {
   const map: Record<string, string> = {
     'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',

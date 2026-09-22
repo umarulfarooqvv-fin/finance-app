@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { Camera, X } from 'lucide-react';
 import type { FieldErrors } from '@/lib/action-result';
 import { ALL_CATEGORIES, ALL_METHODS, isCard } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ import type { EntryPair } from '@/lib/entry-hints';
 import type { RemarkSuggestion } from '@/app/api/remarks/route';
 import { foldForSearch } from '@/lib/search-text';
 import { createTransactionAction, updateTransactionAction } from './actions';
+import { detachPhotoAction } from '@/app/inbox/actions';
 
 /* ===========================================================================
    The entry form — add and edit.
@@ -44,6 +46,8 @@ export type EditableTransaction = {
   category: string;
   remarks: string;
 };
+
+type ExistingPhoto = { id: string; bytes: number };
 
 type Props = {
   open: boolean;
@@ -96,6 +100,16 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
   // One key per opening of the dialog. Re-submitting after a network error
   // reuses it, so a request that actually succeeded cannot become two rows.
   const [clientKey, setClientKey] = useState(() => crypto.randomUUID());
+
+  /* A photo is optional and attached AFTER the entry itself saves — never
+     before. There is no transaction id to attach it to until the save
+     resolves, and uploading first would leave an orphaned image if the entry
+     then failed validation or the dialog was cancelled. */
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [existingPhoto, setExistingPhoto] = useState<ExistingPhoto | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   /* The history, fetched once per opening and shared by the two things that
      need it: the method/category hints and the remarks search. */
@@ -164,7 +178,69 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
           }
         : { ...blank(defaultTs), ...clean(latestDraft.current) },
     );
+    setPhoto(null);
+    setPhotoPreview(null);
+    setExistingPhoto(null);
+    if (photoInputRef.current) photoInputRef.current.value = '';
   }, [open, editing, defaultTs]);
+
+  /* Editing an entry that already has a photo shows it rather than offering
+     to attach a second one over it — the picker only appears once there is
+     none. A create never has one yet, so this only runs for edits. */
+  useEffect(() => {
+    if (!open || !editing) return;
+    let live = true;
+    void fetch(`/api/capture/for/${editing.id}`)
+      .then((r) => r.json())
+      .then((j: { ok: boolean; capture?: ExistingPhoto | null }) => {
+        if (live && j.ok) setExistingPhoto(j.capture ?? null);
+      })
+      .catch(() => {
+        // A photo that fails to load is not worth interrupting the form for.
+      });
+    return () => { live = false; };
+  }, [open, editing]);
+
+  // Revoke the preview URL when it is replaced or the dialog closes, so a
+  // long session does not accumulate blob URLs for photos long since chosen
+  // and forgotten.
+  useEffect(() => () => { if (photoPreview) URL.revokeObjectURL(photoPreview); }, [photoPreview]);
+
+  function pickPhoto(file: File | null) {
+    setPhotoPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return file ? URL.createObjectURL(file) : null; });
+    setPhoto(file);
+  }
+
+  function removeExistingPhoto() {
+    if (!existingPhoto) return;
+    const id = existingPhoto.id;
+    setPhotoBusy(true);
+    startTransition(async () => {
+      const result = await detachPhotoAction({ id });
+      setPhotoBusy(false);
+      if (!result.ok) { notify('error', result.error); return; }
+      setExistingPhoto(null);
+      notify('success', 'Photo removed.');
+    });
+  }
+
+  /* Uploaded only after the entry itself is safely saved — see the state
+     comment above. A failure here is told to the person but never rolls back
+     the entry, which is already sitting in the ledger by this point. */
+  async function attachPhoto(transactionId: string) {
+    if (!photo) return;
+    const body = new FormData();
+    body.set('file', photo);
+    body.set('transactionId', transactionId);
+    body.set('ts', form.ts.length === 19 ? form.ts : `${form.ts}:00`);
+    try {
+      const res = await fetch('/api/capture/attach', { method: 'POST', body });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!json.ok) notify('error', `Entry saved, but the photo did not attach: ${json.error}`);
+    } catch {
+      notify('error', 'Entry saved, but the photo did not attach — check your connection.');
+    }
+  }
 
   const set = (k: keyof typeof form) => (v: string) => {
     setForm((f) => ({ ...f, [k]: v }));
@@ -247,6 +323,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
           return;
         }
         notify('success', 'Entry updated.');
+        if (photo) await attachPhoto(editing.id);
       } else {
         const result = await createTransactionAction({ ...payload, clientKey });
         if (!result.ok) {
@@ -261,6 +338,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
           result.data.duplicate ? 'Already saved — no duplicate was created.' : 'Entry saved.',
         );
         savedId = result.data.id;
+        if (photo && savedId) await attachPhoto(savedId);
       }
 
       onOpenChange(false);
@@ -396,6 +474,70 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
               setUncertain((u) => u.filter((x) => x !== 'remarks' && x !== 'category'));
             }}
           />
+        </Field>
+
+        <Field label="Photo" htmlFor="photo" hint="Optional — a picture of the bill or receipt">
+          {existingPhoto ? (
+            <div className="flex items-center gap-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] p-2">
+              {/* A plain <img>, not next/image: the bytes come from a
+                  session-guarded route, not an origin the optimiser knows. */}
+              <img
+                src={`/api/capture/${existingPhoto.id}`}
+                alt=""
+                className="h-14 w-14 shrink-0 rounded-[var(--radius-field)] object-cover"
+              />
+              <span className="min-w-0 flex-1 text-xs text-[var(--color-ink-3)]">
+                Attached &middot; {Math.max(1, Math.round(existingPhoto.bytes / 1024))} KB
+              </span>
+              <Button
+                type="button" variant="ghost" size="icon" disabled={photoBusy}
+                onClick={removeExistingPhoto}
+                aria-label="Remove the attached photo"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+            </div>
+          ) : photoPreview ? (
+            <div className="flex items-center gap-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] p-2">
+              <img
+                src={photoPreview}
+                alt=""
+                className="h-14 w-14 shrink-0 rounded-[var(--radius-field)] object-cover"
+              />
+              <span className="min-w-0 flex-1 truncate text-xs text-[var(--color-ink-3)]">
+                {photo?.name}
+              </span>
+              <Button
+                type="button" variant="ghost" size="icon"
+                onClick={() => pickPhoto(null)}
+                aria-label="Remove the chosen photo"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <input
+                ref={photoInputRef}
+                id="photo"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                // capture hints a phone to open the camera directly, but still
+                // lets Choose from Library replace it — this is a hint, not a
+                // restriction to the camera.
+                capture="environment"
+                className="hidden"
+                onChange={(e) => pickPhoto(e.target.files?.[0] ?? null)}
+              />
+              <Button
+                type="button" variant="secondary" size="sm"
+                onClick={() => photoInputRef.current?.click()}
+              >
+                <Camera className="h-3.5 w-3.5" aria-hidden="true" />
+                Add a photo
+              </Button>
+            </>
+          )}
         </Field>
 
         <div className="mt-2 flex justify-end gap-2">

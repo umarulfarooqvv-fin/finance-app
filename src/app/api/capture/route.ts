@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { insertCapture } from '@/lib/captures';
 import {
-  deleteObject, extensionFor, isAllowedImage, MAX_IMAGE_BYTES, putObject, storageConfigured,
+  deleteObject, extensionFor, idFromBytes, isAllowedImage, MAX_IMAGE_BYTES, putObject, storageConfigured,
 } from '@/lib/storage';
 import { isValidInstant } from '@/lib/validation';
 import { nowIST } from '@/lib/time';
@@ -35,13 +35,6 @@ function unauthorised() {
 
 function bad(error: string, status = 400) {
   return NextResponse.json({ ok: false, error }, { status });
-}
-
-/** SHA-256 of the image, so identical bytes are always the same capture. */
-async function idFromBytes(bytes: ArrayBuffer): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-  return `cap-${hex.slice(0, 24)}`;
 }
 
 type Incoming = { bytes: ArrayBuffer; mime: string; note: string; ts: string };
