@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Check, Columns2, Copy, FileWarning, History, Trash2 } from 'lucide-react';
+import { AlertTriangle, Camera, Check, Columns2, Copy, FileWarning, History, Sparkles, Trash2, X } from 'lucide-react';
 import { parseImport, readyToImport, unsortedCount, type ImportRow } from '@/lib/import-parse';
 import type { BankMethods } from '@/lib/bank-methods';
 import { IMPORT_EXAMPLE, IMPORT_PROMPT } from '@/lib/import-prompt';
@@ -48,8 +48,11 @@ type Draft = ImportRow & {
   include: boolean;
 };
 
+/** Where a capture converted from the Inbox waits for this page to pick it up. */
+export const IMPORT_DRAFT_KEY = 'pfm:import-draft';
+
 export function ImportClient({
-  methods, categories, serverNow, entryCount, bankMethods,
+  methods, categories, serverNow, entryCount, bankMethods, visionEnabled, visionLabel,
 }: {
   methods: string[];
   categories: string[];
@@ -57,6 +60,9 @@ export function ImportClient({
   entryCount: number;
   /** Bank labels this ledger knows, so a pasted "Federal 2788" fills itself. */
   bankMethods: BankMethods;
+  /** Whether IMPORT_AI is configured to read a photo directly. */
+  visionEnabled: boolean;
+  visionLabel: string;
 }) {
   const router = useRouter();
   const { notify } = useToast();
@@ -70,6 +76,50 @@ export function ImportClient({
   const [copied, setCopied] = useState(false);
   const [bulkRemark, setBulkRemark] = useState('');
   const [checking, setChecking] = useState(false);
+
+  /* Photos read straight into paste-rows text, without a trip through an
+     outside assistant. Chosen but not yet converted, so a person can add or
+     drop one before spending the AI call on it. */
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [converting, setConverting] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  /* Text handed over from the Inbox: a photo already converted there arrives
+     here the same way a paste would, so it goes through the identical read
+     and duplicate check rather than a separate path of its own. */
+  useEffect(() => {
+    let draft = '';
+    try { draft = sessionStorage.getItem(IMPORT_DRAFT_KEY) ?? ''; } catch { /* private browsing */ }
+    if (!draft) return;
+    try { sessionStorage.removeItem(IMPORT_DRAFT_KEY); } catch { /* private browsing */ }
+    setText((t) => (t.trim() ? `${t.trim()}
+${draft}` : draft));
+    notify('success', 'Added the rows converted from your Inbox photos below.');
+  }, []);
+
+  async function convertPhotos() {
+    if (photos.length === 0) return;
+    setConverting(true);
+    try {
+      const body = new FormData();
+      for (const f of photos) body.append('file', f);
+      const res = await fetch('/api/import/vision', { method: 'POST', body });
+      const json = (await res.json()) as { ok: boolean; text?: string; error?: string };
+      if (!json.ok || !json.text) {
+        notify('error', json.error ?? 'Could not read those photos.');
+        return;
+      }
+      setText((t) => (t.trim() ? `${t.trim()}
+${json.text}` : json.text!));
+      setPhotos([]);
+      if (photoInputRef.current) photoInputRef.current.value = '';
+      notify('success', 'Photos converted — check the rows below before reading them.');
+    } catch {
+      notify('error', 'Could not reach the server. Check your connection.');
+    } finally {
+      setConverting(false);
+    }
+  }
   /* Everything the ledger already holds across the pasted window, and whether
      to show it. A badge saying "already recorded" asks to be trusted; the
      entries themselves can be read. */
@@ -300,6 +350,72 @@ export function ImportClient({
           aligned columns work too, so a spreadsheet can be pasted straight in. Nothing is saved
           until you have read the table and pressed Import.
         </p>
+
+        {/* ---- Read photos directly, no outside assistant needed ------- */}
+        <div className="mb-3 rounded-[var(--radius-field)] border border-dashed border-[var(--color-line)] bg-[var(--color-canvas)] p-3">
+          {visionEnabled ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                  className="hidden"
+                  onChange={(e) => setPhotos([...(e.target.files ?? [])])}
+                />
+                <Button
+                  type="button" variant="secondary" size="sm" disabled={converting}
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  <Camera className="h-3.5 w-3.5" aria-hidden="true" />
+                  {photos.length > 0 ? `${photos.length} chosen` : 'Choose photos'}
+                </Button>
+                <Button
+                  type="button" size="sm" pending={converting}
+                  disabled={photos.length === 0}
+                  onClick={convertPhotos}
+                >
+                  <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                  {converting ? 'Reading…' : 'Convert to rows'}
+                </Button>
+                {photos.length > 0 && !converting ? (
+                  <Button
+                    type="button" variant="ghost" size="icon"
+                    onClick={() => { setPhotos([]); if (photoInputRef.current) photoInputRef.current.value = ''; }}
+                    aria-label="Clear chosen photos"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </Button>
+                ) : null}
+                <span className="text-[11px] text-[var(--color-ink-3)]">
+                  Read by {visionLabel} — added below as rows, same as a paste
+                </span>
+              </div>
+              {photos.length > 0 ? (
+                <ul className="mt-2 flex flex-wrap gap-1.5">
+                  {photos.map((f, i) => (
+                    <li
+                      key={`${f.name}-${i}`}
+                      className="max-w-[10rem] truncate rounded-full bg-[var(--color-raised)] px-2 py-0.5 text-[10px] text-[var(--color-ink-3)]"
+                    >
+                      {f.name}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-[11px] text-[var(--color-ink-3)]">
+              <Camera className="mr-1 inline h-3.5 w-3.5 align-text-bottom" aria-hidden="true" />
+              Photos can be read straight into rows here — set <code>IMPORT_AI</code> in
+              <code> .env.example</code> to a free vision model (Groq, OpenRouter or a local
+              Ollama) to turn this on. Until then, use &ldquo;Copy the prompt&rdquo; above with
+              any assistant instead.
+            </p>
+          )}
+        </div>
+
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { capturesReady, listCaptures } from '@/lib/captures';
+import { visionConfig } from '@/lib/ai/vision';
 import { nowIST } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, SectionTitle } from '@/components/ui/primitives';
@@ -26,6 +27,7 @@ export const dynamic = 'force-dynamic';
 export default async function InboxPage() {
   const ready = await capturesReady();
   const rows = ready ? await listCaptures('pending') : [];
+  const vision = visionConfig();
 
   const h = await headers();
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? '';
@@ -66,7 +68,12 @@ export default async function InboxPage() {
       ) : (
         <Panel padded={false}>
           <div className="p-4 sm:p-5">
-            <InboxClient captures={captures} defaultTs={nowIST()} />
+            <InboxClient
+              captures={captures}
+              defaultTs={nowIST()}
+              visionEnabled={vision.name !== 'off'}
+              visionLabel={vision.label}
+            />
           </div>
         </Panel>
       )}

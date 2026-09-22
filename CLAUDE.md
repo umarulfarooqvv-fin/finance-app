@@ -151,8 +151,10 @@ per-request dedupe.
 - **Bulk import.** `/import` — paste many entries at once, preview and edit
   them in a table, then save through `importEntriesAction`. The prompt handed
   to an assistant lives in `lib/import-prompt` and carries the app's own
-  method and category lists; `lib/import-parse` reads what comes back. (v2's
-  `/api/import` does not exist in v3.)
+  method and category lists; `lib/import-parse` reads what comes back. A
+  photo can be read straight into the same rows if `IMPORT_AI` is set — see
+  Voice entry and the AI layer below. (v2's `/api/import` does not exist in
+  v3.)
 - **Reminders.** `/reminders`, `/api/cron/reminders` (Vercel Cron, 08:00 IST)
   and `/api/calendar` (an .ics feed). See `docs/REMINDERS.md` — and note that
   `docs/DEPLOY.md` section 4 describes v2's ntfy alerts, which v3 does not have.
@@ -177,10 +179,19 @@ Two separate paths, with different requirements:
   timeout leaves the local parse standing.
 - **`/ask` needs `ANTHROPIC_API_KEY`.** There is no offline fallback; absent, it
   shows a setup message.
+- **Reading a photo into `/import` rows needs `IMPORT_AI`.** `src/lib/ai/
+  vision.ts` is a separate config from `ENTRY_AI` — a vision-capable model is
+  a different, shorter list from a fast free text model. Off by default; the
+  "Copy the prompt" panel on `/import` works without it, pasted by hand into
+  any assistant. Reads a fresh upload (`/api/import/vision`) or a capture
+  already in the Inbox (`/api/inbox/convert`, which reads the stored bytes
+  and never changes the capture's own status) into the same pipe-delimited
+  text a person would paste — it fills the textarea, nothing more.
 
-Neither path writes. They produce a draft that a person confirms, because
-speech recognition mishears numbers routinely and a guessed payment method
-silently moves debt onto the wrong card.
+None of the three paths write. Each produces a draft that a person confirms,
+because speech recognition mishears numbers routinely, a guessed payment
+method silently moves debt onto the wrong card, and a photo misread the same
+way is just as capable of filing an entry under the wrong wallet.
 
 Audio never leaves the device — transcription is the Web Speech API on the
 phone, and only the transcript is sent.

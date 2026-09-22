@@ -2,15 +2,16 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, Sparkles, Trash2, X } from 'lucide-react';
 import { formatDayShort } from '@/lib/time';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
-import { Empty } from '@/components/ui/primitives';
+import { cx, Empty } from '@/components/ui/primitives';
 import { SafeImage } from '@/components/capture-image';
 import { TransactionDialog } from '@/app/transactions/transaction-dialog';
 import { discardCaptureAction, linkCaptureAction } from './actions';
+import { IMPORT_DRAFT_KEY } from '@/app/import/import-client';
 
 /* ===========================================================================
    Photos waiting to become entries.
@@ -26,7 +27,15 @@ import { discardCaptureAction, linkCaptureAction } from './actions';
 
 export type Capture = { id: string; ts: string; note: string; bytes: number };
 
-export function InboxClient({ captures, defaultTs }: { captures: Capture[]; defaultTs: string }) {
+export function InboxClient({
+  captures, defaultTs, visionEnabled, visionLabel,
+}: {
+  captures: Capture[];
+  defaultTs: string;
+  /** Whether IMPORT_AI is configured to read a photo directly. */
+  visionEnabled: boolean;
+  visionLabel: string;
+}) {
   const router = useRouter();
   const { notify } = useToast();
   const [pending, startTransition] = useTransition();
@@ -34,6 +43,47 @@ export function InboxClient({ captures, defaultTs }: { captures: Capture[]; defa
   const [entryFor, setEntryFor] = useState<Capture | null>(null);
   const [confirming, setConfirming] = useState<Capture | null>(null);
   const [zoomed, setZoomed] = useState<Capture | null>(null);
+
+  /* Several photos can go to /import in one trip — a busy week's worth of
+     receipts, not just one at a time. */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [converting, setConverting] = useState(false);
+
+  const toggleSelected = (id: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  function convertToImport() {
+    if (selected.size === 0) return;
+    setConverting(true);
+    void (async () => {
+      try {
+        const res = await fetch('/api/inbox/convert', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ids: [...selected] }),
+        });
+        const json = (await res.json()) as { ok: boolean; text?: string; error?: string };
+        if (!json.ok || !json.text) {
+          notify('error', json.error ?? 'Could not read those photos.');
+          return;
+        }
+        // The capture stays exactly as it is — pending, in this inbox — until
+        // an entry actually exists for it. This only hands its TEXT to
+        // /import, which is a draft, not a write.
+        try { sessionStorage.setItem(IMPORT_DRAFT_KEY, json.text); } catch { /* private browsing */ }
+        router.push('/import');
+      } catch {
+        notify('error', 'Could not reach the server. Check your connection.');
+      } finally {
+        setConverting(false);
+      }
+    })();
+  }
 
   function discard(c: Capture) {
     startTransition(async () => {
@@ -69,28 +119,64 @@ export function InboxClient({ captures, defaultTs }: { captures: Capture[]; defa
 
   return (
     <>
+      {visionEnabled ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-[var(--color-ink-3)]">
+          <span>Tick a photo to read it straight into rows for /import, no typing.</span>
+          {selected.size > 0 ? (
+            <>
+              <Button size="sm" pending={converting} onClick={convertToImport}>
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                Convert {selected.size} to import rows
+              </Button>
+              <Button size="sm" variant="ghost" disabled={converting} onClick={() => setSelected(new Set())}>
+                Clear
+              </Button>
+            </>
+          ) : null}
+          <span className="text-[10px]">Read by {visionLabel}</span>
+        </div>
+      ) : null}
+
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {captures.map((c) => (
           <li
             key={c.id}
-            className="flex flex-col overflow-hidden rounded-[var(--radius-field)] border border-[var(--color-line)]"
+            className={cx(
+              'flex flex-col overflow-hidden rounded-[var(--radius-field)] border',
+              selected.has(c.id) ? 'border-[var(--color-accent)]' : 'border-[var(--color-line)]',
+            )}
           >
-            <button
-              type="button"
-              onClick={() => setZoomed(c)}
-              className="relative aspect-[4/3] w-full overflow-hidden bg-[var(--color-raised)]"
-              aria-label={`View the photo from ${formatDayShort(c.ts.slice(0, 10))}`}
-            >
-              {/* A plain <img>, not next/image: the bytes come from a
-                  session-guarded route rather than an origin the optimiser can
-                  be configured for, and optimising would mean a second service
-                  fetching a picture of somebody's bill. */}
-              <SafeImage
-                src={`/api/capture/${c.id}`}
-                loading="lazy"
-                className="h-full w-full object-cover"
-              />
-            </button>
+            <div className="relative aspect-[4/3] w-full overflow-hidden bg-[var(--color-raised)]">
+              {/* Sibling of the button, not nested inside it — an input inside
+                  a button is invalid HTML, and a couple of browsers let the
+                  button's own click win over the checkbox's, which would make
+                  it untoggleable rather than merely ugly markup. */}
+              {visionEnabled ? (
+                <input
+                  type="checkbox"
+                  checked={selected.has(c.id)}
+                  onChange={() => toggleSelected(c.id)}
+                  aria-label={`Select the photo from ${formatDayShort(c.ts.slice(0, 10))} for import`}
+                  className="absolute left-2 top-2 z-10 h-4 w-4 accent-[var(--color-accent)]"
+                />
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setZoomed(c)}
+                className="h-full w-full"
+                aria-label={`View the photo from ${formatDayShort(c.ts.slice(0, 10))}`}
+              >
+                {/* A plain <img>, not next/image: the bytes come from a
+                    session-guarded route rather than an origin the optimiser
+                    can be configured for, and optimising would mean a second
+                    service fetching a picture of somebody's bill. */}
+                <SafeImage
+                  src={`/api/capture/${c.id}`}
+                  loading="lazy"
+                  className="h-full w-full object-cover"
+                />
+              </button>
+            </div>
 
             <div className="flex flex-1 flex-col gap-2 p-2.5">
               <div className="min-w-0">

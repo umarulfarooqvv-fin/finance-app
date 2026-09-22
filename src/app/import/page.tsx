@@ -2,6 +2,7 @@ import { getSnapshot } from '@/lib/snapshot';
 import { nowIST } from '@/lib/time';
 import { ALL_CATEGORIES, ALL_METHODS } from '@/lib/types';
 import { bankMethodsFrom } from '@/lib/bank-methods';
+import { visionConfig } from '@/lib/ai/vision';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { ImportClient } from './import-client';
 
@@ -24,6 +25,7 @@ export default async function ImportPage() {
   // `nowIST()` is the only clock the app reads, and it reads it here so a
   // device with a wrong date cannot timestamp an import.
   const snap = await getSnapshot();
+  const vision = visionConfig();
 
   return (
     <Page>
@@ -37,6 +39,8 @@ export default async function ImportPage() {
         serverNow={nowIST()}
         bankMethods={bankMethodsFrom(snap.config)}
         entryCount={snap.transactions.filter((t) => !t.deleted).length}
+        visionEnabled={vision.name !== 'off'}
+        visionLabel={vision.label}
       />
     </Page>
   );
