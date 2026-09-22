@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { currentSnapshot } from '@/lib/views';
+import { photosByTransaction } from '@/lib/captures';
 import { isSpend, upcomingRows } from '@/lib/analytics';
 import { endOfDay, formatDay, monthKey, nowIST } from '@/lib/time';
 import { round2 } from '@/lib/money';
@@ -33,6 +34,7 @@ export default async function TransactionsPage({
   const sp = await searchParams;
   const { snap, today } = await currentSnapshot();
   const now = endOfDay(today);
+  const photos = await photosByTransaction();
 
   const f = readFilters(sp);
   const matched = applyFilters(snap.transactions, f, now).sort((a, b) => (a.ts! < b.ts! ? 1 : -1));
@@ -79,6 +81,7 @@ export default async function TransactionsPage({
         verified: t.verified,
         deleted: t.deleted,
         isFuture: t.ts! > now,
+        photoId: photos.get(t.id) ?? null,
       }),
     ),
   }));

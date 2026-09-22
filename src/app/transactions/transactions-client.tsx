@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { Camera, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import { SafeImage } from '@/components/capture-image';
 import { formatDayShort } from '@/lib/time';
 import { money } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,8 @@ export type Row = EditableTransaction & {
   verified: boolean;
   isFuture: boolean;
   deleted: boolean;
+  /** The capture id, when a photo is attached — for the viewer, not editing. */
+  photoId: string | null;
 };
 
 /** One calendar day's rows, with what that day actually cost. */
@@ -52,6 +55,7 @@ export function TransactionsClient({
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<EditableTransaction | null>(null);
   const [confirming, setConfirming] = useState<Row | null>(null);
+  const [zoomedPhoto, setZoomedPhoto] = useState<string | null>(null);
 
   const openAdd = () => { setEditing(null); setFormOpen(true); };
   const openEdit = (r: Row) => { setEditing(r); setFormOpen(true); };
@@ -192,6 +196,17 @@ export function TransactionsClient({
                           &#10003;
                         </span>
                       ) : null}
+                      {t.photoId ? (
+                        <button
+                          type="button"
+                          onClick={() => setZoomedPhoto(t.photoId)}
+                          className="shrink-0 text-[var(--color-ink-3)] transition-colors hover:text-[var(--color-accent)]"
+                          aria-label="View the attached photo"
+                          title="Photo attached"
+                        >
+                          <Camera className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                      ) : null}
                     </span>
 
                     <span className="hidden w-28 shrink-0 truncate text-xs text-[var(--color-ink-3)] sm:block">
@@ -248,6 +263,31 @@ export function TransactionsClient({
           ))}
         </div>
       )}
+
+      {/* Full size, because the amount on a receipt is unreadable in a
+          thumbnail — same viewer the capture inbox uses. */}
+      {zoomedPhoto ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo"
+          onClick={() => setZoomedPhoto(null)}
+        >
+          <SafeImage
+            src={`/api/capture/${zoomedPhoto}`}
+            className="max-h-full max-w-full rounded-[var(--radius-card)] object-contain"
+          />
+          <button
+            type="button"
+            onClick={() => setZoomedPhoto(null)}
+            aria-label="Close"
+            className="absolute right-4 top-4 rounded-full bg-black/60 p-2 text-white"
+          >
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
 
       <TransactionDialog
         open={formOpen}

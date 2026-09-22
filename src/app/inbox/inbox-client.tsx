@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { Empty } from '@/components/ui/primitives';
+import { SafeImage } from '@/components/capture-image';
 import { TransactionDialog } from '@/app/transactions/transaction-dialog';
 import { discardCaptureAction, linkCaptureAction } from './actions';
 
@@ -84,9 +85,8 @@ export function InboxClient({ captures, defaultTs }: { captures: Capture[]; defa
                   session-guarded route rather than an origin the optimiser can
                   be configured for, and optimising would mean a second service
                   fetching a picture of somebody's bill. */}
-              <img
+              <SafeImage
                 src={`/api/capture/${c.id}`}
-                alt=""
                 loading="lazy"
                 className="h-full w-full object-cover"
               />
@@ -131,9 +131,8 @@ export function InboxClient({ captures, defaultTs }: { captures: Capture[]; defa
           onClick={() => setZoomed(null)}
         >
           {/* Plain <img>, for the reason given above. */}
-          <img
+          <SafeImage
             src={`/api/capture/${zoomed.id}`}
-            alt=""
             className="max-h-full max-w-full rounded-[var(--radius-card)] object-contain"
           />
           <button

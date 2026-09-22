@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { Camera, X } from 'lucide-react';
+import { SafeImage } from '@/components/capture-image';
 import type { FieldErrors } from '@/lib/action-result';
 import { ALL_CATEGORIES, ALL_METHODS, isCard } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -109,6 +110,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [existingPhoto, setExistingPhoto] = useState<ExistingPhoto | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [zoomOpen, setZoomOpen] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   /* The history, fetched once per opening and shared by the two things that
@@ -181,6 +183,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
     setPhoto(null);
     setPhotoPreview(null);
     setExistingPhoto(null);
+    setZoomOpen(false);
     if (photoInputRef.current) photoInputRef.current.value = '';
   }, [open, editing, defaultTs]);
 
@@ -209,6 +212,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
   function pickPhoto(file: File | null) {
     setPhotoPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return file ? URL.createObjectURL(file) : null; });
     setPhoto(file);
+    setZoomOpen(false);
   }
 
   function removeExistingPhoto() {
@@ -220,6 +224,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
       setPhotoBusy(false);
       if (!result.ok) { notify('error', result.error); return; }
       setExistingPhoto(null);
+      setZoomOpen(false);
       notify('success', 'Photo removed.');
     });
   }
@@ -481,11 +486,17 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
             <div className="flex items-center gap-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] p-2">
               {/* A plain <img>, not next/image: the bytes come from a
                   session-guarded route, not an origin the optimiser knows. */}
-              <img
-                src={`/api/capture/${existingPhoto.id}`}
-                alt=""
-                className="h-14 w-14 shrink-0 rounded-[var(--radius-field)] object-cover"
-              />
+              <button
+                type="button"
+                onClick={() => setZoomOpen(true)}
+                aria-label="View the attached photo full size"
+                className="shrink-0"
+              >
+                <SafeImage
+                  src={`/api/capture/${existingPhoto.id}`}
+                  className="h-14 w-14 rounded-[var(--radius-field)] object-cover"
+                />
+              </button>
               <span className="min-w-0 flex-1 text-xs text-[var(--color-ink-3)]">
                 Attached &middot; {Math.max(1, Math.round(existingPhoto.bytes / 1024))} KB
               </span>
@@ -499,11 +510,17 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
             </div>
           ) : photoPreview ? (
             <div className="flex items-center gap-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] p-2">
-              <img
-                src={photoPreview}
-                alt=""
-                className="h-14 w-14 shrink-0 rounded-[var(--radius-field)] object-cover"
-              />
+              <button
+                type="button"
+                onClick={() => setZoomOpen(true)}
+                aria-label="View the chosen photo full size"
+                className="shrink-0"
+              >
+                <SafeImage
+                  src={photoPreview}
+                  className="h-14 w-14 rounded-[var(--radius-field)] object-cover"
+                />
+              </button>
               <span className="min-w-0 flex-1 truncate text-xs text-[var(--color-ink-3)]">
                 {photo?.name}
               </span>
@@ -539,6 +556,33 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
             </>
           )}
         </Field>
+
+        {/* Full size, because the amount on a receipt is unreadable at
+            thumbnail size — same viewer the transaction list and the capture
+            inbox use. Rendered above the dialog's own overlay via z-index,
+            since it is content WITHIN this dialog. */}
+        {zoomOpen && (existingPhoto || photoPreview) ? (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Photo"
+            onClick={() => setZoomOpen(false)}
+          >
+            <SafeImage
+              src={existingPhoto ? `/api/capture/${existingPhoto.id}` : (photoPreview ?? '')}
+              className="max-h-full max-w-full rounded-[var(--radius-card)] object-contain"
+            />
+            <button
+              type="button"
+              onClick={() => setZoomOpen(false)}
+              aria-label="Close"
+              className="absolute right-4 top-4 rounded-full bg-black/60 p-2 text-white"
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
 
         <div className="mt-2 flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={() => onOpenChange(false)} disabled={pending}>

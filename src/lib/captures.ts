@@ -54,6 +54,27 @@ export async function getCapture(id: string): Promise<CaptureRow | null> {
   return rows[0] ?? null;
 }
 
+/**
+ * Which entries have a photo attached, as transaction id -> capture id.
+ *
+ * For the transaction list, so it can show a small indicator without a
+ * per-row request. Empty rather than thrown on a fresh clone that hasn't run
+ * the captures migration yet, same as `capturesReady`.
+ */
+export async function photosByTransaction(): Promise<Map<string, string>> {
+  try {
+    const rows = await select('captures', {
+      filters: { status: 'eq.used' },
+      select: 'id,transaction_id',
+    });
+    const out = new Map<string, string>();
+    for (const r of rows) if (r.transaction_id) out.set(r.transaction_id, r.id);
+    return out;
+  } catch {
+    return new Map();
+  }
+}
+
 export async function insertCapture(row: NewCaptureRow): Promise<void> {
   // Upsert: the id is a hash of the image, so a retried post is the same photo
   // and must land on the same row rather than failing as a duplicate.

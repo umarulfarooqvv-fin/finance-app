@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { PrivacyToggle } from '@/components/layout/privacy-toggle';
+import { RefreshButton } from '@/components/layout/refresh-button';
 
 /** Consistent page chrome: title, one line of context, and room for actions. */
 export function PageHeader({
@@ -23,6 +24,7 @@ export function PageHeader({
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {action}
+        <RefreshButton />
         <PrivacyToggle />
         {showTheme ? <ThemeToggle /> : null}
       </div>
