@@ -238,3 +238,8 @@ export function matchesQuery(item: NavItem, query: string): boolean {
   const hay = [item.label, item.hint ?? '', ...(item.keywords ?? [])].join(' ').toLowerCase();
   return q.split(/\s+/).every((term) => hay.includes(term));
 }
+
+/** The destination a pathname belongs to — `/cards/Scapia` is Cards. */
+export function navItemFor(pathname: string): NavItem | null {
+  return ALL_NAV_ITEMS.find((item) => isActive(pathname, item)) ?? null;
+}

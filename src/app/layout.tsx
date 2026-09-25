@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { BottomBar, SideRail } from '@/components/layout/nav';
+import { VisitTracker } from '@/components/layout/command-palette';
 import { ToastProvider } from '@/components/ui/toast';
 import { PrivacyProvider } from '@/contexts/privacy-context';
 import './globals.css';
@@ -48,6 +49,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <SideRail />
               {/* Bottom padding clears the fixed tab bar on phones. */}
               <main className="min-w-0 flex-1 pb-24 lg:pb-8">{children}</main>
+              <VisitTracker />
             </div>
             <BottomBar />
           </ToastProvider>
