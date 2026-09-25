@@ -2,7 +2,8 @@ import { after, NextResponse } from 'next/server';
 import { insertCapture } from '@/lib/captures';
 import { readCaptureIntoDraft } from '@/lib/capture-drafts';
 import {
-  deleteObject, extensionFor, idFromBytes, isAllowedImage, MAX_IMAGE_BYTES, putObject, storageConfigured,
+  deleteObject, extensionFor, idFromBytes, isAllowedImage, MAX_IMAGE_BYTES, putObject,
+  sniffImage, storageConfigured,
 } from '@/lib/storage';
 import { isValidInstant } from '@/lib/validation';
 import { nowIST } from '@/lib/time';
@@ -20,6 +21,13 @@ export const maxDuration = 60;
        (Shortcuts: "Get Contents of URL", Request Body = File)
      - multipart/form-data with the image in any field
      - JSON with a base64 string
+
+   AND THE BYTES DECIDE, not the header. Shortcuts picks the Content-Type for
+   you and gets it wrong in ways you cannot see from a phone: left on its
+   default Request Body of JSON it posts the photo itself as
+   `application/json`, which used to come back as "Could not read the JSON
+   body" — a true sentence that tells you nothing about which of a dozen
+   toggles to change. If the body looks like an image, it is treated as one.
 
    Guarded by INGEST_TOKEN in the x-token header, exactly like /api/entry, and
    exempt from the PIN lock for the same reason.
@@ -39,6 +47,16 @@ function bad(error: string, status = 400) {
 }
 
 type Incoming = { bytes: ArrayBuffer; mime: string; note: string; ts: string };
+
+/** Parse bytes already read off the wire, rather than consuming the stream. */
+function parseJson(bytes: ArrayBuffer): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
 
 async function read(req: Request): Promise<Incoming | { error: string }> {
   const type = (req.headers.get('content-type') ?? '').toLowerCase();
@@ -66,9 +84,27 @@ async function read(req: Request): Promise<Incoming | { error: string }> {
     };
   }
 
+  /* Everything else reads the body ONCE, up front: a request body can only be
+     consumed a single time, so deciding "is this JSON or is it a photo?" has
+     to happen on bytes already in hand rather than by trying req.json() and
+     reaching for the stream again when it fails. */
+  const body = await req.arrayBuffer();
+  if (body.byteLength === 0) {
+    return { error: 'The request body was empty. In the Shortcut, set Request Body to File and pick the photo.' };
+  }
+
   if (type.startsWith('application/json')) {
-    const json = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!json) return { error: 'Could not read the JSON body.' };
+    const json = parseJson(body);
+    if (!json) {
+      // Not JSON at all. Overwhelmingly this is the photo itself under a JSON
+      // content type, so take it rather than refusing over a header.
+      const sniffed = sniffImage(body);
+      if (sniffed) return { bytes: body, mime: sniffed, note: qsNote, ts: qsTs };
+      return {
+        error: 'The body was sent as JSON but is not JSON, and is not an image either. '
+          + 'In the Shortcut, set Request Body to File and pick the photo.',
+      };
+    }
     const raw = typeof json['image'] === 'string' ? json['image'] : '';
     if (!raw) return { error: 'No image was attached. Send it as "image", base64-encoded.' };
 
@@ -94,9 +130,10 @@ async function read(req: Request): Promise<Incoming | { error: string }> {
   }
 
   // The simplest path, and the one the Shortcut should use: the photo itself.
-  const bytes = await req.arrayBuffer();
-  if (bytes.byteLength === 0) return { error: 'The request body was empty.' };
-  return { bytes, mime: type.split(';')[0]?.trim() || 'image/jpeg', note: qsNote, ts: qsTs };
+  // The sniffed type wins over the declared one — an octet-stream that is
+  // plainly a JPEG is a JPEG.
+  const declared = type.split(';')[0]?.trim() || 'image/jpeg';
+  return { bytes: body, mime: sniffImage(body) ?? declared, note: qsNote, ts: qsTs };
 }
 
 export async function POST(req: Request): Promise<Response> {

@@ -146,9 +146,13 @@ export const RECIPES: Recipe[] = [
       { action: 'Headers', detail: 'x-token, and Content-Type: image/jpeg' },
       { action: 'Request Body', detail: 'File — then pick the Photo from step 1' },
       { action: 'Add to Home Screen', detail: 'or the Action Button, so it is one tap' },
+      { action: 'Quick Look', detail: 'optional, while setting up — shows what the server replied' },
     ],
     notes: [
       'The entry you make from the photo is dated when the PHOTO was taken, not when you typed it.',
+      'If nothing appears here, add a Quick Look step after Get Contents of URL and run it again: '
+        + 'the reply says what went wrong. A Shortcut swallows an error silently, which looks '
+        + 'exactly like a photo that sent fine.',
       'The same photo sent twice is one capture — the id is derived from the image itself, so a ' +
         'retry cannot fill the inbox with duplicates of one receipt.',
       'Photos are stored privately and only ever served back through this app while you are signed ' +

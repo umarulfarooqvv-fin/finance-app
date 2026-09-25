@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import {
   ALLOWED_IMAGE_TYPES, CAPTURE_BUCKET, extensionFor, isAllowedImage, MAX_IMAGE_BYTES,
+  sniffImage,
 } from '@/lib/storage';
 
 /* ===========================================================================
@@ -56,4 +57,69 @@ test('the size limit matches the database constraint and the bucket', () => {
 
 test('the bucket name is fixed, since the migration and the bucket must agree', () => {
   assert.equal(CAPTURE_BUCKET, 'captures');
+});
+
+/* ---------------------------------------------------------------------------
+   Recognising a photo by its bytes.
+
+   A Shortcut chooses the Content-Type for you and gets it wrong invisibly:
+   "Get Contents of URL" left on its default Request Body of JSON posts the
+   photo itself as application/json. Refusing that over a header is a dead end
+   on a phone — the bytes were a perfectly good JPEG the whole time.
+   --------------------------------------------------------------------------- */
+
+/** A buffer that starts with these bytes and is long enough to sniff. */
+function header(...bytes: number[]): ArrayBuffer {
+  const b = new Uint8Array(32);
+  b.set(bytes);
+  return b.buffer;
+}
+
+const ascii = (s: string) => [...s].map((c) => c.charCodeAt(0));
+
+test('a JPEG is recognised whatever the request claimed it was', () => {
+  assert.equal(sniffImage(header(0xff, 0xd8, 0xff, 0xe0)), 'image/jpeg');
+});
+
+test('a PNG is recognised by its signature', () => {
+  assert.equal(sniffImage(header(0x89, ...ascii('PNG'), 0x0d, 0x0a, 0x1a, 0x0a)), 'image/png');
+});
+
+test('WebP needs both RIFF and WEBP, not just RIFF', () => {
+  assert.equal(sniffImage(header(...ascii('RIFF'), 0, 0, 0, 0, ...ascii('WEBP'))), 'image/webp');
+  // A RIFF container that is a WAV is not an image.
+  assert.equal(sniffImage(header(...ascii('RIFF'), 0, 0, 0, 0, ...ascii('WAVE'))), null);
+});
+
+test('an iPhone HEIC is recognised by its ftyp brand', () => {
+  assert.equal(sniffImage(header(0, 0, 0, 0x18, ...ascii('ftyp'), ...ascii('heic'))), 'image/heic');
+  assert.equal(sniffImage(header(0, 0, 0, 0x18, ...ascii('ftyp'), ...ascii('mif1'))), 'image/heif');
+});
+
+test('an ISO container that is not a still image is not claimed', () => {
+  // An MP4 is the same box structure with a video brand. Accepting it would
+  // put a film in the bucket where a receipt should be.
+  assert.equal(sniffImage(header(0, 0, 0, 0x18, ...ascii('ftyp'), ...ascii('isom'))), null);
+});
+
+test('anything else, including JSON and truncated bytes, is refused', () => {
+  assert.equal(sniffImage(header(...ascii('{"image":"..."}'))), null, 'real JSON is not an image');
+  assert.equal(sniffImage(new Uint8Array([0xff, 0xd8, 0xff]).buffer), null, 'too short to be sure');
+  assert.equal(sniffImage(new ArrayBuffer(0)), null);
+});
+
+test('every type the sniffer names is one the app actually accepts', () => {
+  // Otherwise it would recognise a photo and then refuse it anyway.
+  for (const bytes of [
+    header(0xff, 0xd8, 0xff, 0xe0),
+    header(0x89, ...ascii('PNG'), 0x0d, 0x0a, 0x1a, 0x0a),
+    header(...ascii('RIFF'), 0, 0, 0, 0, ...ascii('WEBP')),
+    header(0, 0, 0, 0x18, ...ascii('ftyp'), ...ascii('heic')),
+    header(0, 0, 0, 0x18, ...ascii('ftyp'), ...ascii('mif1')),
+  ]) {
+    const mime = sniffImage(bytes);
+    assert.ok(mime, 'recognised');
+    assert.equal(isAllowedImage(mime), true, mime);
+    assert.notEqual(extensionFor(mime), 'bin', `${mime} has a real extension`);
+  }
 });

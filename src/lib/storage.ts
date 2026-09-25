@@ -52,6 +52,41 @@ export function isAllowedImage(mime: string): boolean {
 }
 
 /**
+ * What the bytes actually are, ignoring whatever the header claimed.
+ *
+ * A Shortcut decides the Content-Type for you, and gets it wrong in ways that
+ * are invisible from the phone: "Get Contents of URL" left on its default
+ * Request Body of JSON sends the photo itself under `application/json`, and a
+ * file picked another way can arrive as `application/octet-stream`. In both
+ * cases the bytes are a perfectly good JPEG. Trusting the header over the
+ * bytes turns a working photo into a refusal nobody can debug from a phone.
+ *
+ * Only the formats this app already accepts — anything else returns null and
+ * is refused as before, so this widens what is understood, not what is stored.
+ */
+export function sniffImage(bytes: ArrayBuffer): string | null {
+  const b = new Uint8Array(bytes);
+  if (b.length < 12) return null;
+
+  const ascii = (from: number, to: number) => String.fromCharCode(...b.slice(from, to));
+
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b[0] === 0x89 && ascii(1, 4) === 'PNG') return 'image/png';
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp';
+
+  // HEIC/HEIF are ISO base-media files: a box length, then 'ftyp', then the
+  // brand that says which flavour. `mif1`/`msf1` are the still-image brands an
+  // iPhone also writes.
+  if (ascii(4, 8) === 'ftyp') {
+    const brand = ascii(8, 12);
+    if (brand.startsWith('hei') || brand.startsWith('hev')) return 'image/heic';
+    if (brand === 'mif1' || brand === 'msf1') return 'image/heif';
+  }
+
+  return null;
+}
+
+/**
  * Put an object in the bucket.
  *
  * `upsert` is off: the path carries the capture id, so a collision would mean
