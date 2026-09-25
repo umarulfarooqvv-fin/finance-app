@@ -105,7 +105,9 @@ export async function readCapture(id: string): Promise<CaptureDraft | null> {
     return { error: 'The photo could not be read from storage.', at: nowIST() };
   }
 
-  const result = await readReceipts([{ bytes: object.body, mime: row.mime }]);
+  // Its own day, not today's: a backlog photo read a week late is still dated
+  // by when it was taken.
+  const result = await readReceipts([{ bytes: object.body, mime: row.mime }], row.ts.slice(0, 10));
   return result.ok
     ? { text: result.text, at: nowIST() }
     : { error: result.error, at: nowIST() };

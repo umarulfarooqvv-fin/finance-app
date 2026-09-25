@@ -12,6 +12,9 @@ import { SafeImage } from '@/components/capture-image';
 import { TransactionDialog } from '@/app/transactions/transaction-dialog';
 import { discardCaptureAction, linkCaptureAction } from './actions';
 import { IMPORT_DRAFT_KEY } from '@/lib/import-handoff';
+import { entryFromReading } from '@/lib/capture-entry';
+import type { BankMethods } from '@/lib/bank-methods';
+import { formatDay } from '@/lib/time';
 
 /* ===========================================================================
    Photos waiting to become entries.
@@ -50,13 +53,15 @@ const AUTO_READ_LIMIT = 8;
 const rowCount = (text: string) => text.split('\n').filter((l) => l.trim()).length;
 
 export function InboxClient({
-  captures, defaultTs, visionEnabled, visionLabel,
+  captures, defaultTs, visionEnabled, visionLabel, bankMethods,
 }: {
   captures: Capture[];
   defaultTs: string;
   /** Whether IMPORT_AI is configured to read a photo directly. */
   visionEnabled: boolean;
   visionLabel: string;
+  /** Bank labels this ledger knows, so "Federal CC XX16" fills Paid from. */
+  bankMethods: BankMethods;
 }) {
   const router = useRouter();
   const { notify } = useToast();
@@ -194,6 +199,29 @@ export function InboxClient({
   /* The capture is only marked used once the entry actually saved. If the form
      is cancelled, or the save fails, the photo stays in the inbox — losing the
      prompt while creating nothing is the one outcome worth designing out. */
+  /* The Entry button fills the form from the photo's reading when there is
+     one — asking a person to retype what the app has just read for them is
+     the chore this whole page exists to remove. Every field stays editable,
+     and the photo itself sits in the form's photo field. */
+  const entryText = entryFor ? drafts[entryFor.id]?.text : undefined;
+  const fromReading = entryFor && entryText
+    ? entryFromReading(entryText, entryFor.ts, bankMethods)
+    : null;
+
+  let entryNote: string | null = null;
+  if (fromReading?.kind === 'one') {
+    const shown = formatDay(fromReading.draft.ts.slice(0, 10));
+    entryNote = fromReading.yearCorrected
+      ? `Filled from the photo, dated ${shown} — the year read off it did not fit, so it is taken as the year the photo was taken. Check every field before adding.`
+      : fromReading.datedByReading
+      ? `Filled from the photo, dated ${shown} as it shows. Check every field before adding.`
+      : fromReading.dateDoubtful
+        ? 'Filled from the photo. The date on it did not look right, so this is dated when the photo was taken — check it.'
+        : 'Filled from the photo. Check every field before adding.';
+  } else if (fromReading?.kind === 'several') {
+    entryNote = `This photo has ${fromReading.rows} rows — one form cannot hold them. Close this and use Review to import them together.`;
+  }
+
   function onSaved(capture: Capture, transactionId: string | null) {
     startTransition(async () => {
       if (transactionId) {
@@ -381,12 +409,17 @@ export function InboxClient({
         open={entryFor !== null}
         onOpenChange={(o) => !o && setEntryFor(null)}
         editing={null}
-        // The photo's own timestamp, so the entry is dated when it happened.
+        // The photo's own timestamp, so the entry is dated when it happened —
+        // unless its reading carries a believable date of its own.
         defaultTs={entryFor?.ts ?? defaultTs}
-        onSaved={(id) => {
+        draft={fromReading?.kind === 'one' ? fromReading.draft : null}
+        note={entryNote}
+        pendingPhoto={entryFor ? { id: entryFor.id, bytes: entryFor.bytes } : null}
+        onSaved={(id, opts) => {
           const c = entryFor;
           setEntryFor(null);
-          if (c) onSaved(c, id ?? null);
+          // Taken off the form = left in the inbox, not linked to this entry.
+          if (c) onSaved(c, opts?.linkPhoto === false ? null : (id ?? null));
         }}
       />
 

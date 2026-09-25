@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { readReceipts, visionConfigured, type VisionImage } from '@/lib/ai/vision';
 import { isAllowedImage, MAX_IMAGE_BYTES } from '@/lib/storage';
+import { nowIST } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -44,7 +45,8 @@ export async function POST(req: Request): Promise<Response> {
     images.push({ bytes: await file.arrayBuffer(), mime });
   }
 
-  const result = await readReceipts(images);
+  // Uploaded now, so "now" is the best anchor for a date with no year on it.
+  const result = await readReceipts(images, nowIST().slice(0, 10));
   if (!result.ok) return bad(result.error, 502);
   return NextResponse.json({ ok: true, text: result.text });
 }

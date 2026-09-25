@@ -35,8 +35,15 @@ DD/MM/YYYY | amount | method | category | description
 
 Rules:
 - Copy every amount EXACTLY as shown, to the paisa. Never round.
-- method must be one of: ${METHODS}
-  Leave it EMPTY if the screenshot does not show which account or card paid.
+- Many payment screens print a date with no year ("September 22"). Do not
+  guess one. Use the year given below if there is one; otherwise the most
+  recent such date that is not in the future.
+- method is one of: ${METHODS}
+  If the screenshot names the paying account some OTHER way — a bank's label
+  such as "Federal CC XX16" or "ICICI XX00" — copy that label exactly as
+  printed. The app maps bank labels to its own names; do not translate one
+  into a name from the list yourself, and never substitute a different
+  account. Leave it EMPTY if the screenshot does not show which account paid.
 - category must be one of: ${CATEGORIES}
   Leave it EMPTY if you cannot tell. Do not guess.
 - description is what it was for, in a few plain words. Use the merchant or

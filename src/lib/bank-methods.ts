@@ -46,13 +46,23 @@ function withoutAccount(label: string): string {
   return label.replace(/\s*(?:XX)?[\dX]{2,}\s*$/i, '').trim();
 }
 
+/** "Federal CC XX16" → "Federal XX16": the words that say what KIND of account
+    it is, which a UPI app prints and a mapping written by hand usually omits. */
+function withoutKind(label: string): string {
+  return label
+    .replace(/\b(?:credit\s+card|debit\s+card|cc|dc|card|a\/c|acct|account|bank)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /**
  * Resolve what a paste wrote in the method column.
  *
  * Tried in order, most specific first:
  *   1. a method this app already knows, however it was capitalised
  *   2. the bank label exactly as mapped
- *   3. the bank label with its account number dropped
+ *   3. the bank label with words like "CC" or "Bank" dropped, account kept
+ *   4. the bank label with its account number dropped
  *
  * Returns null rather than a guess. A wrong method moves money onto the wrong
  * card and nothing afterwards looks wrong, so "I do not know" has to be a
@@ -67,6 +77,19 @@ export function resolveMethod(raw: string, mapping: BankMethods): string | null 
 
   for (const [label, method] of Object.entries(mapping)) {
     if (foldForSearch(label) === q) return method;
+  }
+
+  /* A payment screen prints "Federal CC XX16" where the mapping says "Federal
+     XX16" — the same card, described. Dropping the kind words from both sides
+     still leaves the account number in the comparison, so two cards at one
+     bank stay apart; and only a single answer counts, as below. */
+  const plain = foldForSearch(withoutKind(raw));
+  if (plain) {
+    const kindHits = Object.entries(mapping).filter(
+      ([label]) => foldForSearch(withoutKind(label)) === plain,
+    );
+    const kindMethods = new Set(kindHits.map(([, m]) => m));
+    if (kindMethods.size === 1) return kindHits[0]![1];
   }
 
   /* Compared with the account number dropped from BOTH sides, so "Utkarsh"

@@ -3,6 +3,8 @@ import { headers } from 'next/headers';
 import { capturesReady, listCaptures } from '@/lib/captures';
 import { visionConfig } from '@/lib/ai/vision';
 import { readCaptureDrafts } from '@/lib/capture-drafts';
+import { getSnapshot } from '@/lib/snapshot';
+import { bankMethodsFrom } from '@/lib/bank-methods';
 import { nowIST } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, SectionTitle } from '@/components/ui/primitives';
@@ -33,6 +35,9 @@ export default async function InboxPage() {
      it arrived. Loaded here so the inbox opens with the rows on screen rather
      than fetching them once it is up. */
   const drafts = vision.name !== 'off' ? await readCaptureDrafts() : {};
+  /* The bank's own labels ("Federal CC XX16") mapped to this ledger's names,
+     so a reading fills the Paid-from field the way /import would. */
+  const bankMethods = bankMethodsFrom((await getSnapshot()).config);
 
   const h = await headers();
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? '';
@@ -80,6 +85,7 @@ export default async function InboxPage() {
               defaultTs={nowIST()}
               visionEnabled={vision.name !== 'off'}
               visionLabel={vision.label}
+              bankMethods={bankMethods}
             />
           </div>
         </Panel>

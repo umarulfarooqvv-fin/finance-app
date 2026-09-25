@@ -194,7 +194,11 @@ Two separate paths, with different requirements:
   **The reading never becomes an entry by itself.** It is text handed to
   `/import` via `sessionStorage` (`lib/import-handoff`), which still demands
   the same read-and-confirm as a paste. Only a clean import (nothing refused)
-  retires the source photos, via `retireCapturesAction`.
+  retires the source photos, via `retireCapturesAction`. A one-row reading
+  also fills the inbox's single-entry form (`lib/capture-entry`), with the
+  photo shown in its Photo field and linked on save. A read date is trusted
+  only within 45 days before the photo; an invented year is replaced with the
+  photo's own, because payment screens print "September 22" with none.
 
 None of the three paths write. Each produces a draft that a person confirms,
 because speech recognition mishears numbers routinely, a guessed payment

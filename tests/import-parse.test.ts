@@ -229,3 +229,33 @@ describe('a pasted bank label', () => {
     expect(parseImport('12/09/2026 | 100 | Federal 2788 | Food | A').rows[0]!.method).toBe('');
   });
 });
+
+/* A payment screen describes the card ("Federal CC XX16") where a mapping
+   written by hand names it ("Federal XX16"). Same card; the kind words should
+   not stop the match — but the account number still has to agree. */
+describe('a bank label that says what kind of account it is', () => {
+  const bankMethods = {
+    'Federal 2788': 'Fi',
+    'Federal 3838': 'Jupiter',
+    'Federal XX16': 'Scapia',
+  };
+
+  it('finds the card through "CC"', () => {
+    const { rows } = parseImport('22/09/2026 | 380 | Federal CC XX16 | Medicine | Arafa Medical', { bankMethods });
+    expect(rows[0]).toMatchObject({ method: 'Scapia', issues: [] });
+  });
+
+  it('finds it through "Bank" and "Credit Card" too, and the other way round', () => {
+    expect(parseImport('22/09/2026 | 1 | Federal Bank Credit Card XX16 | Food | x', { bankMethods }).rows[0]!.method)
+      .toBe('Scapia');
+    const reversed = { 'Federal CC XX16': 'Scapia' };
+    expect(parseImport('22/09/2026 | 1 | Federal XX16 | Food | x', { bankMethods: reversed }).rows[0]!.method)
+      .toBe('Scapia');
+  });
+
+  it('does not let the kind words stand in for the account number', () => {
+    // "Federal CC" names no account; three Federal accounts are mapped.
+    const { rows } = parseImport('22/09/2026 | 380 | Federal CC | Medicine | x', { bankMethods });
+    expect(rows[0]).toMatchObject({ method: '', issues: ['unknown-method'] });
+  });
+});

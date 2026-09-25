@@ -68,8 +68,20 @@ type Props = {
    */
   draft?: Partial<Omit<EditableTransaction, 'id'>> | null;
   /** The saved row's id, when a create produced one. The capture inbox uses
-      it to link a photo to the entry it became. */
-  onSaved?: (id?: string) => void;
+      it to link a photo to the entry it became — and `linkPhoto` says whether
+      the person kept that photo on the form or took it off. */
+  onSaved?: (id?: string, opts?: { linkPhoto: boolean }) => void;
+  /**
+   * A photo already in the capture inbox that this entry is being made FROM.
+   *
+   * Shown in the photo field so the receipt is visibly part of the entry, not
+   * a thing that happens behind the form. It is not uploaded again — it is
+   * already stored — and it is linked only once the entry saves, by the
+   * caller. Taking it off the form leaves it in the inbox.
+   */
+  pendingPhoto?: ExistingPhoto | null;
+  /** One line above the fields saying where their values came from. */
+  note?: string | null;
 };
 
 const blank = (ts: string) => ({ amount: '', method: '', category: '', remarks: '', ts });
@@ -85,7 +97,9 @@ function clean(draft: Props['draft']): Partial<ReturnType<typeof blank>> {
   return out;
 }
 
-export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draft, onSaved }: Props) {
+export function TransactionDialog({
+  open, onOpenChange, editing, defaultTs, draft, onSaved, pendingPhoto, note,
+}: Props) {
   const { notify } = useToast();
   const [pending, startTransition] = useTransition();
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -111,6 +125,8 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
   const [existingPhoto, setExistingPhoto] = useState<ExistingPhoto | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
+  /** Whether the inbox photo stays on this entry. Reset on every opening. */
+  const [keepPending, setKeepPending] = useState(true);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   /* The history, fetched once per opening and shared by the two things that
@@ -183,9 +199,14 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
     setPhoto(null);
     setPhotoPreview(null);
     setExistingPhoto(null);
+    setKeepPending(true);
     setZoomOpen(false);
     if (photoInputRef.current) photoInputRef.current.value = '';
   }, [open, editing, defaultTs]);
+
+  /* The inbox photo, while it is still on the form. Only a create can carry
+     one, and a photo the person picked themselves replaces it. */
+  const inboxPhoto = !editing && keepPending && !photo ? (pendingPhoto ?? null) : null;
 
   /* Editing an entry that already has a photo shows it rather than offering
      to attach a second one over it — the picker only appears once there is
@@ -347,7 +368,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
       }
 
       onOpenChange(false);
-      onSaved?.(savedId);
+      onSaved?.(savedId, { linkPhoto: inboxPhoto !== null });
     });
   }
 
@@ -374,6 +395,12 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
         {heardAs ? (
           <p className="rounded-[var(--radius-field)] border border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-2 text-[11px] text-[var(--color-ink-2)]">
             Heard: {heardAs}
+          </p>
+        ) : null}
+
+        {note && !editing ? (
+          <p className="rounded-[var(--radius-field)] border border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-2 text-[11px] text-[var(--color-ink-2)]">
+            {note}
           </p>
         ) : null}
 
@@ -508,6 +535,31 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
               </Button>
             </div>
+          ) : inboxPhoto ? (
+            <div className="flex items-center gap-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] p-2">
+              <button
+                type="button"
+                onClick={() => setZoomOpen(true)}
+                aria-label="View the inbox photo full size"
+                className="shrink-0"
+              >
+                <SafeImage
+                  src={`/api/capture/${inboxPhoto.id}`}
+                  className="h-14 w-14 rounded-[var(--radius-field)] object-cover"
+                />
+              </button>
+              <span className="min-w-0 flex-1 text-xs text-[var(--color-ink-3)]">
+                From your Inbox &middot; {Math.max(1, Math.round(inboxPhoto.bytes / 1024))} KB
+                <span className="block text-[10px]">Attached when you add the entry</span>
+              </span>
+              <Button
+                type="button" variant="ghost" size="icon"
+                onClick={() => { setKeepPending(false); setZoomOpen(false); }}
+                aria-label="Do not attach the inbox photo"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+            </div>
           ) : photoPreview ? (
             <div className="flex items-center gap-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] p-2">
               <button
@@ -561,7 +613,7 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
             thumbnail size — same viewer the transaction list and the capture
             inbox use. Rendered above the dialog's own overlay via z-index,
             since it is content WITHIN this dialog. */}
-        {zoomOpen && (existingPhoto || photoPreview) ? (
+        {zoomOpen && (existingPhoto || inboxPhoto || photoPreview) ? (
           <div
             className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4"
             role="dialog"
@@ -570,7 +622,11 @@ export function TransactionDialog({ open, onOpenChange, editing, defaultTs, draf
             onClick={() => setZoomOpen(false)}
           >
             <SafeImage
-              src={existingPhoto ? `/api/capture/${existingPhoto.id}` : (photoPreview ?? '')}
+              src={
+                existingPhoto ? `/api/capture/${existingPhoto.id}`
+                  : inboxPhoto ? `/api/capture/${inboxPhoto.id}`
+                    : (photoPreview ?? '')
+              }
               className="max-h-full max-w-full rounded-[var(--radius-card)] object-contain"
             />
             <button

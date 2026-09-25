@@ -181,7 +181,13 @@ const b64 = (bytes: ArrayBuffer) => Buffer.from(bytes).toString('base64');
  * one description across lines that belong together, which only works if it
  * sees them at once.
  */
-export async function readReceipts(images: VisionImage[]): Promise<VisionResult> {
+export async function readReceipts(
+  images: VisionImage[],
+  /** The day the photos were taken, as YYYY-MM-DD. A payment screen often
+      prints "September 22" with no year, and a model left to supply one will
+      invent it — observed: a 2026 payment read back as 2025. */
+  takenOn?: string,
+): Promise<VisionResult> {
   const cfg = visionConfig();
   if (cfg.name === 'off') {
     return { ok: false, error: 'Photo conversion is not set up. See IMPORT_AI in .env.example.' };
@@ -190,6 +196,11 @@ export async function readReceipts(images: VisionImage[]): Promise<VisionResult>
   if (images.length > MAX_IMAGES) {
     return { ok: false, error: `Too many photos at once — send at most ${MAX_IMAGES}.` };
   }
+
+  const prompt = takenOn && /^\d{4}-\d{2}-\d{2}$/.test(takenOn)
+    ? `${IMPORT_PROMPT}\n\nThese were taken on ${takenOn.slice(8, 10)}/${takenOn.slice(5, 7)}/${takenOn.slice(0, 4)}. `
+      + 'A date shown without a year is on or before that day.'
+    : IMPORT_PROMPT;
 
   try {
     if (cfg.name === 'openai-compatible') {
@@ -203,7 +214,7 @@ export async function readReceipts(images: VisionImage[]): Promise<VisionResult>
             {
               role: 'user',
               content: [
-                { type: 'text', text: IMPORT_PROMPT },
+                { type: 'text', text: prompt },
                 ...images.map((img) => ({
                   type: 'image_url',
                   image_url: { url: `data:${img.mime};base64,${b64(img.bytes)}` },
@@ -226,7 +237,7 @@ export async function readReceipts(images: VisionImage[]): Promise<VisionResult>
           contents: [
             {
               parts: [
-                { text: IMPORT_PROMPT },
+                { text: prompt },
                 ...images.map((img) => ({ inline_data: { mime_type: img.mime, data: b64(img.bytes) } })),
               ],
             },
@@ -252,7 +263,7 @@ export async function readReceipts(images: VisionImage[]): Promise<VisionResult>
             {
               role: 'user',
               content: [
-                { type: 'text', text: IMPORT_PROMPT },
+                { type: 'text', text: prompt },
                 ...images.map((img) => ({
                   type: 'image',
                   source: { type: 'base64', media_type: img.mime, data: b64(img.bytes) },
