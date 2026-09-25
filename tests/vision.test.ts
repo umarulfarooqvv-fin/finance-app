@@ -67,6 +67,39 @@ function stubFetch(reply: unknown, ok = true) {
   return { calls, restore: () => { globalThis.fetch = original; } };
 }
 
+/** Answer each call in turn, so a retry can be given a different reply. */
+function stubSequence(replies: { status: number; body: unknown }[]) {
+  const calls: SentCall[] = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const reply = replies[Math.min(calls.length, replies.length - 1)]!;
+    calls.push({
+      url: String(url),
+      headers: (init?.headers ?? {}) as Record<string, string>,
+      body: JSON.parse(String(init?.body ?? '{}')) as SentCall['body'],
+    });
+    return {
+      ok: reply.status >= 200 && reply.status < 300,
+      status: reply.status,
+      json: async () => reply.body,
+      text: async () => JSON.stringify(reply.body),
+    };
+  }) as typeof fetch;
+  return { calls, restore: () => { globalThis.fetch = original; } };
+}
+
+const GROQ = {
+  IMPORT_AI: 'openai-compatible',
+  IMPORT_AI_BASE_URL: 'https://api.groq.com/openai/v1',
+  IMPORT_AI_KEY: 'k',
+  IMPORT_AI_MODEL: 'vision-model',
+  // The retry's wait is real time; these tests assert that it retries, not
+  // that it sleeps.
+  IMPORT_AI_RETRY_PAUSE_MS: '0',
+};
+
+const okReply = { status: 200, body: { choices: [{ message: { content: ROWS } }] } };
+
 test('with no provider set, nothing is read and the reason says so', async () => {
   await withEnv({ IMPORT_AI: 'off' }, async () => {
     assert.equal(visionConfigured(), false);
@@ -189,6 +222,7 @@ test('a refused request is reported, not swallowed into empty rows', async () =>
       IMPORT_AI_BASE_URL: 'https://x/v1',
       IMPORT_AI_KEY: 'k',
       IMPORT_AI_MODEL: 'm',
+      IMPORT_AI_RETRY_PAUSE_MS: '0',
     },
     async () => {
       const stub = stubFetch({ error: 'rate limited' }, false);
@@ -242,4 +276,67 @@ test('more photos than one batch allows is refused before any call is made', asy
       }
     },
   );
+});
+
+/* ---------------------------------------------------------------------------
+   Trying again when the provider is merely busy.
+
+   A free tier answers 503 "model overloaded" often enough to matter, and the
+   read that matters most happens when a photo ARRIVES, with nobody watching.
+   A blip there leaves the photo unread until somebody notices, which is the
+   chore this feature exists to remove.
+   --------------------------------------------------------------------------- */
+
+test('a 503 is tried again, and the second answer is used', async () => {
+  await withEnv(GROQ, async () => {
+    const stub = stubSequence([{ status: 503, body: { error: 'model overloaded' } }, okReply]);
+    try {
+      const result = await readReceipts([IMAGE]);
+      assert.equal(result.ok, true, 'the retry succeeded');
+      assert.equal(result.ok === true ? result.text : '', ROWS);
+      assert.equal(stub.calls.length, 2, 'asked twice');
+    } finally {
+      stub.restore();
+    }
+  });
+});
+
+test('a rate limit is tried again too', async () => {
+  await withEnv(GROQ, async () => {
+    const stub = stubSequence([{ status: 429, body: { error: 'slow down' } }, okReply]);
+    try {
+      assert.equal((await readReceipts([IMAGE])).ok, true);
+      assert.equal(stub.calls.length, 2);
+    } finally {
+      stub.restore();
+    }
+  });
+});
+
+test('a refusal is NOT tried again — asking twice cannot change the answer', async () => {
+  await withEnv(GROQ, async () => {
+    // A bad key, a model that does not exist, an image it will not take.
+    const stub = stubSequence([{ status: 401, body: { error: 'invalid api key' } }]);
+    try {
+      const result = await readReceipts([IMAGE]);
+      assert.equal(result.ok, false);
+      assert.equal(stub.calls.length, 1, 'one attempt only');
+    } finally {
+      stub.restore();
+    }
+  });
+});
+
+test('a provider that is down throughout gives up and says so', async () => {
+  await withEnv(GROQ, async () => {
+    const stub = stubSequence([{ status: 503, body: { error: 'model overloaded' } }]);
+    try {
+      const result = await readReceipts([IMAGE]);
+      assert.equal(result.ok, false, 'not a silent empty reading');
+      assert.match(result.ok === false ? result.error : '', /503/);
+      assert.equal(stub.calls.length, 3, 'tried the allowed number of times, then stopped');
+    } finally {
+      stub.restore();
+    }
+  });
 });

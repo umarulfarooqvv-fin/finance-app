@@ -91,10 +91,34 @@ export type VisionResult =
   | { ok: true; text: string }
   | { ok: false; error: string };
 
-const TIMEOUT_MS = 45_000; // A photo takes longer to read than a sentence.
+/* A photo takes longer to read than a sentence, but the budget is the route's
+   own maxDuration of 60s and an attempt can be retried, so one attempt cannot
+   have the whole of it: 25s twice plus the pause between them leaves room to
+   answer. */
+const TIMEOUT_MS = 25_000;
+const ATTEMPTS = 3;
+
+/* The whole budget is the route's own maxDuration of 60s, and attempts share
+   it. A refusal comes back in well under a second, so three tries cost almost
+   nothing in the case they are FOR; the budget only matters when a read is
+   genuinely slow, and there it stops the retries rather than letting the
+   platform kill the request mid-flight. */
+const BUDGET_MS = 40_000;
+
+/** How long to wait before trying again. Overridable so a test suite does not
+    sit through it, and so a habitually slow provider can be given longer. */
+const retryPauseMs = () => {
+  const raw = Number(process.env.IMPORT_AI_RETRY_PAUSE_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 1_000;
+};
 const MAX_IMAGES = 12; // One screenshot conversation's worth, not a whole month.
 
-async function postJson(url: string, headers: Record<string, string>, body: unknown) {
+/** Worth trying again: the provider is busy or briefly broken, not refusing. */
+function isTransient(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+async function attempt(url: string, headers: Record<string, string>, body: unknown) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -105,11 +129,46 @@ async function postJson(url: string, headers: Record<string, string>, body: unkn
       signal: controller.signal,
       cache: 'no-store',
     });
-    if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 300)}`);
-    return (await res.json()) as Record<string, unknown>;
+    if (!res.ok) {
+      const error = new Error(`${res.status} ${(await res.text()).slice(0, 300)}`);
+      return { ok: false as const, status: res.status, error };
+    }
+    return { ok: true as const, json: (await res.json()) as Record<string, unknown> };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Post, and try again if the provider was merely busy.
+ *
+ * A free tier answers "over capacity" often enough to matter — Groq's own 503
+ * says "please try again and back off exponentially" — and the read that
+ * matters most happens at ARRIVAL, with nobody watching. A blip there leaves
+ * a photo sitting unread until somebody notices and presses Retry, which is
+ * exactly the chore this feature exists to remove.
+ *
+ * A refusal is NOT retried — a bad key, a model that does not exist, an image
+ * it will not take. Asking twice cannot change that answer, and hammering a
+ * provider that has already said no is how a free tier stops being free.
+ */
+async function postJson(url: string, headers: Record<string, string>, body: unknown) {
+  const started = Date.now();
+  let last: Error = new Error('No attempt was made.');
+
+  for (let i = 0; i < ATTEMPTS; i += 1) {
+    const result = await attempt(url, headers, body);
+    if (result.ok) return result.json;
+
+    last = result.error;
+    if (!isTransient(result.status) || i === ATTEMPTS - 1) break;
+
+    const pause = retryPauseMs() * 2 ** i;
+    if (Date.now() - started + pause > BUDGET_MS) break;
+    await new Promise((resolve) => { setTimeout(resolve, pause); });
+  }
+
+  throw last;
 }
 
 const b64 = (bytes: ArrayBuffer) => Buffer.from(bytes).toString('base64');

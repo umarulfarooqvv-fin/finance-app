@@ -135,18 +135,25 @@ export function InboxClient({
     }
   }
 
-  /* Anything that arrived without being read — while the provider was off, or
-     before any of this existed — is read on arrival here instead. Runs once
-     per set of photos rather than on every render, which the ref guards. */
-  const autoRead = useRef(false);
+  /* Anything on screen that has not been read gets read here: a photo that
+     landed while the provider was off, one whose arrival read failed, and —
+     the ordinary case — one whose read finished on the server a second or two
+     AFTER this page rendered, which is most of them. /api/inbox/convert hands
+     back a stored reading without spending a model call, so asking about a
+     photo the server has already read costs nothing.
+
+     Tracked PER PHOTO, not once per visit. A latch for the whole page meant
+     the first photo was read and every later one silently was not — on a
+     phone that keeps this page open, that is every photo after the first. */
+  const attempted = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!visionEnabled || autoRead.current) return;
+    if (!visionEnabled) return;
     const unread = captures
-      .filter((c) => !c.draft && !c.draftError)
+      .filter((c) => !c.draft && !c.draftError && !attempted.current.has(c.id))
       .slice(0, AUTO_READ_LIMIT)
       .map((c) => c.id);
     if (unread.length === 0) return;
-    autoRead.current = true;
+    for (const id of unread) attempted.current.add(id);
     void read(unread);
   }, [visionEnabled, captures]);
 
@@ -312,7 +319,16 @@ export function InboxClient({
                         </button>
                       </span>
                     ) : (
-                      <span className="text-[var(--color-ink-3)]">Not read yet</span>
+                      /* A way out of this state by hand. It is reachable when
+                         a visit's auto-read cap is hit, and it is what a
+                         person reaches for when a photo looks stuck. */
+                      <button
+                        type="button"
+                        onClick={() => void read([c.id], true)}
+                        className="text-[var(--color-accent)]"
+                      >
+                        Not read yet — read it
+                      </button>
                     )}
                   </div>
                 ) : null}
