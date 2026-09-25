@@ -9,6 +9,7 @@ import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, SectionTitle, Stat, StatGrid } from '@/components/ui/primitives';
 import { IncomeClient, type MonthGroup, type Row } from './income-client';
 import { ShortcutRecipe } from '@/components/shortcut-recipe';
+import { CollapsiblePanel } from '@/components/ui/collapsible-panel';
 import { recipe } from '@/lib/shortcuts';
 import { UnattachedRepayments, type Unattached } from './unattached-client';
 
@@ -147,15 +148,19 @@ export default async function IncomePage({
         </Panel>
       ) : null}
 
-      <Panel className="mt-4">
-        <SectionTitle>
-          Post income from your iPhone
-          <Link href="/shortcuts" className="ml-2 text-xs font-normal text-[var(--color-accent)]">
-            all Shortcuts
-          </Link>
-        </SectionTitle>
+      {/* Setup instructions, read once — folded by default, remembered. */}
+      <CollapsiblePanel
+        id="income-shortcut"
+        className="mt-4"
+        title="Post income from your iPhone"
+        action={
+          <Link href="/shortcuts" className="text-xs font-normal text-[var(--color-accent)]">
+              all Shortcuts
+            </Link>
+        }
+      >
         <ShortcutRecipe recipe={recipe('income')} origin={origin} />
-      </Panel>
+      </CollapsiblePanel>
     </Page>
   );
 }

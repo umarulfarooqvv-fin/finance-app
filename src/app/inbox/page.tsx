@@ -12,6 +12,7 @@ import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, SectionTitle } from '@/components/ui/primitives';
 import { InboxClient, type Capture } from './inbox-client';
 import { ShortcutRecipe } from '@/components/shortcut-recipe';
+import { CollapsiblePanel } from '@/components/ui/collapsible-panel';
 import { recipe } from '@/lib/shortcuts';
 
 export const dynamic = 'force-dynamic';
@@ -96,15 +97,19 @@ export default async function InboxPage() {
         </Panel>
       )}
 
-      <Panel className="mt-4">
-        <SectionTitle>
-          Send a photo from your iPhone
-          <Link href="/shortcuts" className="ml-2 text-xs font-normal text-[var(--color-accent)]">
-            all Shortcuts
-          </Link>
-        </SectionTitle>
+      {/* Setup instructions, read once — folded by default, remembered. */}
+      <CollapsiblePanel
+        id="inbox-shortcut"
+        className="mt-4"
+        title="Send a photo from your iPhone"
+        action={
+          <Link href="/shortcuts" className="text-xs font-normal text-[var(--color-accent)]">
+              all Shortcuts
+            </Link>
+        }
+      >
         <ShortcutRecipe recipe={recipe('photo')} origin={origin} />
-      </Panel>
+      </CollapsiblePanel>
     </Page>
   );
 }

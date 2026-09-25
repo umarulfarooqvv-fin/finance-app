@@ -17,6 +17,7 @@ import { retireCapturesAction } from '@/app/inbox/actions';
 import { IMPORT_DRAFT_KEY, type HandedOver } from '@/lib/import-handoff';
 import type { UsageLine } from '@/lib/ai/usage';
 import { AiUsageNote } from '@/components/ai-usage-note';
+import { CollapsiblePanel } from '@/components/ui/collapsible-panel';
 
 /* ===========================================================================
    The table between a paste and the ledger.
@@ -335,18 +336,20 @@ export function ImportClient({
   return (
     <>
       {/* ---- The prompt ------------------------------------------------- */}
-      <Panel className="mb-4">
-        <SectionTitle
-          action={
-            <Button size="sm" variant="secondary" onClick={copyPrompt}>
-              {copied ? <Check className="h-3.5 w-3.5 text-[var(--color-pos)]" aria-hidden="true" />
-                      : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
-              {copied ? 'Copied' : 'Copy the prompt'}
-            </Button>
-          }
-        >
-          Start from screenshots
-        </SectionTitle>
+      {/* Folded by default: once the prompt is known, only the Copy button is
+          needed, and it stays in the header either way. */}
+      <CollapsiblePanel
+        id="import-prompt"
+        className="mb-4"
+        title="Start from screenshots"
+        action={
+          <Button size="sm" variant="secondary" onClick={copyPrompt}>
+            {copied ? <Check className="h-3.5 w-3.5 text-[var(--color-pos)]" aria-hidden="true" />
+                    : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+            {copied ? 'Copied' : 'Copy the prompt'}
+          </Button>
+        }
+      >
         <p className="mb-2 text-xs text-[var(--color-ink-2)]">
           Send this prompt to an assistant along with your UPI screens, bank messages or
           photographed bills, then paste the reply below. It carries this app&rsquo;s own methods
@@ -368,7 +371,7 @@ export function ImportClient({
             </pre>
           </div>
         </details>
-      </Panel>
+      </CollapsiblePanel>
 
       {/* ---- The paste --------------------------------------------------- */}
       <Panel className="mb-4">
