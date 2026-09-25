@@ -5,6 +5,8 @@ import { visionConfig } from '@/lib/ai/vision';
 import { readCaptureDrafts } from '@/lib/capture-drafts';
 import { getSnapshot } from '@/lib/snapshot';
 import { bankMethodsFrom } from '@/lib/bank-methods';
+import { describeUsage } from '@/lib/ai/usage';
+import { readAiUsage } from '@/lib/ai/usage-store';
 import { nowIST } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, SectionTitle } from '@/components/ui/primitives';
@@ -38,6 +40,8 @@ export default async function InboxPage() {
   /* The bank's own labels ("Federal CC XX16") mapped to this ledger's names,
      so a reading fills the Paid-from field the way /import would. */
   const bankMethods = bankMethodsFrom((await getSnapshot()).config);
+  // How much of the provider's allowance is left, as of its last reply.
+  const aiUsage = vision.name !== 'off' ? describeUsage(await readAiUsage(), nowIST()) : null;
 
   const h = await headers();
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? '';
@@ -86,6 +90,7 @@ export default async function InboxPage() {
               visionEnabled={vision.name !== 'off'}
               visionLabel={vision.label}
               bankMethods={bankMethods}
+              aiUsage={aiUsage}
             />
           </div>
         </Panel>

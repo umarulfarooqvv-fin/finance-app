@@ -3,6 +3,8 @@ import { requireSession } from '@/lib/auth';
 import { readReceipts, visionConfigured, type VisionImage } from '@/lib/ai/vision';
 import { isAllowedImage, MAX_IMAGE_BYTES } from '@/lib/storage';
 import { nowIST } from '@/lib/time';
+import { describeUsage, isLimited } from '@/lib/ai/usage';
+import { readAiUsage, recordAiUsage } from '@/lib/ai/usage-store';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -29,6 +31,11 @@ export async function POST(req: Request): Promise<Response> {
     return bad('Photo conversion is not set up. See IMPORT_AI in .env.example.', 501);
   }
 
+  // A limit in force: say so now rather than spend a request on a refusal.
+  const now = nowIST();
+  const usage = await readAiUsage();
+  if (isLimited(usage, now)) return bad(describeUsage(usage, now)!.text, 429);
+
   const form = await req.formData().catch(() => null);
   if (!form) return bad('Could not read the uploaded photos.');
 
@@ -46,7 +53,8 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   // Uploaded now, so "now" is the best anchor for a date with no year on it.
-  const result = await readReceipts(images, nowIST().slice(0, 10));
+  const result = await readReceipts(images, now.slice(0, 10));
+  await recordAiUsage(result.usage);
   if (!result.ok) return bad(result.error, 502);
   return NextResponse.json({ ok: true, text: result.text });
 }

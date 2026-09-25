@@ -14,6 +14,8 @@ import { discardCaptureAction, linkCaptureAction } from './actions';
 import { IMPORT_DRAFT_KEY } from '@/lib/import-handoff';
 import { entryFromReading } from '@/lib/capture-entry';
 import type { BankMethods } from '@/lib/bank-methods';
+import type { UsageLine } from '@/lib/ai/usage';
+import { AiUsageNote } from '@/components/ai-usage-note';
 import { formatDay } from '@/lib/time';
 
 /* ===========================================================================
@@ -53,7 +55,7 @@ const AUTO_READ_LIMIT = 8;
 const rowCount = (text: string) => text.split('\n').filter((l) => l.trim()).length;
 
 export function InboxClient({
-  captures, defaultTs, visionEnabled, visionLabel, bankMethods,
+  captures, defaultTs, visionEnabled, visionLabel, bankMethods, aiUsage,
 }: {
   captures: Capture[];
   defaultTs: string;
@@ -62,6 +64,8 @@ export function InboxClient({
   visionLabel: string;
   /** Bank labels this ledger knows, so "Federal CC XX16" fills Paid from. */
   bankMethods: BankMethods;
+  /** The provider's allowance as of its last reply, when it reports one. */
+  aiUsage: UsageLine | null;
 }) {
   const router = useRouter();
   const { notify } = useToast();
@@ -264,6 +268,7 @@ export function InboxClient({
                 : 'Every photo that has been read. Nothing is saved until you confirm on the next screen.'}
             {' '}Read by {visionLabel}.
           </span>
+          <AiUsageNote usage={aiUsage} />
         </div>
       ) : null}
 

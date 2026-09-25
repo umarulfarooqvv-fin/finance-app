@@ -15,6 +15,8 @@ import { useToast } from '@/components/ui/toast';
 import { importEntriesAction } from './actions';
 import { retireCapturesAction } from '@/app/inbox/actions';
 import { IMPORT_DRAFT_KEY, type HandedOver } from '@/lib/import-handoff';
+import type { UsageLine } from '@/lib/ai/usage';
+import { AiUsageNote } from '@/components/ai-usage-note';
 
 /* ===========================================================================
    The table between a paste and the ledger.
@@ -51,7 +53,7 @@ type Draft = ImportRow & {
 };
 
 export function ImportClient({
-  methods, categories, serverNow, entryCount, bankMethods, visionEnabled, visionLabel,
+  methods, categories, serverNow, entryCount, bankMethods, visionEnabled, visionLabel, aiUsage,
 }: {
   methods: string[];
   categories: string[];
@@ -62,6 +64,8 @@ export function ImportClient({
   /** Whether IMPORT_AI is configured to read a photo directly. */
   visionEnabled: boolean;
   visionLabel: string;
+  /** The provider's allowance as of its last reply, when it reports one. */
+  aiUsage: UsageLine | null;
 }) {
   const router = useRouter();
   const { notify } = useToast();
@@ -397,7 +401,7 @@ export function ImportClient({
                 </Button>
                 <Button
                   type="button" size="sm" pending={converting}
-                  disabled={photos.length === 0}
+                  disabled={photos.length === 0 || aiUsage?.tone === 'limited'}
                   onClick={convertPhotos}
                 >
                   <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
@@ -415,6 +419,7 @@ export function ImportClient({
                 <span className="text-[11px] text-[var(--color-ink-3)]">
                   Read by {visionLabel} — added below as rows, same as a paste
                 </span>
+                <AiUsageNote usage={aiUsage} />
               </div>
               {photos.length > 0 ? (
                 <ul className="mt-2 flex flex-wrap gap-1.5">

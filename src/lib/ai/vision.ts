@@ -1,5 +1,7 @@
 import 'server-only';
 import { IMPORT_PROMPT } from '@/lib/import-prompt';
+import { nowIST } from '@/lib/time';
+import { describeUsage, parseDuration, usageFromReply, type AiUsage } from '@/lib/ai/usage';
 
 /* ===========================================================================
    Reading a photo of a bill or a screenshot straight into paste-rows text.
@@ -88,8 +90,11 @@ function hostLabel(baseUrl: string, model: string): string {
 export type VisionImage = { bytes: ArrayBuffer; mime: string };
 
 export type VisionResult =
-  | { ok: true; text: string }
-  | { ok: false; error: string };
+  | { ok: true; text: string; usage?: AiUsage }
+  | { ok: false; error: string; usage?: AiUsage };
+
+/** The last reply the provider gave, whatever it was, for reading its quota. */
+type Reply = { status: number; headers: Headers; body: string };
 
 /* A photo takes longer to read than a sentence, but the budget is the route's
    own maxDuration of 60s and an attempt can be retried, so one attempt cannot
@@ -118,7 +123,12 @@ function isTransient(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
-async function attempt(url: string, headers: Record<string, string>, body: unknown) {
+async function attempt(
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
+  seen: (reply: Reply) => void,
+) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -130,9 +140,12 @@ async function attempt(url: string, headers: Record<string, string>, body: unkno
       cache: 'no-store',
     });
     if (!res.ok) {
-      const error = new Error(`${res.status} ${(await res.text()).slice(0, 300)}`);
-      return { ok: false as const, status: res.status, error };
+      const text = await res.text();
+      seen({ status: res.status, headers: res.headers, body: text });
+      const error = new Error(`${res.status} ${text.slice(0, 300)}`);
+      return { ok: false as const, status: res.status, body: text, error };
     }
+    seen({ status: res.status, headers: res.headers, body: '' });
     return { ok: true as const, json: (await res.json()) as Record<string, unknown> };
   } finally {
     clearTimeout(timer);
@@ -152,16 +165,27 @@ async function attempt(url: string, headers: Record<string, string>, body: unkno
  * it will not take. Asking twice cannot change that answer, and hammering a
  * provider that has already said no is how a free tier stops being free.
  */
-async function postJson(url: string, headers: Record<string, string>, body: unknown) {
+async function postJson(
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
+  seen: (reply: Reply) => void = () => {},
+) {
   const started = Date.now();
   let last: Error = new Error('No attempt was made.');
 
   for (let i = 0; i < ATTEMPTS; i += 1) {
-    const result = await attempt(url, headers, body);
+    const result = await attempt(url, headers, body, seen);
     if (result.ok) return result.json;
 
     last = result.error;
     if (!isTransient(result.status) || i === ATTEMPTS - 1) break;
+    // A limit that lifts in minutes or hours is not a blip. Waiting a second
+    // and asking again only spends another request against it.
+    if (result.status === 429) {
+      const wait = parseDuration(/try again in ([\d.hms]+)/i.exec(result.body)?.[1]);
+      if (wait !== null && wait > 10_000) break;
+    }
 
     const pause = retryPauseMs() * 2 ** i;
     if (Date.now() - started + pause > BUDGET_MS) break;
@@ -209,6 +233,22 @@ export async function readReceipts(
     return { ok: false, error: `Too many photos at once — send at most ${MAX_IMAGES}.` };
   }
 
+  /* The last reply, kept so its allowance headers can be read whether the
+     read worked or not — running out is exactly when they matter most. */
+  let reply: Reply | null = null;
+  const observe = (r: Reply) => { reply = r; };
+  const withUsage = (result: VisionResult): VisionResult => {
+    const r = reply as Reply | null;
+    if (!r) return result;
+    const usage = usageFromReply(cfg.label, nowIST(), r.status, r.headers, r.body);
+    if (!result.ok && r.status === 429) {
+      // "429 {json...}" says nothing to a person. What limit, and until when.
+      const line = describeUsage(usage, usage.at);
+      return { ok: false, error: line?.text ?? 'The AI provider\u2019s limit was reached.', usage };
+    }
+    return { ...result, usage };
+  };
+
   const prompt = takenOn && /^\d{4}-\d{2}-\d{2}$/.test(takenOn)
     ? `${IMPORT_PROMPT}\n\nThese were taken on ${takenOn.slice(8, 10)}/${takenOn.slice(5, 7)}/${takenOn.slice(0, 4)}. `
       + 'A date shown without a year is on or before that day.'
@@ -235,10 +275,11 @@ export async function readReceipts(
             },
           ],
         },
+        observe,
       );
       const choices = json['choices'] as { message?: { content?: string } }[] | undefined;
       const text = (choices?.[0]?.message?.content ?? '').trim();
-      return text ? { ok: true, text } : { ok: false, error: 'The model returned nothing readable.' };
+      return withUsage(text ? { ok: true, text } : { ok: false, error: 'The model returned nothing readable.' });
     }
 
     if (cfg.name === 'gemini') {
@@ -256,12 +297,13 @@ export async function readReceipts(
           ],
           generationConfig: { temperature: 0 },
         },
+        observe,
       );
       const candidates = json['candidates'] as
         | { content?: { parts?: { text?: string }[] } }[]
         | undefined;
       const text = (candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
-      return text ? { ok: true, text } : { ok: false, error: 'The model returned nothing readable.' };
+      return withUsage(text ? { ok: true, text } : { ok: false, error: 'The model returned nothing readable.' });
     }
 
     if (cfg.name === 'anthropic') {
@@ -284,15 +326,16 @@ export async function readReceipts(
             },
           ],
         },
+        observe,
       );
       const content = json['content'] as { type?: string; text?: string }[] | undefined;
       const text = (content?.find((b) => b.type === 'text')?.text ?? '').trim();
-      return text ? { ok: true, text } : { ok: false, error: 'The model returned nothing readable.' };
+      return withUsage(text ? { ok: true, text } : { ok: false, error: 'The model returned nothing readable.' });
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[import-ai]', cfg.name, message);
-    return { ok: false, error: `Could not read those photos: ${message.slice(0, 200)}` };
+    return withUsage({ ok: false, error: `Could not read those photos: ${message.slice(0, 200)}` });
   }
 
   return { ok: false, error: 'Photo conversion is not set up.' };

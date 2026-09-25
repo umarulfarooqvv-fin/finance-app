@@ -4,6 +4,8 @@ import { getCapture } from '@/lib/captures';
 import { getObject } from '@/lib/storage';
 import { readReceipts, visionConfigured } from '@/lib/ai/vision';
 import { nowIST } from '@/lib/time';
+import { describeUsage, isLimited } from '@/lib/ai/usage';
+import { readAiUsage, recordAiUsage } from '@/lib/ai/usage-store';
 
 /* ===========================================================================
    What the AI read out of a photo, kept until the photo becomes an entry.
@@ -40,6 +42,13 @@ export type CaptureDraft = {
   error?: string;
   /** When it was read. IST wall clock, like every other timestamp here. */
   at: string;
+  /**
+   * The provider's limit stopped it — NOT a verdict on this photo. Never
+   * stored: a stored error sticks to the photo until somebody presses Retry,
+   * whereas an unread photo is picked up again by the next visit once the
+   * limit lifts, which is the whole point of reading without being asked.
+   */
+  limited?: boolean;
 };
 
 export type CaptureDrafts = Record<string, CaptureDraft>;
@@ -64,8 +73,9 @@ export async function readCaptureDrafts(): Promise<CaptureDrafts> {
  * visit reads it again — but there is no reason to invite it.
  */
 export async function saveCaptureDrafts(batch: CaptureDrafts): Promise<void> {
-  if (Object.keys(batch).length === 0) return;
-  await updateConfigKey<CaptureDrafts>(KEY, (current) => ({ ...current, ...batch }));
+  const keep = Object.fromEntries(Object.entries(batch).filter(([, d]) => !d.limited));
+  if (Object.keys(keep).length === 0) return;
+  await updateConfigKey<CaptureDrafts>(KEY, (current) => ({ ...current, ...keep }));
 }
 
 export async function saveCaptureDraft(id: string, draft: CaptureDraft): Promise<void> {
@@ -100,6 +110,14 @@ export async function readCapture(id: string): Promise<CaptureDraft | null> {
   const row = await getCapture(id);
   if (!row) return null;
 
+  /* While a limit is in force, asking again only spends another request to
+     be told no — and on a daily limit, every inbox visit would. */
+  const now = nowIST();
+  const usage = await readAiUsage();
+  if (isLimited(usage, now)) {
+    return { error: describeUsage(usage, now)!.text, at: now, limited: true };
+  }
+
   const object = await getObject(row.path);
   if (!object) {
     return { error: 'The photo could not be read from storage.', at: nowIST() };
@@ -108,14 +126,14 @@ export async function readCapture(id: string): Promise<CaptureDraft | null> {
   // Its own day, not today's: a backlog photo read a week late is still dated
   // by when it was taken.
   const result = await readReceipts([{ bytes: object.body, mime: row.mime }], row.ts.slice(0, 10));
-  return result.ok
-    ? { text: result.text, at: nowIST() }
-    : { error: result.error, at: nowIST() };
+  await recordAiUsage(result.usage);
+  if (result.ok) return { text: result.text, at: nowIST() };
+  return { error: result.error, at: nowIST(), limited: isLimited(result.usage, nowIST()) };
 }
 
 /** Read one photo and store the answer. The path a newly-arrived photo takes. */
 export async function readCaptureIntoDraft(id: string): Promise<CaptureDraft | null> {
   const draft = await readCapture(id);
-  if (draft) await saveCaptureDraft(id, draft);
+  if (draft && !draft.limited) await saveCaptureDraft(id, draft);
   return draft;
 }

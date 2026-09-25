@@ -60,6 +60,7 @@ function stubFetch(reply: unknown, ok = true) {
     return {
       ok,
       status: ok ? 200 : 429,
+      headers: new Headers(),
       json: async () => reply,
       text: async () => JSON.stringify(reply),
     };
@@ -68,7 +69,7 @@ function stubFetch(reply: unknown, ok = true) {
 }
 
 /** Answer each call in turn, so a retry can be given a different reply. */
-function stubSequence(replies: { status: number; body: unknown }[]) {
+function stubSequence(replies: { status: number; body: unknown; headers?: Record<string, string> }[]) {
   const calls: SentCall[] = [];
   const original = globalThis.fetch;
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -81,6 +82,7 @@ function stubSequence(replies: { status: number; body: unknown }[]) {
     return {
       ok: reply.status >= 200 && reply.status < 300,
       status: reply.status,
+      headers: new Headers(reply.headers ?? {}),
       json: async () => reply.body,
       text: async () => JSON.stringify(reply.body),
     };
@@ -229,7 +231,8 @@ test('a refused request is reported, not swallowed into empty rows', async () =>
       try {
         const result = await readReceipts([IMAGE]);
         assert.equal(result.ok, false, 'a 429 must not look like a photo with no payments in it');
-        assert.match(result.ok === false ? result.error : '', /429/);
+        // Said in words — which limit, and when it lifts — not "429 {json}".
+        assert.match(result.ok === false ? result.error : '', /AI limit reached/);
       } finally {
         stub.restore();
       }
@@ -361,6 +364,46 @@ test('the day a photo was taken is given, so a year-less date has an anchor', as
     try {
       await readReceipts([IMAGE], '2026-09-25');
       assert.match(stub.calls[0]!.body.messages[0].content[0].text, /taken on 25\/09\/2026/);
+    } finally {
+      stub.restore();
+    }
+  });
+});
+
+test('every reply\u2019s allowance comes back with the reading', async () => {
+  await withEnv(GROQ, async () => {
+    const stub = stubSequence([{
+      ...okReply,
+      headers: {
+        'x-ratelimit-limit-requests': '1000',
+        'x-ratelimit-remaining-requests': '994',
+        'x-ratelimit-reset-requests': '8m38.4s',
+      },
+    }]);
+    try {
+      const result = await readReceipts([IMAGE]);
+      assert.equal(result.ok, true);
+      assert.equal(result.usage?.requests?.limit, 1000);
+      assert.equal(result.usage?.requests?.remaining, 994);
+      assert.match(result.usage?.provider ?? '', /api\.groq\.com/);
+    } finally {
+      stub.restore();
+    }
+  });
+});
+
+test('a daily limit is not retried — waiting a second cannot lift it', async () => {
+  await withEnv(GROQ, async () => {
+    const stub = stubSequence([{
+      status: 429,
+      body: { error: { message: 'Rate limit reached for model `m` on requests per day (RPD): Limit 1000, Used 1000, Requested 1. Please try again in 2h13m5s.' } },
+    }]);
+    try {
+      const result = await readReceipts([IMAGE]);
+      assert.equal(stub.calls.length, 1, 'asked once, not three times');
+      assert.equal(result.ok, false);
+      assert.match(result.ok === false ? result.error : '', /requests per day/);
+      assert.ok(result.usage?.limitedUntil, 'and it says until when');
     } finally {
       stub.restore();
     }

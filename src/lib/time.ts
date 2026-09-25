@@ -119,6 +119,16 @@ export function addDays(d: Day, n: number): Day {
   return dayFromNumber(dayNumber(d) + n);
 }
 
+/** An instant moved by a number of seconds, across midnight and month ends.
+    Civil arithmetic on the wall clock, like everything else here — no Date. */
+export function addSeconds(t: Instant, n: number): Instant {
+  const c = toCivil(t);
+  const total = dayNumber(dayOf(t)) * 86_400 + c.hh * 3_600 + c.mm * 60 + c.ss + Math.round(n);
+  const days = Math.floor(total / 86_400);
+  const rest = total - days * 86_400;
+  return `${dayFromNumber(days)}T${pad(Math.floor(rest / 3_600))}:${pad(Math.floor((rest % 3_600) / 60))}:${pad(rest % 60)}`;
+}
+
 /** Whole days from `a` to `b`. Positive when b is later. */
 export function daysBetween(a: Day, b: Day): number {
   return dayNumber(b) - dayNumber(a);

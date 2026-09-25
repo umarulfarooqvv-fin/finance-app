@@ -199,6 +199,11 @@ Two separate paths, with different requirements:
   photo shown in its Photo field and linked on save. A read date is trusted
   only within 45 days before the photo; an invented year is replaced with the
   photo's own, because payment screens print "September 22" with none.
+  The provider's allowance (`x-ratelimit-*` headers, a 429's own wording) is
+  read off every reply by `lib/ai/usage` and kept in `app_config` as
+  `ai_usage`; the Inbox and `/import` show "N of 1,000 AI reads left", and
+  while a limit is in force no request is spent and photos simply wait
+  unread — never marked failed — to be read once it lifts.
 
 None of the three paths write. Each produces a draft that a person confirms,
 because speech recognition mishears numbers routinely, a guessed payment
