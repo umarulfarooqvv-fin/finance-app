@@ -29,6 +29,11 @@ export type ImportRow = {
   line: number;
   raw: string;
   day: Day;
+  /** "HH:MM:SS" when the date column carried a time, else null — and the
+      caller supplies its usual noon. A payment screen prints "3:11 PM", and
+      the moment a charge happened decides which statement it is on when it
+      lands on a bill date. */
+  time: string | null;
   amount: number;
   method: string;
   category: string;
@@ -56,6 +61,33 @@ function splitFields(line: string): string[] {
 
 const DATE = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/;
 const ISO = /^(\d{4})-(\d{2})-(\d{2})$/;
+const TIME = /^(\d{1,2})[:.](\d{2})(?::(\d{2}))?\s*([ap])\.?\s*m?\.?$|^(\d{1,2})[:.](\d{2})(?::(\d{2}))?$/i;
+
+/** "15:11", "3:11 PM", "03.11pm", "15:11:07" → "HH:MM:SS". Null if not a time. */
+function toTime(text: string): string | null {
+  const m = TIME.exec(text.trim());
+  if (!m) return null;
+  const twelve = m[4] !== undefined;
+  let h = Number(twelve ? m[1] : m[5]);
+  const min = Number(twelve ? m[2] : m[6]);
+  const sec = Number((twelve ? m[3] : m[7]) ?? 0);
+  if (twelve) {
+    if (h < 1 || h > 12) return null;
+    const pm = m[4]!.toLowerCase() === 'p';
+    h = (h % 12) + (pm ? 12 : 0);
+  }
+  if (h > 23 || min > 59 || sec > 59) return null;
+  return `${pad(h)}:${pad(min)}:${pad(sec)}`;
+}
+
+/** The date column, split into its date and an optional time after it. */
+function splitDateTime(text: string): { date: string; time: string } {
+  const t = text.trim();
+  const iso = /^(\d{4}-\d{2}-\d{2})[T\s]+(.+)$/.exec(t);
+  if (iso) return { date: iso[1]!, time: iso[2]! };
+  const [date = '', ...rest] = t.split(/\s+/);
+  return { date, time: rest.join(' ') };
+}
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
@@ -124,13 +156,19 @@ export function parseImport(
        furniture. */
     if (/^(date|day|timestamp)$/i.test(dateRaw)) return;
 
-    const day = toDay(dateRaw, dateOrder);
+    const when = splitDateTime(dateRaw);
+    const day = toDay(when.date, dateOrder);
+    // A time that cannot be read costs the time, not the row: it falls back to
+    // the caller's noon exactly as if none had been given.
+    const time = when.time ? toTime(when.time) : null;
     if (!day) {
       skipped.push({ line, raw, why: `could not read the date "${dateRaw}"` });
       return;
     }
 
-    const parsed = evaluateAmount(amountRaw);
+    /* The currency word a receipt prints — "Rs. 380", "INR 380" — is not part
+       of the number. "₹" already passes; the words used to cost the whole row. */
+    const parsed = evaluateAmount(amountRaw.replace(/^\s*(?:rs\.?|inr)\s*/i, ''));
     if (!parsed.ok) {
       skipped.push({ line, raw, why: `could not read the amount "${amountRaw}"` });
       return;
@@ -168,6 +206,7 @@ export function parseImport(
       line,
       raw,
       day,
+      time,
       amount: parsed.amount,
       method,
       category,

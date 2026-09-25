@@ -93,10 +93,15 @@ export function entryFromReading(
   const repaired = asRead ? null : withBelievableYear(row.day, captureDay);
   const day = asRead ? row.day : repaired;
 
-  // Same day as the photo: the photo's own time is the best time there is.
-  // An earlier day: noon, like every other date written without a time — an
-  // entry at 00:00 on a bill date sits on the boundary between two statements.
-  const ts = !day || day === captureDay ? captureTs : `${day}T12:00:00`;
+  // The time printed on the screen, when there was one, is the real moment.
+  // Otherwise: same day as the photo takes the photo's own time; an earlier
+  // day takes noon, like every other date written without a time — an entry
+  // at 00:00 on a bill date sits on the boundary between two statements.
+  const ts = !day
+    ? captureTs
+    : row.time
+      ? `${day}T${row.time}`
+      : day === captureDay ? captureTs : `${day}T12:00:00`;
 
   const draft: EntryDraft = { ts };
   if (row.amount > 0) draft.amount = row.amount;

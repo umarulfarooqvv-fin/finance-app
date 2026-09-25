@@ -193,6 +193,18 @@ export async function readReceipts(
     return { ok: false, error: 'Photo conversion is not set up. See IMPORT_AI in .env.example.' };
   }
   if (images.length === 0) return { ok: false, error: 'No photos to read.' };
+
+  /* An iPhone camera writes HEIC, and no vision API here accepts it — Groq
+     answers "400 invalid image data", which tells nobody what to change.
+     Refused up front, without spending a call, with the fix in the message.
+     The photo itself is stored and viewable either way. */
+  if (images.some((i) => i.mime === 'image/heic' || i.mime === 'image/heif')) {
+    return {
+      ok: false,
+      error: 'This photo is HEIC, which the reader cannot open. In the Shortcut, add '
+        + '"Convert Image to JPEG" before sending it — or add this one by hand.',
+    };
+  }
   if (images.length > MAX_IMAGES) {
     return { ok: false, error: `Too many photos at once — send at most ${MAX_IMAGES}.` };
   }

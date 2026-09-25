@@ -104,3 +104,17 @@ test('a reading with no usable row fills nothing', () => {
   assert.deepEqual(entryFromReading('I could not find any payments in this image.', TAKEN), { kind: 'none' });
   assert.deepEqual(entryFromReading('', TAKEN), { kind: 'none' });
 });
+
+test('the time printed on the screen is used, not noon or the photo\u2019s moment', () => {
+  // "September 22 at 3:11 PM", photographed three days later.
+  const r = entryFromReading('22/09/2026 15:11 | 380 | RBL | Medicine | Arafa Medical', TAKEN);
+  assert.equal(r.kind === 'one' && r.draft.ts, '2026-09-22T15:11:00');
+  // Same day as the photo, with a time of its own: the payment's time wins.
+  const same = entryFromReading('25/09/2026 09:02 | 50 | Cash | Food | Tea', TAKEN);
+  assert.equal(same.kind === 'one' && same.draft.ts, '2026-09-25T09:02:00');
+});
+
+test('a time on a date that could not be trusted is dropped along with it', () => {
+  const r = entryFromReading('02/03/2026 15:11 | 380 | RBL | Medicine | Old bill', TAKEN);
+  assert.equal(r.kind === 'one' && r.draft.ts, TAKEN);
+});

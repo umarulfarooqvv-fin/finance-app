@@ -31,10 +31,13 @@ Output ONLY the lines described below — no explanation, no commentary, no mark
 
 One line per transaction, fields separated by a pipe character:
 
-DD/MM/YYYY | amount | method | category | description
+DD/MM/YYYY HH:MM | amount | method | category | description
 
 Rules:
 - Copy every amount EXACTLY as shown, to the paisa. Never round.
+- Give the time in 24-hour form after the date ("22/09/2026 15:11") when the
+  screenshot shows one; write the date alone when it does not. Never make up
+  a time.
 - Many payment screens print a date with no year ("September 22"). Do not
   guess one. Use the year given below if there is one; otherwise the most
   recent such date that is not in the future.
@@ -59,7 +62,7 @@ give them the same description, and still give each its own line and its own
 category.`;
 
 /** A worked example in exactly the shape the prompt asks for. Parsed by a test. */
-export const IMPORT_EXAMPLE = `14/09/2026 | 450.00 | Fi | Food | Hospital canteen
+export const IMPORT_EXAMPLE = `14/09/2026 13:05 | 450.00 | Fi | Food | Hospital canteen
 14/09/2026 | 1250.00 | Fi | Medicine | Dad hospital pharmacy
 14/09/2026 | 300.00 | Cash |  | Dad hospital parking
 15/09/2026 | 649.19 | ICICI | Personal | Minoxidil`;

@@ -141,7 +141,7 @@ test('an openai-compatible provider is sent the image as a data url, and its rep
 
         const parts = call!.body.messages[0].content;
         assert.equal(parts[0].type, 'text', 'the instruction comes first');
-        assert.match(parts[0].text, /DD\/MM\/YYYY \| amount \| method \| category \| description/);
+        assert.match(parts[0].text, /DD\/MM\/YYYY HH:MM \| amount \| method \| category \| description/);
         assert.equal(parts[1].type, 'image_url');
         assert.match(parts[1].image_url.url, /^data:image\/jpeg;base64,/);
       } finally {
@@ -335,6 +335,32 @@ test('a provider that is down throughout gives up and says so', async () => {
       assert.equal(result.ok, false, 'not a silent empty reading');
       assert.match(result.ok === false ? result.error : '', /503/);
       assert.equal(stub.calls.length, 3, 'tried the allowed number of times, then stopped');
+    } finally {
+      stub.restore();
+    }
+  });
+});
+
+test('a HEIC photo is refused before any call, with the fix in the message', async () => {
+  await withEnv(GROQ, async () => {
+    const stub = stubFetch({ choices: [{ message: { content: ROWS } }] });
+    try {
+      const result = await readReceipts([{ bytes: IMAGE.bytes, mime: 'image/heic' }]);
+      assert.equal(result.ok, false);
+      assert.match(result.ok === false ? result.error : '', /Convert Image to JPEG/);
+      assert.equal(stub.calls.length, 0, 'no request the provider would only reject');
+    } finally {
+      stub.restore();
+    }
+  });
+});
+
+test('the day a photo was taken is given, so a year-less date has an anchor', async () => {
+  await withEnv(GROQ, async () => {
+    const stub = stubFetch({ choices: [{ message: { content: ROWS } }] });
+    try {
+      await readReceipts([IMAGE], '2026-09-25');
+      assert.match(stub.calls[0]!.body.messages[0].content[0].text, /taken on 25\/09\/2026/);
     } finally {
       stub.restore();
     }

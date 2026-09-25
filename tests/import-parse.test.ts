@@ -259,3 +259,40 @@ describe('a bank label that says what kind of account it is', () => {
     expect(rows[0]).toMatchObject({ method: '', issues: ['unknown-method'] });
   });
 });
+
+
+/* The moment on a payment screen — "September 22 at 3:11 PM" — decides which
+   statement a charge on a bill date belongs to. Noon is only the fallback. */
+describe('a time in the date column', () => {
+  it('is read in 24-hour and 12-hour forms', () => {
+    const at = (d: string) => parseImport(`${d} | 1 | Fi | Food | x`).rows[0];
+    expect(at('22/09/2026 15:11')).toMatchObject({ day: '2026-09-22', time: '15:11:00' });
+    expect(at('22/09/2026 3:11 PM')).toMatchObject({ day: '2026-09-22', time: '15:11:00' });
+    expect(at('22/09/2026 03.11pm')).toMatchObject({ time: '15:11:00' });
+    expect(at('22/09/2026 12:05 AM')).toMatchObject({ time: '00:05:00' });
+    expect(at('22/09/2026 12:05 PM')).toMatchObject({ time: '12:05:00' });
+    expect(at('2026-09-22T15:11:07')).toMatchObject({ day: '2026-09-22', time: '15:11:07' });
+  });
+
+  it('is absent, not invented, when only a date was given', () => {
+    expect(parseImport('22/09/2026 | 1 | Fi | Food | x').rows[0]).toMatchObject({ time: null });
+  });
+
+  it('costs only the time, never the row, when it cannot be read', () => {
+    for (const bad of ['22/09/2026 25:00', '22/09/2026 13:05 PM', '22/09/2026 soon']) {
+      const { rows, skipped } = parseImport(`${bad} | 1 | Fi | Food | x`);
+      expect(skipped).toEqual([]);
+      expect(rows[0]).toMatchObject({ day: '2026-09-22', time: null });
+    }
+  });
+});
+
+describe('an amount written the way a receipt prints it', () => {
+  it('ignores the currency, however it is written', () => {
+    for (const a of ['₹380', 'Rs 380', 'Rs.380', 'rs. 380', 'INR 380']) {
+      const { rows, skipped } = parseImport(`22/09/2026 | ${a} | Fi | Medicine | x`);
+      expect(skipped, a).toEqual([]);
+      expect(rows[0]!.amount, a).toBe(380);
+    }
+  });
+});

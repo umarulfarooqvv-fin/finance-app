@@ -144,7 +144,9 @@ export function ImportClient({
        00:00 on a bill date sits exactly on the boundary between two
        statements, which is the one timestamp whose cycle depends on a rule. */
     const fresh: Draft[] = parsed.rows.map((r) => ({
-      ...r, key: `r${r.line}`, time: '12:00:00',
+      // The time the row carried, when it carried one — a payment screen's
+      // "3:11 PM" is the real moment, and noon is only the fallback.
+      ...r, key: `r${r.line}`, time: r.time ?? '12:00:00',
       level: 'new', existing: null, include: true,
     }));
     setDrafts(fresh);
