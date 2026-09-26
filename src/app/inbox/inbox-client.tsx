@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { cx, Empty } from '@/components/ui/primitives';
-import { SafeImage } from '@/components/capture-image';
+import { captureSrc, SafeImage } from '@/components/capture-image';
 import { TransactionDialog } from '@/app/transactions/transaction-dialog';
 import { discardCaptureAction, linkCaptureAction } from './actions';
 import { IMPORT_DRAFT_KEY } from '@/lib/import-handoff';
@@ -306,7 +306,7 @@ export function InboxClient({
                     can be configured for, and optimising would mean a second
                     service fetching a picture of somebody's bill. */}
                 <SafeImage
-                  src={`/api/capture/${c.id}`}
+                  src={captureSrc(c.id)}
                   loading="lazy"
                   className="h-full w-full object-cover"
                 />
@@ -396,7 +396,7 @@ export function InboxClient({
         >
           {/* Plain <img>, for the reason given above. */}
           <SafeImage
-            src={`/api/capture/${zoomed.id}`}
+            src={captureSrc(zoomed.id)}
             className="max-h-full max-w-full rounded-[var(--radius-card)] object-contain"
           />
           <button

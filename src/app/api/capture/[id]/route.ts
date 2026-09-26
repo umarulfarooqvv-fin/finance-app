@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { getCapture } from '@/lib/captures';
 import { getObject } from '@/lib/storage';
+import { heicToJpeg, isHeic } from '@/lib/image-convert';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,10 +35,25 @@ export async function GET(
   const object = await getObject(row.path);
   if (!object) return new NextResponse('Not found', { status: 404 });
 
-  return new NextResponse(object.body, {
+  /* A photo stored before HEIC was converted on arrival is converted here, on
+     the way out, so every browser can show it — not only Safari. The cache
+     header below makes that a once-per-device cost. If it cannot be
+     converted, the original is sent as it always was. */
+  let body = object.body;
+  let type = row.mime || object.type;
+  if (isHeic(type)) {
+    try {
+      body = await heicToJpeg(body);
+      type = 'image/jpeg';
+    } catch {
+      /* keep the original */
+    }
+  }
+
+  return new NextResponse(body, {
     headers: {
-      'Content-Type': row.mime || object.type,
-      'Content-Length': String(object.body.byteLength),
+      'Content-Type': type,
+      'Content-Length': String(body.byteLength),
       /* Private, because this is one person's own photo behind their own
          session — and immutable, because the id is a hash of the bytes, so a
          given id can never point at different content. */

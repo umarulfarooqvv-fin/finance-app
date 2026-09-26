@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Camera, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react';
-import { SafeImage } from '@/components/capture-image';
+import { captureSrc, SafeImage } from '@/components/capture-image';
 import { formatDayShort } from '@/lib/time';
 import { money } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -275,7 +275,7 @@ export function TransactionsClient({
           onClick={() => setZoomedPhoto(null)}
         >
           <SafeImage
-            src={`/api/capture/${zoomedPhoto}`}
+            src={captureSrc(zoomedPhoto)}
             className="max-h-full max-w-full rounded-[var(--radius-card)] object-contain"
           />
           <button

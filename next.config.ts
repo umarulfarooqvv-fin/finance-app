@@ -26,6 +26,10 @@ const nextConfig: NextConfig = {
   // typed routes reject every href that has no page yet.
   typedRoutes: false,
 
+  // Loaded with Node's own require rather than bundled: it carries a large
+  // embedded WebAssembly decoder that gains nothing from bundling.
+  serverExternalPackages: ['heic-convert'],
+
   experimental: {
     // Skeleton-first navigation: a route re-visited inside 30s renders from
     // the client cache with no server round-trip, and any revalidatePath from

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { Camera, X } from 'lucide-react';
-import { SafeImage } from '@/components/capture-image';
+import { captureSrc, SafeImage } from '@/components/capture-image';
 import type { FieldErrors } from '@/lib/action-result';
 import { ALL_CATEGORIES, ALL_METHODS, isCard } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -520,7 +520,7 @@ export function TransactionDialog({
                 className="shrink-0"
               >
                 <SafeImage
-                  src={`/api/capture/${existingPhoto.id}`}
+                  src={captureSrc(existingPhoto.id)}
                   className="h-14 w-14 rounded-[var(--radius-field)] object-cover"
                 />
               </button>
@@ -544,7 +544,7 @@ export function TransactionDialog({
                 className="shrink-0"
               >
                 <SafeImage
-                  src={`/api/capture/${inboxPhoto.id}`}
+                  src={captureSrc(inboxPhoto.id)}
                   className="h-14 w-14 rounded-[var(--radius-field)] object-cover"
                 />
               </button>
@@ -623,8 +623,8 @@ export function TransactionDialog({
           >
             <SafeImage
               src={
-                existingPhoto ? `/api/capture/${existingPhoto.id}`
-                  : inboxPhoto ? `/api/capture/${inboxPhoto.id}`
+                existingPhoto ? captureSrc(existingPhoto.id)
+                  : inboxPhoto ? captureSrc(inboxPhoto.id)
                     : (photoPreview ?? '')
               }
               className="max-h-full max-w-full rounded-[var(--radius-card)] object-contain"

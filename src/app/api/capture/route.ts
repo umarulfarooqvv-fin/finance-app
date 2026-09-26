@@ -7,6 +7,7 @@ import {
 } from '@/lib/storage';
 import { isValidInstant } from '@/lib/validation';
 import { nowIST } from '@/lib/time';
+import { toStorable } from '@/lib/image-convert';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -167,10 +168,13 @@ export async function POST(req: Request): Promise<Response> {
        stored as a date that breaks every list it appears in. */
     const ts = isValidInstant(incoming.ts) ? incoming.ts : nowIST();
 
+    // The id comes from the bytes AS SENT, so a Shortcut retrying the same
+    // HEIC still lands on the same capture after it has been converted.
     const id = await idFromBytes(bytes);
-    const path = `${ts.slice(0, 7)}/${id}.${extensionFor(mime)}`;
+    const stored = await toStorable(bytes, mime);
+    const path = `${ts.slice(0, 7)}/${id}.${extensionFor(stored.mime)}`;
 
-    await putObject(path, bytes, mime);
+    await putObject(path, stored.bytes, stored.mime);
 
     /* The object is written first, so the row never points at nothing. If the
        row then fails — the table missing, the database unreachable — the image
@@ -181,8 +185,8 @@ export async function POST(req: Request): Promise<Response> {
         id,
         ts,
         path,
-        mime,
-        bytes: bytes.byteLength,
+        mime: stored.mime,
+        bytes: stored.bytes.byteLength,
         note: note.trim().slice(0, 500),
         status: 'pending',
         transaction_id: null,

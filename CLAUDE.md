@@ -204,6 +204,11 @@ Two separate paths, with different requirements:
   `ai_usage`; the Inbox and `/import` show "N of 1,000 AI reads left", and
   while a limit is in force no request is spent and photos simply wait
   unread — never marked failed — to be read once it lifts.
+  HEIC — what an iPhone camera and a resizing Shortcut both send — is
+  converted to JPEG on arrival (`lib/image-convert`, `heic-convert`: libheif
+  in embedded WebAssembly; sharp's libheif has no HEVC decoder). Photos stored
+  before that are converted when served and when read. Image URLs go through
+  `captureSrc()`, versioned, because the route caches as immutable.
 
 None of the three paths write. Each produces a draft that a person confirms,
 because speech recognition mishears numbers routinely, a guessed payment

@@ -19,6 +19,16 @@ import { cn } from '@/lib/cn';
    handling can hand it to something that does — Photos, Preview, another tab
    — rather than a silent blank.
    =========================================================================== */
+/**
+ * The address of a capture's image.
+ *
+ * Versioned because the route serves with a year-long "immutable" cache, and
+ * what it serves CAN change once: a HEIC stored before conversion is now sent
+ * as JPEG. A browser that cached the HEIC would keep showing a blank tile for
+ * a year. Bump this when the served bytes for an existing id change again.
+ */
+export const captureSrc = (id: string) => `/api/capture/${id}?v=2`;
+
 export function SafeImage({
   src, alt = '', className, loading,
 }: {

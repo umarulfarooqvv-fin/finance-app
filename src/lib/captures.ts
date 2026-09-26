@@ -3,6 +3,7 @@ import { insert, logEvent, select, update } from '@/lib/supabase';
 import {
   deleteObject, extensionFor, idFromBytes, isAllowedImage, MAX_IMAGE_BYTES, putObject,
 } from '@/lib/storage';
+import { toStorable } from '@/lib/image-convert';
 import type { Actor } from '@/lib/auth';
 import type { Tables, TablesInsert } from '@/types/database';
 
@@ -166,6 +167,8 @@ export async function attachPhoto(input: {
   if (rows.length === 0) return { ok: false, error: 'That entry could not be found.' };
 
   const id = await idFromBytes(input.bytes);
+  // Stored as JPEG where it came as HEIC; see lib/image-convert.
+  const stored = await toStorable(input.bytes, mime);
 
   // A capture already at this id and already used FOR A DIFFERENT ENTRY is
   // not this attach retrying — it is the same bytes claimed twice, and
@@ -175,14 +178,16 @@ export async function attachPhoto(input: {
     return { ok: false, error: 'That photo is already attached to a different entry.' };
   }
 
-  const path = existing?.path ?? `${input.ts.slice(0, 7)}/${id}.${extensionFor(mime)}`;
+  const path = existing?.path ?? `${input.ts.slice(0, 7)}/${id}.${extensionFor(stored.mime)}`;
   if (!existing) {
-    await putObject(path, input.bytes, mime);
+    await putObject(path, stored.bytes, stored.mime);
   }
 
   try {
     await insertCapture({
-      id, ts: input.ts, path, mime, bytes: input.bytes.byteLength,
+      id, ts: input.ts, path,
+      mime: existing?.mime ?? stored.mime,
+      bytes: existing?.bytes ?? stored.bytes.byteLength,
       note: input.note.trim().slice(0, 500),
       status: 'used',
       transaction_id: input.transactionId,

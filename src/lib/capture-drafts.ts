@@ -4,6 +4,7 @@ import { getCapture } from '@/lib/captures';
 import { getObject } from '@/lib/storage';
 import { readReceipts, visionConfigured } from '@/lib/ai/vision';
 import { nowIST } from '@/lib/time';
+import { heicToJpeg, isHeic } from '@/lib/image-convert';
 import { describeUsage, isLimited } from '@/lib/ai/usage';
 import { readAiUsage, recordAiUsage } from '@/lib/ai/usage-store';
 
@@ -125,7 +126,17 @@ export async function readCapture(id: string): Promise<CaptureDraft | null> {
 
   // Its own day, not today's: a backlog photo read a week late is still dated
   // by when it was taken.
-  const result = await readReceipts([{ bytes: object.body, mime: row.mime }], row.ts.slice(0, 10));
+  /* A photo stored as HEIC before arrivals were converted is converted in
+     memory for the read — the model cannot open HEIC. */
+  let image = { bytes: object.body, mime: row.mime };
+  if (isHeic(row.mime)) {
+    try {
+      image = { bytes: await heicToJpeg(object.body), mime: 'image/jpeg' };
+    } catch {
+      /* readReceipts then explains that HEIC cannot be read */
+    }
+  }
+  const result = await readReceipts([image], row.ts.slice(0, 10));
   await recordAiUsage(result.usage);
   if (result.ok) return { text: result.text, at: nowIST() };
   return { error: result.error, at: nowIST(), limited: isLimited(result.usage, nowIST()) };
