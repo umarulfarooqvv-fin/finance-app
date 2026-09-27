@@ -215,6 +215,19 @@ because speech recognition mishears numbers routinely, a guessed payment
 method silently moves debt onto the wrong card, and a photo misread the same
 way is just as capable of filing an entry under the wrong wallet.
 
+**One deliberate exception, asked for by the owner: correcting the card from
+an attached photo.** When a photo is attached to an entry (`/api/entry`,
+`/api/capture/attach`, or `/api/photo-check` for older ones), `lib/photo-check`
+reads it after the reply and may move the entry to another card via
+`reassignMethod`. `lib/photo-method` decides, and only says yes when ALL hold:
+the entry is not statement-reconciled; the photo shows exactly one payment;
+the amount matches to the paisa; the date is the entry's day or the day
+before; and the method is a printed bank label WITH an account number that
+the `bank_methods` mapping resolves to one card — never a card name the model
+chose. Every change is listed (`photo_corrections` in `app_config`) on Today
+and Entries until acknowledged, each with Undo. Automatic is acceptable only
+because it is never silent; keep it that way.
+
 Audio never leaves the device — transcription is the Web Speech API on the
 phone, and only the transcript is sent.
 

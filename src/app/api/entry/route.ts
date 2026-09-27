@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { invalidateSnapshot } from '@/lib/snapshot';
 import { insert, logEvent } from '@/lib/supabase';
 import { normaliseEntry, toRow } from '@/lib/entry';
 import { buildIncomeRow, incomeIdFromContent } from '@/lib/income';
 import { attachPhoto } from '@/lib/captures';
+import { checkEntryAgainstPhoto } from '@/lib/photo-check';
 import { isValidInstant, validateIncome, type IncomeInput } from '@/lib/validation';
 import { dayOf, nowIST } from '@/lib/time';
 
@@ -146,6 +147,9 @@ export async function POST(req: Request): Promise<Response> {
         error: err instanceof Error ? err.message : 'Unknown error',
       }));
       if (!result.ok) photoError = result.error;
+      // A screenshot of the payment says which card really paid. Checked
+      // after the reply: the Shortcut is one tap at a till and must not wait.
+      else after(() => checkEntryAgainstPhoto(result.id, entry.id, 'ingest-token'));
     }
 
     return NextResponse.json({

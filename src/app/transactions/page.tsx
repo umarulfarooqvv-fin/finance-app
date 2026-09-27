@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { currentSnapshot } from '@/lib/views';
 import { photosByTransaction } from '@/lib/captures';
+import { correctionsForPage } from '@/lib/photo-check';
+import { PhotoCorrections } from '@/components/photo-corrections';
 import { isSpend, upcomingRows } from '@/lib/analytics';
 import { endOfDay, formatDay, monthKey, nowIST } from '@/lib/time';
 import { round2 } from '@/lib/money';
@@ -32,6 +34,8 @@ export default async function TransactionsPage({
   searchParams: Promise<RawParams>;
 }) {
   const sp = await searchParams;
+  // Before the snapshot: a correction made moments ago must be in the rows.
+  const corrections = await correctionsForPage();
   const { snap, today } = await currentSnapshot();
   const now = endOfDay(today);
   const photos = await photosByTransaction();
@@ -104,6 +108,8 @@ export default async function TransactionsPage({
         title="Transactions"
         subtitle={`${matched.length.toLocaleString('en-IN')} ${matched.length === 1 ? 'entry' : 'entries'}${f.deleted ? ' · deleted' : ''}`}
       />
+
+      <PhotoCorrections corrections={corrections} />
 
       {/* Search, filters and New entry live INSIDE this panel now, in a bar
           frozen to the top of it — they were a separate panel above, which

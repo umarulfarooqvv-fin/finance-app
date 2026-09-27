@@ -5,6 +5,8 @@ import type { StatementRow } from '@/lib/statement';
 import { formatDay, formatDayShort, relativeDays } from '@/lib/time';
 import { delta, money, moneyCompact } from '@/lib/format';
 import { Page, PageHeader } from '@/components/layout/page-header';
+import { correctionsForPage } from '@/lib/photo-check';
+import { PhotoCorrections } from '@/components/photo-corrections';
 import { Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
 
 export const dynamic = 'force-dynamic';
@@ -41,6 +43,8 @@ function utilisationLabel(row: StatementRow): string {
 }
 
 export default async function TodayPage() {
+  // Before the snapshot: a correction made moments ago must be in the balances.
+  const corrections = await correctionsForPage();
   const { snap, today } = await currentSnapshot();
   // Both go through the cached selectors: forecast() calls statementView()
   // internally, so without the dedupe the engine would run twice per render.
@@ -59,6 +63,10 @@ export default async function TodayPage() {
         title="Today"
         subtitle={`${formatDayShort(today)} · ${snap.transactions.length.toLocaleString('en-IN')} transactions tracked`}
       />
+
+      {/* Here too: this is the page opened first, and a card balance just
+          changed because of a photo. */}
+      <PhotoCorrections corrections={corrections} />
 
       {empty ? (
         <Panel>

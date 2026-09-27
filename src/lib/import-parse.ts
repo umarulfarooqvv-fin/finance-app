@@ -36,6 +36,9 @@ export type ImportRow = {
   time: string | null;
   amount: number;
   method: string;
+  /** The method column exactly as written — "Federal CC XX16" — before it
+      was resolved to one of this app's names. */
+  methodRaw: string;
   category: string;
   remarks: string;
   /** What still needs a person. Empty means ready to save. */
@@ -209,6 +212,7 @@ export function parseImport(
       time,
       amount: parsed.amount,
       method,
+      methodRaw: methodRaw.trim(),
       category,
       // Everything after the four known columns, so a description containing a
       // pipe survives instead of being cut at it.

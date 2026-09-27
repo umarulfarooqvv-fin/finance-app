@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { attachPhoto } from '@/lib/captures';
+import { checkEntryAgainstPhoto } from '@/lib/photo-check';
 import { storageConfigured } from '@/lib/storage';
 import { isValidInstant } from '@/lib/validation';
 import { nowIST } from '@/lib/time';
@@ -56,6 +57,9 @@ export async function POST(req: Request): Promise<Response> {
       actor: auth.ctx.actor,
     });
     if (!result.ok) return bad(result.error);
+    // Does the photo say it was paid from a different card? Checked after the
+    // reply, so the form closes without waiting on a model.
+    after(() => checkEntryAgainstPhoto(result.id, transactionId, auth.ctx.via));
     return NextResponse.json({ ok: true, id: result.id });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
