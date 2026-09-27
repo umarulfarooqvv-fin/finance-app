@@ -184,7 +184,16 @@ function looksLikeHeader(text: string): boolean {
    --------------------------------------------------------------------------- */
 
 const SUMMARY_LABEL =
-  /previous\s+balance|opening\s+balance|purchases?\s*\/?\s*charges?|cash\s+advances?|payments?\s*\/?\s*credits?|total\s+amount\s+due|total\s+due|amount\s+payable|statement\s+summary|minimum\s+amount/i;
+  /previous\s*balance|opening\s*balance|purchases?\s*\/?\s*charges?|cash\s*advances?|cash\s*withdrawal|payments?\s*\/?\s*credits?|payments?\s*(?:and|&)\s*refunds?|fees\s*and\s*interest|new\s*balance|total\s*amount\s*due|total\s*due|amount\s*payable|statement\s*summary|minimum\s*(?:amount\s*)?due|minimum\s*amount/i;
+
+/* Account furniture that carries a DATE and an AMOUNT and so looks exactly like
+   a transaction: "16Aug2026-15Sep2026 TotalDue ₹18,426.83", "04 Oct 2026
+   AvailableLimit ₹19,559.23". A PDF's text layer runs the header's label,
+   date and figure together, and read as rows they added ₹38,000 of charges
+   that never happened. Matched on the whole label, so a merchant called
+   "Kerala Fibre Optic Network Limited" is not mistaken for a limit. */
+const ACCOUNT_LABEL =
+  /\b(?:total\s*(?:amount\s*)?due|minimum\s*(?:amount\s*)?due|available\s*(?:credit\s*)?limit|credit\s*limit|cash\s*limit|statement\s*date|payment\s*due\s*date|due\s*date|billing\s*cycle|new\s*balance|previous\s*balance)\b/i;
 
 /** Only amounts, separators and currency marks — the row under a label line. */
 const AMOUNTS_ONLY = /^[\s₹rs.,|\d()+-]*$/i;
@@ -293,6 +302,8 @@ export function parseStatement(text: string, opts: ParseOptions = {}): ParseResu
       return;
     }
 
+    if (ACCOUNT_LABEL.test(flat.replace(date.consumed, ' '))) return;
+
     /* Amounts come from CELLS, never from scanning the text. Statements print
        a running balance after the movement, so when several columns are pure
        amounts the FIRST is the transaction and the rest is the balance. */
@@ -327,7 +338,15 @@ export function parseStatement(text: string, opts: ParseOptions = {}): ParseResu
       if (token) {
         const n = Number(token.replace(/[\u20b9,()\s]|rs\.?|inr/gi, ''));
         if (Number.isFinite(n)) {
-          found = { amount: Math.abs(Math.round(n * 100) / 100), credit: token.startsWith('-') || token.includes('(') };
+          /* Some statements mark a credit with a leading "+" rather than "Cr"
+             or a minus — "Billpayment Payment +₹25,159.26". Read without it,
+             a payment became a charge and the cycle was out by twice its
+             size. */
+          const plus = new RegExp(`\\+\\s*${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(rest);
+          found = {
+            amount: Math.abs(Math.round(n * 100) / 100),
+            credit: token.startsWith('-') || token.includes('(') || plus,
+          };
           usedToken = token;
         }
       }
@@ -371,9 +390,15 @@ export function parseStatement(text: string, opts: ParseOptions = {}): ParseResu
       /* A statement that wraps its rows puts the transaction TIME on its own
          line, which ends up glued to the front of the description once the
          row is stitched back together. It is not part of the merchant name. */
-      .replace(/^\s*\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm)?\s*/i, '')
+      .replace(/^\s*[·•]?\s*\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm)?\s*/i, '')
+      /* The reward-points column some cards print after the amount —
+         "AbhiBus ₹1,208.00 60" — is not part of the merchant's name. Only a
+         bare number left at the very END, after a row whose amount carried a
+         currency mark, so "Malabari Makkani 0" style names are untouched
+         unless they really were followed by points. */
+      .replace(usedToken && /[\u20b9]|rs|inr/i.test(usedToken) && new RegExp(`${usedToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+\\d{1,6}\\s*$`).test(flat) ? /\s+\d{1,6}\s*$/ : /(?!)/, '')
       .replace(/\s{2,}/g, ' ')
-      .replace(/^[\s,|-]+|[\s,|-]+$/g, '')
+      .replace(/^[\s,|+-]+|[\s,|+-]+$/g, '')
       .trim();
 
     const direction: Direction = credit || CREDIT_WORDS.test(flat) ? 'credit' : 'debit';
@@ -427,21 +452,29 @@ export type StatementSummary = {
   totalDue: number;
 };
 
+/* Spaces optional throughout: a PDF's text layer often drops them —
+   "Previousbalance", "Paymentsandrefunds", "Newbalance". "Transactions" counts
+   as the charges label only at the start of a line with an amount right after
+   it, because the word itself turns up everywhere else in a statement. */
 const LABELS: Record<keyof StatementSummary, RegExp> = {
-  previousBalance: /previous\s+balance|opening\s+balance|balance\s+b\/?f/i,
-  charges: /purchases?\s*\/?\s*charges?|new\s+spends?|total\s+spends?|debits?/i,
-  payments: /payments?\s*\/?\s*credits?|payments?\s+received|credits?/i,
-  totalDue: /total\s+amount\s+due|total\s+due|closing\s+balance|amount\s+payable/i,
+  previousBalance: /previous\s*balance|opening\s*balance|balance\s*b\/?f/i,
+  charges: /purchases?\s*\/?\s*charges?|new\s*spends?|total\s*spends?|debits?|^transactions(?=\s*[+-]?\s*(?:\u20b9|rs|\d))/i,
+  payments: /payments?\s*\/?\s*credits?|payments?\s*(?:and|&)\s*refunds?|payments?\s+received|credits?/i,
+  totalDue: /total\s*amount\s*due|total\s*due|closing\s*balance|new\s*balance|amount\s*payable/i,
 };
 
-/** Every amount on a line, in order, ignoring currency marks and separators. */
+/**
+ * Every amount on a line, in order, ignoring currency marks and separators.
+ *
+ * When the line holds any figure with paise, only those count: a PDF's header
+ * row "16Aug2026-15Sep2026 TotalDue ₹18,426.83" otherwise reads its first
+ * amount as 2026, the year glued to the billing period.
+ */
 function amountsOn(text: string): number[] {
-  const out: number[] = [];
-  for (const m of text.matchAll(/(?:^|[^\d.])(\d[\d,]*\.\d{2}|\d[\d,]{2,})(?![\d.])/g)) {
-    const n = Number(m[1]!.replace(/,/g, ''));
-    if (Number.isFinite(n)) out.push(n);
-  }
-  return out;
+  const all: string[] = [];
+  for (const m of text.matchAll(/(?:^|[^\d.])(\d[\d,]*\.\d{2}|\d[\d,]{2,})(?![\d.])/g)) all.push(m[1]!);
+  const money = all.some((t) => /\.\d{2}$/.test(t)) ? all.filter((t) => /\.\d{2}$/.test(t)) : all;
+  return money.map((t) => Number(t.replace(/,/g, ''))).filter((n) => Number.isFinite(n));
 }
 
 export function parseStatementSummary(text: string): StatementSummary | null {

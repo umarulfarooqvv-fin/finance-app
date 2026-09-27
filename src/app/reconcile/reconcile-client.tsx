@@ -23,6 +23,8 @@ import { Badge, Dot, Empty, Money, Panel, SectionTitle, cx } from '@/components/
 import { useToast } from '@/components/ui/toast';
 import { reassignMethodAction } from './actions';
 import { recordSummaryAction } from '@/app/cards/[name]/actions';
+import { billCheck, type BillFigures } from '@/lib/bill-check';
+import { BillCheckPanel } from './bill-check';
 import { StatementPromptCard } from './prompt-card';
 import { TransactionDialog } from '@/app/transactions/transaction-dialog';
 import { describeMerged, describeStatementLine } from '@/lib/statement-describe';
@@ -63,7 +65,7 @@ type ManualLink = { id: string; statement: StatementLine[]; app: AppEntry[] };
 export type CardEntry = AppEntry & { method: string; methodColor: string | null };
 
 export function ReconcileClient({
-  entries, elsewhere, methods, card, periodYear, statementDate,
+  entries, elsewhere, methods, card, periodYear, statementDate, appBill, previous,
 }: {
   entries: CardEntry[];
   /** Entries in the same window filed against a different method. */
@@ -73,6 +75,10 @@ export function ReconcileClient({
   periodYear: number;
   /** The cycle being checked — where a summary read off the paste is saved. */
   statementDate: string;
+  /** The app's own opening, charges, payments and closing for this cycle. */
+  appBill: BillFigures;
+  /** The statement before this one, for a difference carried in from it. */
+  previous: { href: string; label: string } | null;
 }) {
   const router = useRouter();
   const { notify } = useToast();
@@ -147,6 +153,7 @@ export function ReconcileClient({
      figures say whether the BALANCE is, and a wrong balance comes from an
      earlier cycle where this month's lines all match. */
   const summary = useMemo(() => parseStatementSummary(submitted), [submitted]);
+  const check = useMemo(() => (summary ? billCheck(summary, appBill) : null), [summary, appBill]);
   const [savingSummary, setSavingSummary] = useState(false);
   const [savedSummary, setSavedSummary] = useState(false);
 
@@ -481,6 +488,24 @@ export function ReconcileClient({
 
       {!hasRun ? null : (
         <>
+          {/* ---- The whole bill, when the paste carried the summary box -- */}
+          {check ? (
+            <BillCheckPanel
+              check={check}
+              card={card}
+              previous={previous}
+              onRecord={saveSummary}
+              recording={savingSummary}
+              recorded={savedSummary}
+            />
+          ) : (
+            <p className="mb-4 rounded-[var(--radius-field)] border border-dashed border-[var(--color-line)] px-3 py-2 text-[11px] text-[var(--color-ink-3)]">
+              Include the statement&rsquo;s summary box too — Previous balance, Charges, Payments and
+              Total due — to check the whole bill against the app, not only this month&rsquo;s lines.
+              A difference carried in from an earlier month only shows up there.
+            </p>
+          )}
+
           {/* ---- The one number ------------------------------------------ */}
           <Panel className="mb-4">
             <SectionTitle>Still unexplained</SectionTitle>
@@ -753,58 +778,6 @@ export function ReconcileClient({
               ) : null}
             </summary>
             <div className="border-t border-[var(--color-line)] p-4 pt-3">
-
-          {/* ---- The summary box, if the paste carried one ---------------- */}
-          {summary ? (
-            <Panel className="mb-4">
-              <SectionTitle>The bank&rsquo;s own figures</SectionTitle>
-              <p className="mb-3 text-xs text-[var(--color-ink-2)]">
-                Read from the summary box in what you pasted. Recording these lets the card&rsquo;s
-                statement history compare every cycle against the bank — and an opening balance
-                that disagrees points at an <strong className="font-medium">earlier</strong> month,
-                which matching lines can never show.
-              </p>
-
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {([
-                  /* Only charges and payments have a counterpart in the rows.
-                     The previous balance comes from LAST month and the total
-                     due includes it, so neither can be cross-checked here. */
-                  ['Previous balance', summary.previousBalance, null],
-                  ['Charges', summary.charges, auto.totals.statementDebit],
-                  ['Payments', summary.payments, auto.totals.statementCredit],
-                  ['Total due', summary.totalDue, null],
-                ] as [string, number, number | null][]).map(([label, value, pasted]) => (
-                  <div
-                    key={label}
-                    className="min-w-0 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] px-2.5 py-2"
-                  >
-                    <div className="truncate text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-3)]">
-                      {label}
-                    </div>
-                    <div className="mt-1"><Money value={value} size="lg" /></div>
-                    {/* A summary whose charges disagree with the rows pasted
-                        beneath it means the paste is incomplete — worth saying
-                        before the figure is recorded as the bank's. */}
-                    {pasted !== null && Math.abs(pasted - value) >= 0.005 ? (
-                      <div className="mt-0.5 text-[11px] text-[var(--color-warn)]">
-                        rows total <span className="sensitive num">{pasted.toFixed(2)}</span>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--color-line)] pt-3">
-                <span className="min-w-0 flex-1 text-[11px] text-[var(--color-ink-3)]">
-                  Saved against {card}&rsquo;s {formatDayShort(statementDate)} statement.
-                </span>
-                <Button size="sm" pending={savingSummary} onClick={saveSummary}>
-                  {savedSummary ? 'Recorded' : 'Record these figures'}
-                </Button>
-              </div>
-            </Panel>
-          ) : null}
 
           {/* ---- The findings -------------------------------------------- */}
           {/* ---- Found somewhere else ------------------------------------ */}

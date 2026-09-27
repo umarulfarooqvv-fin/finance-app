@@ -4,7 +4,8 @@ import { cycleOverridesFrom, recentCycles } from '@/lib/cycles';
 import { dayOf, endOfDay, formatDay, startOfDay } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, cx } from '@/components/ui/primitives';
-import { cardColor } from '@/lib/statement';
+import { cardColor, cardStatement } from '@/lib/statement';
+import { creditLedger } from '@/lib/credit';
 import { ALL_METHODS } from '@/lib/types';
 import { misfiledCandidates } from '@/lib/misfiled';
 import { ReconcileClient, type CardEntry } from './reconcile-client';
@@ -100,9 +101,30 @@ export default async function ReconcilePage({
   const elsewhere = cycleEntries.elsewhere;
 
   const href = (over: { card?: string; cycle?: string }) => {
-    const p = new URLSearchParams({ card: card.name, cycle: cycle.statementEnd, ...over });
+    const merged: Record<string, string | undefined> = { card: card.name, cycle: cycle.statementEnd, ...over };
+    // An explicit undefined means "let the page choose" — leave it out rather
+    // than let URLSearchParams write the word "undefined" into the link.
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(merged)) if (v !== undefined) p.set(k, v);
     return `/reconcile?${p.toString()}`;
   };
+
+  /* The app's own view of this bill — the same arithmetic as "How this bill
+     was built" on the card page — so the bank's summary box can be checked
+     figure by figure, including the opening balance no line can explain. */
+  const m = cardStatement(snap, card, cycle.statementEnd, creditLedger(snap).outstandingByTx, overrides).cycleMath;
+  const appBill = {
+    opening: m.openingBalance,
+    charges: m.cycleSpends,
+    payments: m.cycleRepayments,
+    closing: m.closingBalance,
+  };
+  // Cycles run most recent first, so the one after this in the list is the
+  // statement before it — where an inherited difference began.
+  const before = cycles[cycles.indexOf(cycle) + 1];
+  const previous = before
+    ? { href: href({ cycle: before.statementEnd }), label: formatDay(before.statementEnd) }
+    : null;
 
   return (
     <Page>
@@ -169,6 +191,8 @@ export default async function ReconcilePage({
         card={card.name}
         periodYear={Number(cycle.periodEnd.slice(0, 4))}
         statementDate={cycle.statementEnd}
+        appBill={appBill}
+        previous={previous}
       />
     </Page>
   );
