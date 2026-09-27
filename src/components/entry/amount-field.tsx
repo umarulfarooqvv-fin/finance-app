@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { Equal } from 'lucide-react';
+import { Calculator, Equal } from 'lucide-react';
 import { evaluateAmount, insertOperator, isExpression } from '@/lib/calc';
 import { inputClass } from '@/components/ui/field';
+import { useCalculator } from '@/components/calculator/calculator';
 
 /* ===========================================================================
    The amount box, which also adds up.
@@ -52,6 +53,16 @@ export function AmountField({
   const result = showing ? evaluateAmount(value) : null;
 
   const box = useRef<HTMLInputElement>(null);
+  /* The floating calculator reads the box through these refs, so what it
+     sees and writes is always the box as it is now, not as it was when the
+     calculator opened. */
+  const valueRef = useRef(value);
+  const setRef = useRef(onChange);
+  useEffect(() => {
+    valueRef.current = value;
+    setRef.current = onChange;
+  });
+  const calc = useCalculator();
   /* Where the caret should land once the new value has rendered. Held in a ref
      rather than state: it is not something the UI draws, and making it state
      would render the field twice for every tap. */
@@ -107,9 +118,25 @@ export function AmountField({
             {op}
           </button>
         ))}
-        <span className="ml-1 text-[11px] text-[var(--color-ink-3)]">
+        <span className="ml-1 min-w-0 flex-1 text-[11px] text-[var(--color-ink-3)]">
           to add several figures
         </span>
+        {calc ? (
+          <button
+            type="button"
+            tabIndex={-1}
+            data-calculator-open=""
+            aria-label="Open the calculator for this amount"
+            title="Calculator"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() =>
+              calc.openFor({ get: () => valueRef.current, set: (v) => setRef.current(v) })
+            }
+            className="grid h-8 w-9 place-items-center rounded-[var(--radius-field)] border border-[var(--color-line)] text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-line-strong)] hover:bg-[var(--color-raised)]"
+          >
+            <Calculator className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
 
       {/* Only once there is arithmetic to report. A running total under every

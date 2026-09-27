@@ -9,6 +9,9 @@ import {
   Badge, Empty, Money, Panel, SectionTitle, Stat, StatGrid, cx,
 } from '@/components/ui/primitives';
 import { RankedBars } from '@/components/charts/charts';
+import { inputClass } from '@/components/ui/field';
+import type { ExploreRow } from '@/lib/category-explore';
+import { CategoryExplorer } from './category-explorer';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,7 +41,7 @@ export default async function CardAnalysisPage({
   params, searchParams,
 }: {
   params: Promise<{ name: string }>;
-  searchParams: Promise<{ window?: string }>;
+  searchParams: Promise<{ window?: string; from?: string; to?: string }>;
 }) {
   const { name } = await params;
   const sp = await searchParams;
@@ -73,9 +76,26 @@ export default async function CardAnalysisPage({
     { key: 'all', label: 'All time', from: opened, to: today, note: 'since this card opened' },
   ];
 
+  /* A custom range, from the form under the chips. Both ends must be real
+     days; an inverted range is put the right way round rather than refused. */
+  const isDay = (s?: string): s is Day => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  if (sp.window === 'custom' && isDay(sp.from) && isDay(sp.to)) {
+    const [lo, hi] = sp.from <= sp.to ? [sp.from, sp.to] : [sp.to, sp.from];
+    windows.push({ key: 'custom', label: 'Custom', from: lo, to: hi, note: 'a range you chose' });
+  }
+
   const win = windows.find((w) => w.key === sp.window) ?? windows[0]!;
 
   const a = analyseCard(snap, card.name, win.from, win.to);
+
+  const exploreRows: ExploreRow[] = a.chargeRows.map((t) => ({
+    id: t.id,
+    ts: t.ts!,
+    amount: t.amount ?? 0,
+    category: t.category ?? '',
+    remarks: t.remarks ?? '',
+    kind: t.kind,
+  }));
 
   const href = (w: string) =>
     `/cards/${encodeURIComponent(card.name)}/analysis?window=${w}`;
@@ -115,6 +135,29 @@ export default async function CardAnalysisPage({
           ))}
         </div>
 
+        <details className="mb-3" open={win.key === 'custom'}>
+          <summary className="cursor-pointer text-xs font-medium text-[var(--color-ink-3)] marker:text-[var(--color-ink-3)]">
+            Choose dates
+          </summary>
+          <form action={`/cards/${encodeURIComponent(card.name)}/analysis`} className="mt-2 flex flex-wrap items-end gap-2">
+            <input type="hidden" name="window" value="custom" />
+            <label className="flex flex-col gap-1 text-[11px] text-[var(--color-ink-3)]">
+              From
+              <input type="date" name="from" required defaultValue={win.from} className={cx(inputClass(), 'w-auto')} />
+            </label>
+            <label className="flex flex-col gap-1 text-[11px] text-[var(--color-ink-3)]">
+              To
+              <input type="date" name="to" required defaultValue={win.to} className={cx(inputClass(), 'w-auto')} />
+            </label>
+            <button
+              type="submit"
+              className="rounded-[var(--radius-field)] bg-[var(--color-accent)] px-3 py-2 text-xs font-medium text-white"
+            >
+              Show
+            </button>
+          </form>
+        </details>
+
         <StatGrid cols={4}>
           <Stat label="Charged to the card" value={a.charges.total} tone="debt" />
           <Stat
@@ -148,12 +191,7 @@ export default async function CardAnalysisPage({
       </Panel>
 
       <Panel className="mb-4">
-        <SectionTitle>Spending by category &middot; {a.spend.count}</SectionTitle>
-        <p className="mb-3 text-xs text-[var(--color-ink-2)]">
-          Consumption only. Lending, bill payments and transfers into savings are left out &mdash;
-          counting them here is what makes a month with three bill payments look like a disaster.
-        </p>
-        <RankedBars data={a.byCategory} limit={12} onEmpty="No spending on this card in this period." />
+        <CategoryExplorer rows={exploreRows} />
       </Panel>
 
       <Panel className="mb-4">

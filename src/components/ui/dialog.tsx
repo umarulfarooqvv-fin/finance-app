@@ -36,6 +36,13 @@ export function Dialog({
         <RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] data-[state=open]:animate-in" />
         <RadixDialog.Content
           onEscapeKeyDown={onEscapeKeyDown}
+          /* The floating calculator sits outside the dialog's DOM. A press on
+             it is not a press "outside" — it must not close the entry being
+             written, which is the very thing it is helping with. */
+          onInteractOutside={(e) => {
+            const t = e.target as Element | null;
+            if (t?.closest?.('[data-calculator]')) e.preventDefault();
+          }}
           className={cn(
             'fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-pop)]',
             wide ? 'max-w-2xl' : 'max-w-md',

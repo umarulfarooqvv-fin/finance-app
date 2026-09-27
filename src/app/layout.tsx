@@ -5,6 +5,7 @@ import { BottomBar, SideRail } from '@/components/layout/nav';
 import { VisitTracker } from '@/components/layout/command-palette';
 import { ToastProvider } from '@/components/ui/toast';
 import { PrivacyProvider } from '@/contexts/privacy-context';
+import { CalculatorProvider } from '@/components/calculator/calculator';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -45,6 +46,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             never be left ambiguous. */}
         <PrivacyProvider>
           <ToastProvider>
+            <CalculatorProvider>
             <div className="flex">
               <SideRail />
               {/* Bottom padding clears the fixed tab bar on phones. */}
@@ -52,6 +54,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <VisitTracker />
             </div>
             <BottomBar />
+            </CalculatorProvider>
           </ToastProvider>
         </PrivacyProvider>
       </body>

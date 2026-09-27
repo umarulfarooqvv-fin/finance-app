@@ -55,6 +55,8 @@ export type CardAnalysis = {
   byCategory: Breakdown[];
   /** Biggest charges first — the question "what is this balance made of". */
   largest: Transaction[];
+  /** Every charge in the window, for the category explorer. */
+  chargeRows: Transaction[];
   /** What the card itself cost: its surcharges and the tax on them. */
   cost: { surcharge: number; taxes: number; total: number; share: number };
   /** Lending charged to THIS card, and whether it has come back. */
@@ -213,6 +215,7 @@ export function analyseCard(
     spend: { total: spendTotal, count: spendRows.length },
     byCategory: byCategory(spendRows),
     largest: [...charges].sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0)).slice(0, LARGEST),
+    chargeRows: charges,
     cost: {
       surcharge,
       taxes,
