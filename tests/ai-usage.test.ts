@@ -85,3 +85,10 @@ test('the line reads plainly, warns when low, and refills after its reset', () =
   assert.equal(at(3, '2026-09-25T14:00:00')!.text, '1,000 of 1,000 AI reads left today',
     'past its reset the allowance is full again, whatever was last seen');
 });
+
+test('secondsBetween measures across midnight on the wall clock', async () => {
+  const { secondsBetween } = await import('@/lib/time');
+  assert.equal(secondsBetween('2026-09-26T17:44:00', '2026-09-26T22:05:00'), 15_660);
+  assert.equal(secondsBetween('2026-09-30T23:59:00', '2026-10-01T00:01:00'), 120);
+  assert.equal(secondsBetween('2026-09-26T22:05:00', '2026-09-26T17:44:00'), -15_660);
+});

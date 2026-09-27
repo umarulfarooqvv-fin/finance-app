@@ -1,45 +1,98 @@
 import { parseImport } from '@/lib/import-parse';
 import { resolveMethod, type BankMethods } from '@/lib/bank-methods';
 import { entryFromReading } from '@/lib/capture-entry';
-import { daysBetween, dayOf } from '@/lib/time';
+import { foldForSearch } from '@/lib/search-text';
+import { dayOf, secondsBetween } from '@/lib/time';
 
 /* ===========================================================================
-   Does the photo attached to an entry say it was paid from a different card?
+   What the photo attached to an entry says the entry got wrong.
 
-   A payment is logged as "Fi" out of habit while the UPI screen attached to it
-   says "Federal CC XX16" — Scapia. Left alone, that charge sits on the wrong
-   card: Fi's balance understated, Scapia's bill short, and nothing on either
-   screen looks wrong.
+   A payment is logged as "Fi" out of habit at 10:05 PM, while the UPI screen
+   attached to it says "Federal CC XX16" — Scapia — at 5:44 PM. Both are
+   wrong in the ledger: the charge sits on the wrong card, and possibly in the
+   wrong statement if the real moment was on the other side of a bill date.
 
    This is the one place the app lets a model's reading CHANGE an entry rather
-   than propose one, so every condition below exists to make "this photo is
-   of this payment, and it names this card" certain rather than likely:
+   than propose one, so it only proposes anything once the photo is certainly
+   OF this payment:
 
      - the entry has not been reconciled against a statement — a statement's
-       word on which card beats a screenshot's
+       word beats a screenshot's
      - the photo holds exactly one payment
-     - its amount is the entry's, to the paisa — the same payment, not a
-       similar one
-     - its date is the entry's day or the day before (logged after midnight)
-     - its method is a BANK LABEL WITH AN ACCOUNT NUMBER that the ledger's own
-       mapping resolves to exactly one card. Never a card name the model
-       wrote itself: that is how "RBL" once appeared for a Federal card.
+     - its amount is the entry's, to the paisa
+     - its date passes the inbox's own rules: an invented year repaired, never
+       after the entry, never more than 45 days before it
 
-   Anything short of all of that leaves the entry alone. The caller shows
-   every change it makes, with an undo.
+   Then, independently:
+
+     CARD — only from a printed BANK LABEL WITH AN ACCOUNT NUMBER that the
+       ledger's own mapping resolves to exactly one card. Never a card name
+       the model chose: that is how "RBL" once appeared for a Federal card.
+
+     TIME — the photo's moment, when it differs from the entry's by more than
+       a few minutes (logging a minute after paying is not an error).
+
+   AND BEFORE EITHER IS APPLIED, a duplicate check. If another entry on the
+   photo's date has the same amount and the same card, category or a shared
+   word in its description, this may be the same payment logged twice — the
+   Add Spend Shortcut did exactly that for a week. Then nothing changes on its
+   own: the question goes to the person.
    =========================================================================== */
 
-export type EntryFacts = { ts: string; amount: number; method: string; verified: boolean };
+export type EntryFacts = {
+  ts: string;
+  amount: number;
+  method: string;
+  verified: boolean;
+  category?: string;
+  remarks?: string;
+};
 
-export type MethodVerdict =
-  | { kind: 'correct'; to: string; label: string }
+/** Another live entry, to test for a duplicate. */
+export type OtherEntry = {
+  id: string;
+  ts: string;
+  amount: number;
+  method: string;
+  category: string;
+  remarks: string;
+};
+
+export type PhotoProposal = {
+  method?: { to: string; label: string };
+  ts?: { to: string };
+};
+
+export type PhotoVerdict =
+  | { kind: 'apply'; proposal: PhotoProposal }
+  | { kind: 'ask'; proposal: PhotoProposal; duplicate: OtherEntry; why: string }
   | { kind: 'keep'; reason: string };
 
-export function methodFromPhoto(
+/** Moments closer than this are the same moment: logged just after paying. */
+const SAME_MOMENT_SECONDS = 5 * 60;
+
+const STOP = new Set(['the', 'and', 'for', 'from', 'with', 'paid', 'payment', 'upi', 'bill']);
+const words = (s: string) =>
+  new Set(foldForSearch(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !STOP.has(w)));
+
+/** Why `other` looks like the same payment as the one photographed, or null. */
+function sameness(entry: EntryFacts, method: string, other: OtherEntry): string | null {
+  if (Math.round(other.amount * 100) !== Math.round(entry.amount * 100)) return null;
+  if (other.method && other.method === method) return `same amount on ${method}`;
+  if (entry.category && other.category && other.category === entry.category) {
+    return `same amount and category (${other.category})`;
+  }
+  const mine = words(entry.remarks ?? '');
+  for (const w of words(other.remarks)) if (mine.has(w)) return `same amount, and both mention "${w}"`;
+  return null;
+}
+
+export function photoVerdict(
   reading: string,
   entry: EntryFacts,
   bankMethods: BankMethods,
-): MethodVerdict {
+  others: OtherEntry[] = [],
+): PhotoVerdict {
   if (entry.verified) return { kind: 'keep', reason: 'reconciled against a statement' };
 
   const { rows } = parseImport(reading, { bankMethods });
@@ -50,20 +103,30 @@ export function methodFromPhoto(
     return { kind: 'keep', reason: 'the amount differs, so it may be a different payment' };
   }
 
-  // Dated through the same rules the inbox uses — an invented year repaired,
-  // a date after the entry refused — then held to the entry's own day.
   const dated = entryFromReading(reading, entry.ts, bankMethods);
   if (dated.kind !== 'one' || dated.dateDoubtful) return { kind: 'keep', reason: 'the date could not be trusted' };
-  const gap = daysBetween(dayOf(dated.draft.ts), dayOf(entry.ts));
-  if (gap < 0 || gap > 1) return { kind: 'keep', reason: 'the photo is from another day' };
+  const photoTs = dated.draft.ts;
 
+  const proposal: PhotoProposal = {};
+
+  // CARD — a printed bank label with an account number, and nothing less.
   const label = row.methodRaw;
-  if (!/\d{2,}/.test(label)) return { kind: 'keep', reason: 'no account number on the photo' };
-  // A label that is itself one of the app's names was chosen, not printed.
-  if (resolveMethod(label, {})) return { kind: 'keep', reason: 'not a bank label' };
-  const to = resolveMethod(label, bankMethods);
-  if (!to) return { kind: 'keep', reason: `"${label}" is not in the bank-label mapping` };
-  if (to === entry.method) return { kind: 'keep', reason: 'already right' };
+  const printed = /\d{2,}/.test(label) && !resolveMethod(label, {});
+  const to = printed ? resolveMethod(label, bankMethods) : null;
+  if (to && to !== entry.method) proposal.method = { to, label };
 
-  return { kind: 'correct', to, label };
+  // TIME — the photo's moment, if it is materially different.
+  if (Math.abs(secondsBetween(entry.ts, photoTs)) > SAME_MOMENT_SECONDS) proposal.ts = { to: photoTs };
+
+  // DUPLICATE — anything on the photo's date that looks like this payment.
+  const method = proposal.method?.to ?? entry.method;
+  const photoDay = dayOf(photoTs);
+  for (const other of others) {
+    if (dayOf(other.ts) !== photoDay) continue;
+    const why = sameness(entry, method, other);
+    if (why) return { kind: 'ask', proposal, duplicate: other, why };
+  }
+
+  if (!proposal.method && !proposal.ts) return { kind: 'keep', reason: 'already right' };
+  return { kind: 'apply', proposal };
 }

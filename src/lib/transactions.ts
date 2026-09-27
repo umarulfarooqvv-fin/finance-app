@@ -248,3 +248,28 @@ export async function reassignMethod(
   });
   return { id, from: before.method ?? '', to: next };
 }
+
+/* ===========================================================================
+   Moving an entry to the moment it actually happened.
+
+   Only the timestamp moves — used when the payment screen attached to an
+   entry shows it was paid at 5:44 PM and logged at 10:05 PM. Nothing derived
+   depends on the time, but WHICH STATEMENT a charge lands on does, so the
+   verified tick is cleared exactly as for any other edit.
+   =========================================================================== */
+
+export async function retimeTransaction(
+  id: string,
+  ts: string,
+  ctx: Actor,
+): Promise<{ id: string; from: string; to: string }> {
+  const before = await fetchRow(id);
+  if (!before) throw new Error('That entry no longer exists.');
+  if (before.deleted) throw new Error('That entry has been deleted.');
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(ts)) throw new Error('Not a valid time.');
+  if (ts === before.ts) return { id, from: before.ts ?? '', to: ts };
+
+  await update('transactions', { id: `eq.${id}` }, { ts, verified: false, updated_by: ctx.actor });
+  await logEvent('transaction.retime', { id, from: before.ts, to: ts, by: ctx.actor, via: ctx.via });
+  return { id, from: before.ts ?? '', to: ts };
+}

@@ -215,18 +215,24 @@ because speech recognition mishears numbers routinely, a guessed payment
 method silently moves debt onto the wrong card, and a photo misread the same
 way is just as capable of filing an entry under the wrong wallet.
 
-**One deliberate exception, asked for by the owner: correcting the card from
-an attached photo.** When a photo is attached to an entry (`/api/entry`,
+**One deliberate exception, asked for by the owner: correcting an entry from
+its attached photo.** When a photo is attached to an entry (`/api/entry`,
 `/api/capture/attach`, or `/api/photo-check` for older ones), `lib/photo-check`
-reads it after the reply and may move the entry to another card via
-`reassignMethod`. `lib/photo-method` decides, and only says yes when ALL hold:
-the entry is not statement-reconciled; the photo shows exactly one payment;
-the amount matches to the paisa; the date is the entry's day or the day
-before; and the method is a printed bank label WITH an account number that
-the `bank_methods` mapping resolves to one card — never a card name the model
-chose. Every change is listed (`photo_corrections` in `app_config`) on Today
-and Entries until acknowledged, each with Undo. Automatic is acceptable only
-because it is never silent; keep it that way.
+reads it after the reply and may move the entry to another CARD
+(`reassignMethod`) and/or another TIME (`retimeTransaction`).
+`lib/photo-method` decides. Nothing changes unless: the entry is not
+statement-reconciled; the photo shows exactly one payment; the amount matches
+to the paisa; and the date passes the inbox's rules (year repaired, not after
+the entry, ≤45 days before). The card moves only for a printed bank label
+WITH an account number that `bank_methods` resolves to one card — never a
+card name the model chose. The time moves when it differs by over 5 minutes.
+**Before either, a duplicate check:** another live entry on the photo's date
+with the same amount and the same card, category or a shared description
+word means NOTHING changes and a question is asked instead
+(`photo_questions`: delete this one and move its photo to the other / apply
+the change / leave). Corrections (`photo_corrections`) are listed on Today
+and Entries until acknowledged, each with one Undo for everything that moved.
+Automatic is acceptable only because it is never silent; keep it that way.
 
 Audio never leaves the device — transcription is the Web Speech API on the
 phone, and only the transcript is sent.

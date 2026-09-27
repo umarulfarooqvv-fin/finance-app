@@ -129,6 +129,15 @@ export function addSeconds(t: Instant, n: number): Instant {
   return `${dayFromNumber(days)}T${pad(Math.floor(rest / 3_600))}:${pad(Math.floor((rest % 3_600) / 60))}:${pad(rest % 60)}`;
 }
 
+/** Seconds from instant `a` to instant `b`. Positive when b is later. */
+export function secondsBetween(a: Instant, b: Instant): number {
+  const at = (t: Instant) => {
+    const c = toCivil(t);
+    return dayNumber(dayOf(t)) * 86_400 + c.hh * 3_600 + c.mm * 60 + c.ss;
+  };
+  return at(b) - at(a);
+}
+
 /** Whole days from `a` to `b`. Positive when b is later. */
 export function daysBetween(a: Day, b: Day): number {
   return dayNumber(b) - dayNumber(a);
