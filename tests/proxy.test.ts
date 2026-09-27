@@ -178,3 +178,9 @@ test('the retired v2 endpoints are no longer holes in the lock', async () => {
     assert.equal(res.status, 401, `${path} must not be exempt`);
   }
 });
+
+test('the voice Shortcut reaches /api/voice, which checks its own token', async () => {
+  assert.ok(passedThrough(await proxy(req('/api/voice'))), 'voice notes must be reachable from the phone');
+  // Exact: nothing below it is exempted by accident.
+  assert.equal(passedThrough(await proxy(req('/api/voice/anything'))), false);
+});

@@ -136,3 +136,30 @@ test('a phrase the offline parser cannot finish is reported, not invented', asyn
   assert.ok(result.draft.uncertain.includes('method'));
   assert.ok(result.draft.uncertain.includes('category'));
 });
+
+/* A Malayalam voice note arrives as Whisper's English translation — a full
+   sentence, "I paid 250 rupees for petrol using Scapia card". The card there
+   PAID; nothing was paid TO it. Reading it as a bill payment would put the
+   charge on no card and file Scapia as the category. */
+test('a card introduced by "using", "via" or "from" paid — it was not paid off', async () => {
+  process.env['ENTRY_AI'] = 'off';
+  for (const phrase of [
+    'I paid 250 rupees for petrol using Scapia card',
+    'I paid 250 rupees for petrol via Scapia',
+    'paid 250 for petrol from Scapia',
+  ]) {
+    const r = await parseSpokenEntry(phrase);
+    assert.ok(r.ok);
+    assert.equal(r.draft.method, 'Scapia', phrase);
+    assert.equal(r.draft.category, 'Fuel', phrase);
+    assert.equal(r.draft.amount, '250', phrase);
+  }
+});
+
+test('paying a card’s bill is still read as paying it', async () => {
+  process.env['ENTRY_AI'] = 'off';
+  const r = await parseSpokenEntry('paid 5000 to ICICI from Fi');
+  assert.ok(r.ok);
+  assert.equal(r.draft.category, 'ICICI', 'the card being settled');
+  assert.equal(r.draft.method, 'Fi', 'the account it was paid from');
+});

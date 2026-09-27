@@ -171,6 +171,10 @@ const CATEGORY_KEYWORDS: Record<string, string> = {
   borrowed: 'Credit Given',
 };
 
+/** Words that put the card NEXT to them in the paying role: "using Scapia",
+    "from Fi", "via Perks". A card after one of these paid; it was not paid. */
+const PAID_WITH = new Set(['using', 'with', 'via', 'through', 'from', 'on', 'by']);
+
 /** Verbs that mean "this was a bill payment", used with a card name. */
 const PAYMENT_VERBS = /\b(paid|pay|cleared|clearing|settle[d]?|bill)\b/i;
 
@@ -231,7 +235,7 @@ function findCategory(
 
 const NOISE = new Set([
   'add', 'entry', 'spent', 'spend', 'paid', 'pay', 'for', 'on', 'from', 'by',
-  'with', 'using', 'to', 'the', 'a', 'an', 'of', 'rupees', 'rupee', 'rs',
+  'with', 'using', 'via', 'through', 'card', 'to', 'the', 'a', 'an', 'of', 'rupees', 'rupee', 'rs',
   'today', 'please', 'record', 'put', 'i', 'my', 'it', 'was', 'and', 'cleared',
 ]);
 
@@ -252,7 +256,11 @@ export function parseLocally(transcript: string): LocalParse {
      the card being SETTLED, so it is the category. Reading it as the method
      would ADD debt to the card the entry is clearing: the sign of the whole
      transaction inverts. */
-  const cardHits = methodHits.filter((m) => isCard(m.value));
+  /* ...but "I paid 250 for petrol using Scapia card" is a PURCHASE with
+     Scapia — the way a Malayalam voice note reads once translated to
+     English. A card introduced by "using", "from", "via" and the like is the
+     one that paid, whatever verb the sentence uses. */
+  const cardHits = methodHits.filter((m) => isCard(m.value) && !PAID_WITH.has(lower[m.at - 1] ?? ''));
 
   if (isPayment && cardHits.length > 0) {
     const settled = cardHits[0] as { value: string; at: number };

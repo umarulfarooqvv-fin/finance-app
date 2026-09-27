@@ -11,6 +11,8 @@ import { nowIST } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, SectionTitle } from '@/components/ui/primitives';
 import { InboxClient, type Capture } from './inbox-client';
+import { VoiceDrafts } from './voice-drafts';
+import { readVoiceDrafts } from '@/lib/voice-drafts';
 import { ShortcutRecipe } from '@/components/shortcut-recipe';
 import { CollapsiblePanel } from '@/components/ui/collapsible-panel';
 import { recipe } from '@/lib/shortcuts';
@@ -58,16 +60,20 @@ export default async function InboxPage() {
     draftError: drafts[r.id]?.error ?? null,
   }));
 
+  const voices = await readVoiceDrafts();
+  const waiting = [
+    voices.length ? `${voices.length} voice ${voices.length === 1 ? 'note' : 'notes'}` : '',
+    captures.length || !voices.length ? `${captures.length} ${captures.length === 1 ? 'photo' : 'photos'}` : '',
+  ].filter(Boolean).join(' and ');
+
   return (
     <Page>
       <PageHeader
         title="Inbox"
-        subtitle={
-          ready
-            ? `${captures.length} ${captures.length === 1 ? 'photo' : 'photos'} waiting to become entries`
-            : 'Not set up yet'
-        }
+        subtitle={ready ? `${waiting} waiting to become entries` : 'Not set up yet'}
       />
+
+      <VoiceDrafts drafts={voices} />
 
       {!ready ? (
         <Panel>
@@ -82,7 +88,7 @@ export default async function InboxPage() {
             created.
           </p>
         </Panel>
-      ) : (
+      ) : captures.length === 0 && voices.length > 0 ? null : (
         <Panel padded={false}>
           <div className="p-4 sm:p-5">
             <InboxClient

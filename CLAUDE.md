@@ -179,6 +179,17 @@ Two separate paths, with different requirements:
   timeout leaves the local parse standing.
 - **`/ask` needs `ANTHROPIC_API_KEY`.** There is no offline fallback; absent, it
   shows a setup message.
+- **Voice notes from the iPhone, English or Malayalam: `POST /api/voice`**
+  (INGEST_TOKEN, PIN-exempt exactly like `/api/capture`). A recording goes to
+  Whisper's `/audio/translations` (`lib/ai/transcribe`, same provider as
+  `IMPORT_AI` by default, with a hint listing the card names) and comes back
+  as English; dictated text is used as-is. Either goes through
+  `parseSpokenEntry` and waits in the Inbox as a draft (`voice_drafts` in
+  `app_config`, `lib/voice-drafts`), shown with what was heard, opened into
+  the ordinary form. The recording is never stored. Whisper misreads numbers
+  ("fifty for" → 54), which is why this is a draft and not an entry. The
+  local parser treats a card after "using/with/via/from/on/by" as the payer,
+  not a bill being paid — translated Malayalam reads "paid 250 using Scapia".
 - **Reading a photo into `/import` rows needs `IMPORT_AI`.** `src/lib/ai/
   vision.ts` is a separate config from `ENTRY_AI` — a vision-capable model is
   a different, shorter list from a fast free text model. Off by default; the

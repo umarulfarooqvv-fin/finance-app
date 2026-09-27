@@ -22,11 +22,13 @@ const source = (path: string) =>
 
 const entryRoute = source('entry/route.ts');
 const captureRoute = source('capture/route.ts');
+const voiceRoute = source('voice/route.ts');
 
 test('every field a recipe documents is actually read by its route', () => {
   const routeFor: Record<string, string> = {
     '/api/entry': entryRoute,
     '/api/capture': captureRoute,
+    '/api/voice?format=text': voiceRoute,
   };
 
   for (const r of RECIPES) {
@@ -34,7 +36,7 @@ test('every field a recipe documents is actually read by its route', () => {
     assert.ok(src, `no source for ${r.path}`);
     for (const f of r.fields) {
       // The photo's "field" is the request body itself, not a named key.
-      if (f.name === 'the photo') continue;
+      if (f.name === 'the photo' || f.name === 'the recording') continue;
       assert.ok(
         src!.includes(`'${f.name}'`) || src!.includes(`"${f.name}"`),
         `${r.slug}: the page documents "${f.name}" but ${r.path} never reads it`,

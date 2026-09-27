@@ -3,6 +3,8 @@
 import { guardedAction, MONEY_PATHS } from '@/lib/actions';
 import { detachPhoto, discardCapture, markUsed } from '@/lib/captures';
 import { forgetCaptureDrafts } from '@/lib/capture-drafts';
+import { forgetVoiceDraft } from '@/lib/voice-drafts';
+import { logEvent } from '@/lib/supabase';
 
 /* ===========================================================================
    Server actions for the capture inbox.
@@ -91,5 +93,19 @@ export const retireCapturesAction = guardedAction(
     }
     await forgetCaptureDrafts(retired);
     return { retired: retired.length };
+  },
+);
+
+/** A voice note that became an entry, or was not worth one: stop showing it. */
+export const forgetVoiceDraftAction = guardedAction(
+  {
+    name: 'voice.forget',
+    revalidate: REVALIDATE,
+    validate: (input: { id: string }) => (input.id?.trim() ? null : { id: 'Missing voice note.' }),
+  },
+  async (input, ctx) => {
+    await forgetVoiceDraft(input.id);
+    await logEvent('voice.forget', { id: input.id, by: ctx.actor, via: ctx.via });
+    return { id: input.id };
   },
 );

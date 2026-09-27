@@ -28,7 +28,7 @@ export type RecipeStep = {
 };
 
 export type Recipe = {
-  slug: 'spend' | 'income' | 'photo';
+  slug: 'spend' | 'income' | 'photo' | 'voice' | 'dictate';
   title: string;
   /** One line on what it is for, in the user's terms. */
   why: string;
@@ -160,6 +160,57 @@ export const RECIPES: Recipe[] = [
         'it is the one thing that leaves; with it off, nothing reads them and you type what you see.',
       'Either way the reading is a DRAFT. No entry is created from a photo without you confirming ' +
         'it, so a misread amount cannot reach the ledger on its own.',
+    ],
+  },
+  {
+    slug: 'voice',
+    title: 'Speak a spend — English or Malayalam',
+    why: 'Say it the way you would tell someone: "ചായക്ക് നാല്പത് രൂപ Fi-ൽ നിന്ന്" or "forty for tea from Fi".',
+    path: '/api/voice?format=text',
+    contentType: 'audio/mp4',
+    fields: [
+      { name: 'the recording', required: true, note: 'The request BODY is the audio file itself.' },
+    ],
+    steps: [
+      { action: 'Record Audio', detail: 'Start Recording: Immediately; Finish Recording: On Tap' },
+      { action: 'Get Contents of URL', detail: 'POST to the address below' },
+      { action: 'Headers', detail: 'x-token' },
+      { action: 'Request Body', detail: 'File — then pick the Recorded Audio from step 1' },
+      { action: 'Show Notification', detail: 'with the Contents of URL — it says what was understood' },
+      { action: 'Add to Home Screen', detail: 'or the Action Button, so it is one tap' },
+    ],
+    notes: [
+      'It lands in the Inbox as a DRAFT, dated when you spoke. Open it, check the amount against '
+        + 'what was heard, and tap Add entry. Nothing is saved on its own: speech is misheard, and '
+        + '"two hundred and fifty for" can come out as 254.',
+      'Say the amount, then pause, then the rest — "four eighty … tea … from Fi". Running "fifty for" '
+        + 'together is the one mistake it makes most.',
+      'The recording is sent to the AI provider to be heard (that is how Malayalam works — the iPhone '
+        + 'cannot transcribe it) and is not stored anywhere. Only the words are kept, until the draft '
+        + 'is added or discarded.',
+      'A Malayalam note is translated to English on the way in, so the description arrives in English.',
+    ],
+  },
+  {
+    slug: 'dictate',
+    title: 'Dictate a spend — English, on the phone',
+    why: 'The iPhone hears it; only the words are sent. For when you would rather no audio left the phone.',
+    path: '/api/voice?format=text',
+    contentType: 'application/json',
+    example: '{\n  "text": "four eighty for tea from Fi"\n}',
+    fields: [
+      { name: 'text', required: true, note: 'What was said, as the Dictate Text action heard it.' },
+    ],
+    steps: [
+      { action: 'Dictate Text', detail: 'Language: English (India)' },
+      { action: 'Get Contents of URL', detail: 'POST to the address below' },
+      { action: 'Headers', detail: 'x-token' },
+      { action: 'Request Body', detail: 'JSON — one field, text, set to the Dictated Text' },
+      { action: 'Show Notification', detail: 'with the Contents of URL' },
+    ],
+    notes: [
+      'Lands in the Inbox as a draft exactly like a voice note, to check and add.',
+      'English only: the iPhone has no Malayalam dictation. For Malayalam, use Speak a spend.',
     ],
   },
 ];
