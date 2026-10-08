@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { currentSnapshot } from '@/lib/views';
 import { photosByTransaction } from '@/lib/captures';
 import { photoNoticesForPage } from '@/lib/photo-check';
+import { getSnapshot } from '@/lib/snapshot';
 import { PhotoCorrections } from '@/components/photo-corrections';
 import { isSpend, upcomingRows } from '@/lib/analytics';
 import { endOfDay, formatDay, monthKey, nowIST } from '@/lib/time';
@@ -34,11 +35,16 @@ export default async function TransactionsPage({
   searchParams: Promise<RawParams>;
 }) {
   const sp = await searchParams;
-  // Before the snapshot: a correction made moments ago must be in the rows.
-  const { corrections, questions } = await photoNoticesForPage();
+  /* All three at once. A correction made moments ago makes the notices drop
+     the cached snapshot, and currentSnapshot then loads again — so the rows
+     still include it. Usually nothing is dropped and the warm one is reused. */
+  const [{ corrections, questions }, , photos] = await Promise.all([
+    photoNoticesForPage(),
+    getSnapshot(),
+    photosByTransaction(),
+  ]);
   const { snap, today } = await currentSnapshot();
   const now = endOfDay(today);
-  const photos = await photosByTransaction();
 
   const f = readFilters(sp);
   const matched = applyFilters(snap.transactions, f, now).sort((a, b) => (a.ts! < b.ts! ? 1 : -1));

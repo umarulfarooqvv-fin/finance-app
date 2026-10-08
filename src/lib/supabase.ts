@@ -92,6 +92,65 @@ export async function select<T extends TableName>(
   return out;
 }
 
+/**
+ * How many rows match — a HEAD request, so no rows cross the wire. PostgREST
+ * answers in Content-Range ("* /2655"). Null when it cannot say.
+ */
+export async function countRows(table: TableName, filters: Record<string, string> = {}): Promise<number | null> {
+  if (!storeConfigured()) return null;
+  const q = new URLSearchParams({ select: 'id', ...filters });
+  const res = await fetch(`${baseUrl()}/rest/v1/${table}?${q.toString()}`, {
+    method: 'HEAD',
+    cache: 'no-store',
+    headers: authHeaders({ Prefer: 'count=exact' }),
+  });
+  const total = Number((res.headers.get('content-range') ?? '').split('/')[1]);
+  return res.ok && Number.isFinite(total) ? total : null;
+}
+
+/**
+ * SELECT every row, fetching the pages AT ONCE rather than one after another.
+ *
+ * `select` pages sequentially because it cannot know when to stop until a
+ * short page arrives. With the row count known up front the pages are all
+ * independent, so 2,700 rows cost one round-trip instead of three — and on
+ * a cold start that sequence of round-trips was most of the wait.
+ *
+ * The count is only a plan, never trusted for completeness: if the last page
+ * comes back full (rows were added since the count), it carries on page by
+ * page exactly as `select` would. Requires a total `order` so pages cannot
+ * overlap or skip a row that ties on the sort key.
+ */
+export async function selectAllParallel<T extends TableName>(
+  table: T,
+  opts: Omit<SelectOptions, 'limit'> & { order: string },
+  expected: number | null,
+): Promise<Tables<T>[]> {
+  const base = new URLSearchParams();
+  base.set('select', opts.select ?? '*');
+  for (const [col, cond] of Object.entries(opts.filters ?? {})) base.set(col, cond);
+  base.set('order', opts.order);
+
+  const pageSize = 1000;
+  const page = (n: number) => {
+    const q = new URLSearchParams(base);
+    q.set('limit', String(pageSize));
+    q.set('offset', String(n * pageSize));
+    return rest<Tables<T>[]>(`${table}?${q.toString()}`).then((r) => r ?? []);
+  };
+
+  const planned = Math.max(1, Math.ceil(((expected ?? 0) + 1) / pageSize));
+  const pages = await Promise.all(Array.from({ length: planned }, (_, i) => page(i)));
+  const out = pages.flat();
+
+  for (let n = planned; pages.at(-1)?.length === pageSize; n += 1) {
+    const more = await page(n);
+    pages.push(more);
+    out.push(...more);
+  }
+  return out;
+}
+
 /** INSERT, or upsert on the primary key when `upsert` is set. */
 export async function insert<T extends TableName>(
   table: T,

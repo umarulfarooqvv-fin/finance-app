@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
-import { capturesReady, listCaptures } from '@/lib/captures';
+import { listCaptures } from '@/lib/captures';
 import { visionConfig } from '@/lib/ai/vision';
-import { readCaptureDrafts } from '@/lib/capture-drafts';
+import { readCaptureDrafts, type CaptureDrafts } from '@/lib/capture-drafts';
 import { getSnapshot } from '@/lib/snapshot';
 import { bankMethodsFrom } from '@/lib/bank-methods';
 import { describeUsage } from '@/lib/ai/usage';
@@ -33,25 +33,34 @@ export const dynamic = 'force-dynamic';
    =========================================================================== */
 
 export default async function InboxPage() {
-  const ready = await capturesReady();
-  const rows = ready ? await listCaptures('pending') : [];
   const vision = visionConfig();
-  /* What the AI already read out of each waiting photo, mostly at the moment
-     it arrived. Loaded here so the inbox opens with the rows on screen rather
-     than fetching them once it is up. */
-  const drafts = vision.name !== 'off' ? await readCaptureDrafts() : {};
+  const reading = vision.name !== 'off';
+  /* Everything the inbox needs, fetched at once — these were five round-trips
+     in a row. The three app_config reads go out as ONE request (see
+     lib/config), and listCaptures answering is itself the proof the captures
+     table exists, so the separate probe is gone. */
+  const [rows, drafts, snap, usage, voices] = await Promise.all([
+    listCaptures('pending').catch(() => null),
+    /* What the AI already read out of each waiting photo, mostly at the
+       moment it arrived — so the inbox opens with the rows on screen. */
+    reading ? readCaptureDrafts() : Promise.resolve<CaptureDrafts>({}),
+    getSnapshot(),
+    // How much of the provider's allowance is left, as of its last reply.
+    reading ? readAiUsage() : Promise.resolve(null),
+    readVoiceDrafts(),
+  ]);
+  const ready = rows !== null;
   /* The bank's own labels ("Federal CC XX16") mapped to this ledger's names,
      so a reading fills the Paid-from field the way /import would. */
-  const bankMethods = bankMethodsFrom((await getSnapshot()).config);
-  // How much of the provider's allowance is left, as of its last reply.
-  const aiUsage = vision.name !== 'off' ? describeUsage(await readAiUsage(), nowIST()) : null;
+  const bankMethods = bankMethodsFrom(snap.config);
+  const aiUsage = reading ? describeUsage(usage, nowIST()) : null;
 
   const h = await headers();
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? '';
   const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https');
   const origin = host ? `${proto}://${host}` : '';
 
-  const captures: Capture[] = rows.map((r) => ({
+  const captures: Capture[] = (rows ?? []).map((r) => ({
     id: r.id,
     ts: r.ts,
     note: r.note ?? '',
@@ -60,7 +69,6 @@ export default async function InboxPage() {
     draftError: drafts[r.id]?.error ?? null,
   }));
 
-  const voices = await readVoiceDrafts();
   const waiting = [
     voices.length ? `${voices.length} voice ${voices.length === 1 ? 'note' : 'notes'}` : '',
     captures.length || !voices.length ? `${captures.length} ${captures.length === 1 ? 'photo' : 'photos'}` : '',

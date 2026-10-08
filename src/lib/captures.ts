@@ -27,21 +27,8 @@ export type CaptureStatus = 'pending' | 'used' | 'discarded';
 export type CaptureRow = Tables<'captures'>;
 export type NewCaptureRow = TablesInsert<'captures'>;
 
-/**
- * True when the table exists.
- *
- * Kept after the migration landed, for a fresh clone: the inbox shows what to
- * run rather than an error nobody can act on.
- */
-export async function capturesReady(): Promise<boolean> {
-  try {
-    await select('captures', { select: 'id', limit: 1 });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
+/** Throws on a fresh clone without the captures table — the inbox catches
+    that and shows what to run, rather than an error nobody can act on. */
 export async function listCaptures(status: CaptureStatus = 'pending'): Promise<CaptureRow[]> {
   return select('captures', {
     filters: { status: `eq.${status}` },
@@ -60,7 +47,7 @@ export async function getCapture(id: string): Promise<CaptureRow | null> {
  *
  * For the transaction list, so it can show a small indicator without a
  * per-row request. Empty rather than thrown on a fresh clone that hasn't run
- * the captures migration yet, same as `capturesReady`.
+ * the captures migration yet.
  */
 export async function photosByTransaction(): Promise<Map<string, string>> {
   try {

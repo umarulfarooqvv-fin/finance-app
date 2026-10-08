@@ -6,6 +6,7 @@ import { formatDay, formatDayShort, relativeDays } from '@/lib/time';
 import { delta, money, moneyCompact } from '@/lib/format';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { photoNoticesForPage } from '@/lib/photo-check';
+import { getSnapshot } from '@/lib/snapshot';
 import { PhotoCorrections } from '@/components/photo-corrections';
 import { Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
 
@@ -43,8 +44,11 @@ function utilisationLabel(row: StatementRow): string {
 }
 
 export default async function TodayPage() {
-  // Before the snapshot: a correction made moments ago must be in the balances.
-  const { corrections, questions } = await photoNoticesForPage();
+  /* The notices and the snapshot load side by side. A correction made moments
+     ago makes photoNoticesForPage drop the cached snapshot, and then
+     currentSnapshot below loads again — so the balances still include it. In
+     the usual case nothing was dropped and the warmed snapshot is reused. */
+  const [{ corrections, questions }] = await Promise.all([photoNoticesForPage(), getSnapshot()]);
   const { snap, today } = await currentSnapshot();
   // Both go through the cached selectors: forecast() calls statementView()
   // internally, so without the dedupe the engine would run twice per render.

@@ -26,9 +26,12 @@ export const dynamic = 'force-dynamic';
 export default async function ImportPage() {
   // `nowIST()` is the only clock the app reads, and it reads it here so a
   // device with a wrong date cannot timestamp an import.
-  const snap = await getSnapshot();
   const vision = visionConfig();
-  const aiUsage = vision.name !== 'off' ? describeUsage(await readAiUsage(), nowIST()) : null;
+  const [snap, usage] = await Promise.all([
+    getSnapshot(),
+    vision.name !== 'off' ? readAiUsage() : Promise.resolve(null),
+  ]);
+  const aiUsage = vision.name !== 'off' ? describeUsage(usage, nowIST()) : null;
 
   return (
     <Page>

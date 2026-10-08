@@ -4,7 +4,7 @@ import { round2 } from '@/lib/money';
 import { DEFAULT_ACCOUNTS, DEFAULT_CARDS } from '@/lib/defaults';
 import { nowIST } from '@/lib/time';
 import type { Account, Card, Income, Snapshot, Transaction } from '@/lib/types';
-import { select, storeConfigured, storeVersion } from '@/lib/supabase';
+import { countRows, select, selectAllParallel, storeConfigured, storeVersion } from '@/lib/supabase';
 
 /* ===========================================================================
    Loading the world into memory, once.
@@ -171,11 +171,36 @@ function mergeAccounts(stored: unknown): Account[] {
   return out;
 }
 
-/** Read everything, in parallel. */
-async function loadSnapshot(version: number): Promise<Snapshot> {
+/* Only the columns toTransaction and toIncome read. The derived columns
+   (kind, card_affected, tags…) are re-derived on load and never read back, and
+   the timestamps and audit columns are unused — together they were close to
+   half of every row, and the full history is ~2,700 rows. */
+const TX_COLUMNS = 'id,ts,amount,method,category,remarks,verified,deleted,source';
+const INCOME_COLUMNS = 'id,ts,amount,source,account,remarks,needs_review,deleted';
+
+/**
+ * Read everything in two rounds instead of five.
+ *
+ * Round one asks for the version and the row counts together. Round two
+ * fetches every page of both tables and the config at once. The version is
+ * still read BEFORE the rows, which is what makes the cache safe: a write that
+ * lands in between leaves the cache with an older version than the store, so
+ * the next check refetches — never the other way round.
+ */
+async function loadFresh(): Promise<Snapshot> {
+  const [version, txCount, incCount] = await Promise.all([
+    storeVersion().catch(() => Date.now()),
+    countRows('transactions').catch(() => null),
+    countRows('income').catch(() => null),
+  ]);
+  return loadSnapshot(version, txCount, incCount);
+}
+
+async function loadSnapshot(version: number, txCount: number | null, incCount: number | null): Promise<Snapshot> {
   const [txRows, incRows, cfgRows] = await Promise.all([
-    select('transactions', { order: 'ts.asc' }),
-    select('income', { order: 'ts.asc' }),
+    // id breaks ties on ts, so parallel pages can neither overlap nor skip.
+    selectAllParallel('transactions', { select: TX_COLUMNS, order: 'ts.asc,id.asc' }, txCount),
+    selectAllParallel('income', { select: INCOME_COLUMNS, order: 'ts.asc,id.asc' }, incCount),
     select('app_config'),
   ]);
 
@@ -253,8 +278,7 @@ export async function getSnapshot(opts: SnapshotOptions = {}): Promise<Snapshot>
   if (inflight) return inflight;
   inflight = (async () => {
     try {
-      const version = await storeVersion().catch(() => Date.now());
-      const snap = await loadSnapshot(version);
+      const snap = await loadFresh();
       cached = snap;
       validatedAt = Date.now();
       return snap;
