@@ -1,5 +1,6 @@
 'use client';
 
+import { EditEntryButton } from '@/components/entry/entry-editor';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Link2, TriangleAlert } from 'lucide-react';
@@ -79,6 +80,7 @@ export function UnattachedRepayments({
             <Private>{r.note || r.source}</Private>
           </span>
           <Money value={r.amount} size="sm" tone="credit" className="shrink-0" />
+          <EditEntryButton id={r.id} label={`Edit ${r.note || r.source}`} />
 
           <div className="flex w-full items-end gap-2 sm:w-auto">
             <select

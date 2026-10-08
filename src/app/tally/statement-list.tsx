@@ -5,6 +5,7 @@ import { ChevronRight } from 'lucide-react';
 import type { DayLine } from '@/lib/tally';
 import { formatDayShort } from '@/lib/time';
 import { Empty, Money, cx } from '@/components/ui/primitives';
+import { EditEntryButton } from '@/components/entry/entry-editor';
 
 /* ===========================================================================
    The statement itself.
@@ -92,6 +93,8 @@ export function StatementList({
                           tone={m.direction === 'in' ? 'credit' : 'debt'}
                         />
                       </span>
+                      {/* An income row opens the income form, a spend the entry form. */}
+                      <EditEntryButton id={m.id} label={`Edit ${m.label}`} className="-my-1" />
                     </li>
                   ))}
                 </ul>

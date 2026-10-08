@@ -13,6 +13,7 @@ import { Badge, Dot, Money, Panel, cx } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import { reassignMethodAction } from './actions';
 import { TransactionDialog } from '@/app/transactions/transaction-dialog';
+import { EditEntryButton } from '@/components/entry/entry-editor';
 import type { MisfiledCandidate } from '@/lib/misfiled';
 
 /* ===========================================================================
@@ -556,6 +557,7 @@ export function MisfiledPanel({
                             size="sm"
                             tone={c.direction === 'credit' ? 'credit' : 'debt'}
                           />
+                          <EditEntryButton id={c.id} label={`Edit ${c.description}`} />
                           {mine ? (
                             <span className="text-[11px] font-medium text-[var(--color-ink-2)]">
                               on this bill

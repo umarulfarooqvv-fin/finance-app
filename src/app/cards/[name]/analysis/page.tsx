@@ -12,6 +12,7 @@ import { RankedBars } from '@/components/charts/charts';
 import { inputClass } from '@/components/ui/field';
 import type { ExploreRow } from '@/lib/category-explore';
 import { CategoryExplorer } from './category-explorer';
+import { EditEntryButton } from '@/components/entry/entry-editor';
 
 export const dynamic = 'force-dynamic';
 
@@ -211,6 +212,7 @@ export default async function CardAnalysisPage({
                 <span className="min-w-0 flex-1 truncate">{t.remarks || t.category}</span>
                 <Badge tone={t.kind === 'credit_given' ? 'warn' : 'neutral'}>{t.category}</Badge>
                 <Money value={t.amount ?? 0} size="sm" tone="debt" />
+                <EditEntryButton id={t.id} label={`Edit ${t.remarks || t.category}`} />
               </li>
             ))}
           </ul>

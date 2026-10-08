@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getSnapshot } from '@/lib/snapshot';
@@ -12,6 +13,7 @@ import { dayOf, formatDay, formatDayShort, relativeDays } from '@/lib/time';
 import { money, percent } from '@/lib/format';
 import { round2 } from '@/lib/money';
 import { Page, PageHeader } from '@/components/layout/page-header';
+import { EditEntryButton } from '@/components/entry/entry-editor';
 import {
   Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, Stat, StatGrid, TableWrap, Td, Th,
 } from '@/components/ui/primitives';
@@ -23,54 +25,91 @@ export const dynamic = 'force-dynamic';
    cycle arithmetic written out, and the reconciliation split.
    =========================================================================== */
 
+/* Grouped by day, the app's rule for any list of entries: a statement is read
+   as "what happened on the 22nd", and a date on every row makes the reader
+   find the boundaries themselves. Each row can be edited where it stands. */
 function Ledger({ entries, empty }: { entries: LedgerEntry[]; empty: string }) {
   if (entries.length === 0) return <Empty title={empty} />;
+
+  const days: { day: string; debit: number; credit: number; rows: LedgerEntry[] }[] = [];
+  for (const e of entries) {
+    const last = days.at(-1);
+    const d = last && last.day === e.day ? last : { day: e.day, debit: 0, credit: 0, rows: [] };
+    if (d !== last) days.push(d);
+    d.rows.push(e);
+    d.debit = round2(d.debit + (e.debit ?? 0));
+    d.credit = round2(d.credit + (e.credit ?? 0));
+  }
 
   return (
     <TableWrap>
       <thead>
         <tr>
-          <Th>Date</Th>
           <Th>Description</Th>
           <Th>Category</Th>
           <Th align="right">Debit</Th>
           <Th align="right">Credit</Th>
+          <Th align="right"><span className="sr-only">Edit</span></Th>
         </tr>
       </thead>
       <tbody>
-        {entries.map((e) => (
-          <tr key={e.id}>
-            <Td className="whitespace-nowrap text-xs text-[var(--color-ink-2)]">
-              {formatDayShort(e.day)}
-            </Td>
-            <Td>
-              <span className="flex items-center gap-2">
-                <span className="truncate">{e.description}</span>
-                {e.verified ? (
-                  <span
-                    className="text-[var(--color-pos)]"
-                    title="Matched against the bank statement"
-                    aria-label="Verified"
-                  >
-                    ✓
+        {days.map((d) => (
+          <Fragment key={d.day}>
+            <tr className="bg-[var(--color-canvas)]">
+              <Td className="whitespace-nowrap text-xs font-medium text-[var(--color-ink-2)]">
+                {formatDayShort(d.day)}
+                <span className="ml-2 font-normal text-[var(--color-ink-3)]">
+                  {d.rows.length} {d.rows.length === 1 ? 'entry' : 'entries'}
+                </span>
+              </Td>
+              <Td />
+              <Td align="right">{d.debit ? <Money value={d.debit} size="sm" tone="muted" /> : null}</Td>
+              <Td align="right">{d.credit ? <Money value={d.credit} size="sm" tone="muted" /> : null}</Td>
+              <Td />
+            </tr>
+            {d.rows.map((e) => (
+              <tr key={e.id}>
+                <Td>
+                  <span className="flex items-center gap-2">
+                    <span className="num w-10 shrink-0 text-xs text-[var(--color-ink-3)]">{e.ts.slice(11, 16)}</span>
+                    <span className="truncate">{e.description}</span>
+                    {e.verified ? (
+                      <span
+                        className="text-[var(--color-pos)]"
+                        title="Matched against the bank statement"
+                        aria-label="Verified"
+                      >
+                        ✓
+                      </span>
+                    ) : null}
                   </span>
-                ) : null}
-              </span>
-            </Td>
-            <Td className="text-xs text-[var(--color-ink-3)]">{e.category}</Td>
-            <Td align="right">{e.debit ? <Money value={e.debit} size="sm" /> : null}</Td>
-            <Td align="right">
-              {e.credit ? <Money value={e.credit} size="sm" tone="credit" /> : null}
-            </Td>
-          </tr>
+                </Td>
+                <Td className="text-xs text-[var(--color-ink-3)]">{e.category}</Td>
+                <Td align="right">{e.debit ? <Money value={e.debit} size="sm" /> : null}</Td>
+                <Td align="right">
+                  {e.credit ? <Money value={e.credit} size="sm" tone="credit" /> : null}
+                </Td>
+                <Td align="right">
+                  <EditEntryButton id={e.id} label={`Edit ${e.description}`} />
+                </Td>
+              </tr>
+            ))}
+          </Fragment>
         ))}
       </tbody>
     </TableWrap>
   );
 }
 
-export default async function CardPage({ params }: { params: Promise<{ name: string }> }) {
+export default async function CardPage({
+  params, searchParams,
+}: {
+  params: Promise<{ name: string }>;
+  /** `cycle` — a past statement date, from the history table. */
+  searchParams: Promise<{ cycle?: string }>;
+}) {
   const { name } = await params;
+  const sp = await searchParams;
   const cardName = decodeURIComponent(name);
 
   const snap = await getSnapshot();
@@ -94,6 +133,21 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
   const history = statementHistory(
     snap, card, today, creditLedger(snap).outstandingByTx, overrides,
   );
+
+  /* A month picked in the history table. The bill arithmetic and its entries
+     below follow it; everything above them — the balance, what is due now —
+     stays today's, because that is what the top of a card page is for.
+     cardDetail builds any statement when given its date as "today". */
+  const picked = sp.cycle
+    && sp.cycle !== row.cycle.statementEnd
+    && history.some((h) => h.cycle.statementEnd === sp.cycle)
+    ? sp.cycle
+    : null;
+  const shown = picked ? cardDetail(snap, card, picked) : null;
+  const sRow = shown?.row ?? row;
+  const sBilled = shown?.billed ?? billed;
+  const sm = sRow.cycleMath;
+  const cardHref = `/cards/${encodeURIComponent(card.name)}`;
 
   // Whether any statement on this card has had its summary box recorded.
   const checkedAny = history.some((h) => h.bank !== null);
@@ -123,7 +177,6 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
      disagree about it. */
   const inCredit = row.totalDebtLive < -0.005;
 
-  const m = row.cycleMath;
   const checked = row.verified.verified + row.verified.unverified;
 
   return (
@@ -245,34 +298,44 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
       </Panel>
 
       {/* ---- Cycle arithmetic, written out ------------------------------- */}
+      {/* The anchor the history links land on. */}
+      <div id="statement" className="scroll-mt-4" />
       <Panel className="mt-4">
-        <SectionTitle>How this bill was built</SectionTitle>
+        <SectionTitle
+          action={picked ? (
+            <Link href={`${cardHref}#statement`} className="text-xs font-medium text-[var(--color-accent)]">
+              Back to the latest bill
+            </Link>
+          ) : undefined}
+        >
+          {picked ? `How the ${formatDay(picked)} bill was built` : 'How this bill was built'}
+        </SectionTitle>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm">
           <span className="rounded-[var(--radius-field)] bg-[var(--color-raised)] px-2.5 py-1.5">
             <span className="text-[11px] text-[var(--color-ink-3)]">Opening </span>
-            <Money value={m.openingBalance} size="sm" />
+            <Money value={sm.openingBalance} size="sm" />
           </span>
           <span className="text-[var(--color-ink-3)]">+</span>
           <span className="rounded-[var(--radius-field)] bg-[var(--color-raised)] px-2.5 py-1.5">
             <span className="text-[11px] text-[var(--color-ink-3)]">Spends </span>
-            <Money value={m.cycleSpends} size="sm" />
+            <Money value={sm.cycleSpends} size="sm" />
           </span>
           <span className="text-[var(--color-ink-3)]">−</span>
           <span className="rounded-[var(--radius-field)] bg-[var(--color-raised)] px-2.5 py-1.5">
             <span className="text-[11px] text-[var(--color-ink-3)]">Payments </span>
-            <Money value={m.cycleRepayments} size="sm" />
+            <Money value={sm.cycleRepayments} size="sm" />
           </span>
           <span className="text-[var(--color-ink-3)]">=</span>
           <span className="rounded-[var(--radius-field)] bg-[var(--color-accent-soft)] px-2.5 py-1.5">
             <span className="text-[11px] text-[var(--color-accent)]">Closing </span>
-            <Money value={m.closingBalance} size="sm" className="font-semibold" />
+            <Money value={sm.closingBalance} size="sm" className="font-semibold" />
           </span>
         </div>
         <p className="mt-3 text-xs text-[var(--color-ink-3)]">
-          Cycle ran {formatDay(row.cycle.cycleStart)} to {formatDay(row.cycle.periodEnd)}.
-          {row.cycle.boundary === 'exclusive' ? (
+          Cycle ran {formatDay(sRow.cycle.cycleStart)} to {formatDay(sRow.cycle.periodEnd)}.
+          {sRow.cycle.boundary === 'exclusive' ? (
             <>
-              {' '}The statement is dated {formatDay(row.cycle.statementEnd)}, but was cut before
+              {' '}The statement is dated {formatDay(sRow.cycle.statementEnd)}, but was cut before
               that day&rsquo;s spending.
             </>
           ) : null}
@@ -287,9 +350,9 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
            compare two lists. */}
       <Panel className="mt-4">
         <SectionTitle>
-          On the {formatDay(row.cycle.statementEnd)} statement &middot; {billed.length}
+          On the {formatDay(sRow.cycle.statementEnd)} statement &middot; {sBilled.length}
         </SectionTitle>
-        <Ledger entries={billed} empty="Nothing was billed in this cycle." />
+        <Ledger entries={sBilled} empty="Nothing was billed in this cycle." />
       </Panel>
 
       {/* ---- Where a balance came from ----------------------------------- */}
@@ -320,9 +383,24 @@ export default async function CardPage({ params }: { params: Promise<{ name: str
               {history.map((h) => (
                 <tr
                   key={h.cycle.statementEnd}
-                  className={h.carriedIn > 0.005 ? 'bg-[var(--color-warn-soft)]' : undefined}
+                  className={
+                    h.cycle.statementEnd === (picked ?? row.cycle.statementEnd)
+                      ? 'bg-[var(--color-accent-soft)]'
+                      : h.carriedIn > 0.005 ? 'bg-[var(--color-warn-soft)]' : undefined
+                  }
                 >
-                  <Td className="whitespace-nowrap text-xs">{formatDay(h.cycle.statementEnd)}</Td>
+                  <Td className="whitespace-nowrap text-xs">
+                    {/* Each month opens its own statement, entries and all. */}
+                    <Link
+                      href={h.cycle.statementEnd === row.cycle.statementEnd
+                        ? `${cardHref}#statement`
+                        : `${cardHref}?cycle=${encodeURIComponent(h.cycle.statementEnd)}#statement`}
+                      aria-current={h.cycle.statementEnd === (picked ?? row.cycle.statementEnd) ? 'true' : undefined}
+                      className="font-medium text-[var(--color-accent)] underline-offset-2 hover:underline"
+                    >
+                      {formatDay(h.cycle.statementEnd)}
+                    </Link>
+                  </Td>
                   <Td align="right"><Money value={h.opening} size="sm" tone="muted" /></Td>
                   <Td align="right"><Money value={h.spends} size="sm" /></Td>
                   <Td align="right"><Money value={h.payments} size="sm" tone="credit" /></Td>

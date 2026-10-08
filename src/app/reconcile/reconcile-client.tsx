@@ -27,6 +27,7 @@ import { billCheck, type BillFigures } from '@/lib/bill-check';
 import { BillCheckPanel } from './bill-check';
 import { StatementPromptCard } from './prompt-card';
 import { TransactionDialog } from '@/app/transactions/transaction-dialog';
+import { EditEntryButton } from '@/components/entry/entry-editor';
 import { describeMerged, describeStatementLine } from '@/lib/statement-describe';
 
 /* ===========================================================================
@@ -739,6 +740,7 @@ export function ReconcileClient({
                     </span>
                     <span className="min-w-0 flex-1 truncate">{e.description}</span>
                     <Money value={e.amount} size="sm" tone={e.direction === 'credit' ? 'credit' : 'debt'} />
+                    <EditEntryButton id={e.id} label={`Edit ${e.description}`} />
                     <select
                       value=""
                       disabled={moving === e.id}
@@ -835,6 +837,7 @@ export function ReconcileClient({
                       </Badge>
                       {r.kind === 'near' ? <Badge tone="neutral">{r.dayGap}d apart</Badge> : null}
                       <Money value={r.entry.amount} size="sm" tone="debt" />
+                      <EditEntryButton id={r.entryId} label={`Edit ${r.entry.description}`} />
                     </li>
                   );
                 })}
@@ -957,6 +960,7 @@ export function ReconcileClient({
                                         <span className="min-w-0 flex-1 truncate">{m.description}</span>
                                         <Badge tone="neutral">on {m.method}</Badge>
                                         <Money value={m.amount} size="sm" />
+                                        <EditEntryButton id={m.id} label={`Edit ${m.description}`} />
                                         <Button
                                           size="sm" variant="secondary" disabled={moving === m.id}
                                           onClick={() => move(m.id, card, m.description)}
@@ -1108,6 +1112,7 @@ export function ReconcileClient({
                                 size="sm"
                                 tone={e.direction === 'credit' ? 'credit' : 'debt'}
                               />
+                              <EditEntryButton id={e.id} label={`Edit ${e.description}`} />
                               {isMatched ? null : !filedElsewhere ? (
                                 <select
                                   value=""
@@ -1316,6 +1321,10 @@ function StatementRow({
           <ArrowRight className="h-3 w-3" aria-hidden="true" />
           already on <Badge tone="accent">{proposal.entry.method}</Badge>
         </span>
+      ) : null}
+      {/* The entry this line points at, openable to check before moving it. */}
+      {proposal && !settled ? (
+        <EditEntryButton id={proposal.entryId} label={`Edit ${proposal.entry.description}`} />
       ) : null}
 
       <Money value={line.amount} size="sm" tone={line.direction === 'credit' ? 'credit' : 'debt'} />

@@ -1,5 +1,6 @@
 'use client';
 
+import { EditEntryButton } from '@/components/entry/entry-editor';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, CircleAlert, HelpCircle } from 'lucide-react';
@@ -207,7 +208,10 @@ export function ReconcileClient({ card, statementDates, recorded }: Props) {
                         <span className="truncate text-[var(--color-ink-2)]">
                           {t.remarks} · {t.direction}
                         </span>
-                        <Money value={t.amount} size="sm" tone={t.direction === 'payment' ? 'credit' : 'neutral'} />
+                        <span className="flex shrink-0 items-center gap-1">
+                          <Money value={t.amount} size="sm" tone={t.direction === 'payment' ? 'credit' : 'neutral'} />
+                          <EditEntryButton id={t.id} label={`Edit ${t.remarks}`} className="-my-1.5" />
+                        </span>
                       </li>
                     ))}
                   </ul>

@@ -1,3 +1,4 @@
+import { EditEntryButton } from '@/components/entry/entry-editor';
 import Link from 'next/link';
 import { getSnapshot } from '@/lib/snapshot';
 import { incomeBetween } from '@/lib/analytics';
@@ -28,6 +29,15 @@ export default async function MoneyPage() {
     .filter((i) => !i.deleted && i.ts && i.amount != null)
     .sort((a, b) => (a.ts! < b.ts! ? 1 : -1))
     .slice(0, 10);
+  const incomeDays: { day: string; total: number; rows: typeof recentIncome }[] = [];
+  for (const i of recentIncome) {
+    const day = i.ts!.slice(0, 10);
+    const last = incomeDays.at(-1);
+    const d = last && last.day === day ? last : { day, total: 0, rows: [] as typeof recentIncome };
+    if (d !== last) incomeDays.push(d);
+    d.rows.push(i);
+    d.total = Math.round((d.total + (i.amount ?? 0)) * 100) / 100;
+  }
 
   const unconfigured = accounts.every((a) => a.openingBalance === 0 && a.since === null);
 
@@ -133,24 +143,34 @@ export default async function MoneyPage() {
             <Empty title="No income recorded" />
           </div>
         ) : (
-          <ul className="mt-4 flex flex-col">
-            {recentIncome.map((i) => (
-              <li
-                key={i.id}
-                className="flex items-center gap-3 border-b border-[var(--color-line)] py-2.5 last:border-0"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm">{i.source || 'Income'}</div>
-                  <div className="text-[11px] text-[var(--color-ink-3)]">
-                    {i.ts ? formatDay(i.ts.slice(0, 10)) : '—'}
-                    {i.account ? ` · ${i.account}` : ''}
-                    {i.remarks ? ` · ${i.remarks}` : ''}
-                  </div>
-                </div>
-                <Money value={i.amount} size="md" tone="credit" className="shrink-0" />
-              </li>
+          /* By day, like every list of entries in the app. */
+          <div className="mt-4 flex flex-col">
+            {incomeDays.map((d) => (
+              <section key={d.day}>
+                <h3 className="flex items-center justify-between border-b border-[var(--color-line)] pb-1 pt-2.5 text-[11px] font-medium text-[var(--color-ink-3)] first:pt-0">
+                  <span>{formatDay(d.day)}</span>
+                  {d.rows.length > 1 ? <Money value={d.total} size="sm" tone="muted" /> : null}
+                </h3>
+                <ul className="flex flex-col">
+                  {d.rows.map((i) => (
+                    <li
+                      key={i.id}
+                      className="flex items-center gap-2 border-b border-[var(--color-line)] py-2.5 last:border-0"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm">{i.source || 'Income'}</div>
+                        <div className="text-[11px] text-[var(--color-ink-3)]">
+                          {[i.account, i.remarks].filter(Boolean).join(' · ') || '\u00a0'}
+                        </div>
+                      </div>
+                      <Money value={i.amount} size="md" tone="credit" className="shrink-0" />
+                      <EditEntryButton id={i.id} label={`Edit ${i.source || 'income'}`} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
             ))}
-          </ul>
+          </div>
         )}
       </Panel>
 

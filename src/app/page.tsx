@@ -7,6 +7,7 @@ import { delta, money, moneyCompact } from '@/lib/format';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { photoNoticesForPage } from '@/lib/photo-check';
 import { getSnapshot } from '@/lib/snapshot';
+import { EditEntryButton } from '@/components/entry/entry-editor';
 import { PhotoCorrections } from '@/components/photo-corrections';
 import { Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
 
@@ -56,6 +57,12 @@ export default async function TodayPage() {
   const month = monthSummary(snap, today);
   const prior = priorWindow(snap, today);
   const recent = recentActivity(snap, today, 6);
+  const recentDays: { day: string; rows: typeof recent }[] = [];
+  for (const r of recent) {
+    const last = recentDays.at(-1);
+    if (last && last.day === r.day) last.rows.push(r);
+    else recentDays.push({ day: r.day, rows: [r] });
+  }
 
   const needsAction = view.rows.filter((r) => r.status === 'overdue' || r.status === 'due-soon');
   const change = prior.spend > 0 ? (month.spend - prior.spend) / prior.spend : null;
@@ -264,29 +271,40 @@ export default async function TodayPage() {
           {recent.length === 0 ? (
             <Empty title="No activity yet" />
           ) : (
-            <ul className="flex flex-col">
-              {recent.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex items-center gap-3 border-b border-[var(--color-line)] py-2.5 last:border-0"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm">{r.remarks || r.category}</div>
-                    <div className="text-[11px] text-[var(--color-ink-3)]">
-                      {formatDayShort(r.day)} · {r.method}
-                      {r.kind === 'card_payment' ? ' · bill payment' : ''}
-                      {r.kind === 'credit_given' ? ' · lent out' : ''}
-                    </div>
-                  </div>
-                  <Money
-                    value={r.amount}
-                    size="md"
-                    tone={r.kind === 'card_payment' ? 'credit' : 'neutral'}
-                    className="shrink-0"
-                  />
-                </li>
+            /* By day, like every list of entries in the app. */
+            <div className="flex flex-col">
+              {recentDays.map((d) => (
+                <section key={d.day}>
+                  <h3 className="border-b border-[var(--color-line)] pb-1 pt-2.5 text-[11px] font-medium text-[var(--color-ink-3)] first:pt-0">
+                    {formatDayShort(d.day)}
+                  </h3>
+                  <ul className="flex flex-col">
+                    {d.rows.map((r) => (
+                      <li
+                        key={r.id}
+                        className="flex items-center gap-2 border-b border-[var(--color-line)] py-2.5 last:border-0"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm">{r.remarks || r.category}</div>
+                          <div className="text-[11px] text-[var(--color-ink-3)]">
+                            {r.method}
+                            {r.kind === 'card_payment' ? ' · bill payment' : ''}
+                            {r.kind === 'credit_given' ? ' · lent out' : ''}
+                          </div>
+                        </div>
+                        <Money
+                          value={r.amount}
+                          size="md"
+                          tone={r.kind === 'card_payment' ? 'credit' : 'neutral'}
+                          className="shrink-0"
+                        />
+                        <EditEntryButton id={r.id} label={`Edit ${r.remarks || r.category}`} />
+                      </li>
+                    ))}
+                  </ul>
+                </section>
               ))}
-            </ul>
+            </div>
           )}
         </Panel>
       </section>

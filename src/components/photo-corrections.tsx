@@ -1,5 +1,6 @@
 'use client';
 
+import { EditEntryButton } from '@/components/entry/entry-editor';
 import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, ArrowRight, Camera } from 'lucide-react';
@@ -87,7 +88,8 @@ export function PhotoCorrections({
                     <span className="font-medium text-[var(--color-ink)]">{q.duplicate.remarks || 'another entry'}</span>{' '}
                     ({q.duplicate.method}, {when(q.duplicate.ts)}) is already there: {q.why}.
                   </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <EditEntryButton id={q.transactionId} label={`Edit ${q.remarks || 'this entry'}`} />
                     <Button
                       size="sm" disabled={pending}
                       onClick={() => act(
@@ -149,7 +151,8 @@ export function PhotoCorrections({
                   ) : null}
                   {c.time ? <Change from={when(c.time.from)} to={when(c.time.to)} note="the time on the photo" /> : null}
                 </span>
-                <span className="flex shrink-0 gap-1.5">
+                <span className="flex shrink-0 items-center gap-1.5">
+                  <EditEntryButton id={c.transactionId} label={`Edit ${c.remarks || 'this entry'}`} />
                   <Button
                     size="sm" variant="secondary" disabled={pending}
                     onClick={() => act(() => undoPhotoCorrectionAction({ transactionId: c.transactionId }), 'Put back as it was logged.')}
