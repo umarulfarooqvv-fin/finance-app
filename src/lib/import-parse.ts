@@ -171,7 +171,28 @@ export function parseImport(
 
     /* The currency word a receipt prints — "Rs. 380", "INR 380" — is not part
        of the number. "₹" already passes; the words used to cost the whole row. */
-    const parsed = evaluateAmount(amountRaw.replace(/^\s*(?:rs\.?|inr)\s*/i, ''));
+    const plain = amountRaw.replace(/^\s*(?:rs\.?|inr)\s*/i, '').trim();
+
+    /* A SIGN IS A DIRECTION, the way a bank or UPI history writes it:
+       "-60.00" is sixty rupees going OUT and "+30.76" is money coming IN.
+       Read literally, every "-" row was refused as a negative amount — a
+       whole history at once — while the few "+" rows sailed through as
+       spends, so cashback was about to be recorded as spending.
+
+       So a leading minus is dropped and the row is a spend of that amount.
+       A leading plus is money received, which this importer has no way to
+       record correctly (it makes spends): it is left out, and says where it
+       belongs instead. A number with no sign is a spend, as it always was. */
+    const sign = /^[+\-−]/.exec(plain)?.[0] ?? '';
+    if (sign === '+') {
+      skipped.push({
+        line,
+        raw,
+        why: 'money received (+), not a spend — add it under Income, or as a refund',
+      });
+      return;
+    }
+    const parsed = evaluateAmount(sign ? plain.slice(1) : plain);
     if (!parsed.ok) {
       skipped.push({ line, raw, why: `could not read the amount "${amountRaw}"` });
       return;

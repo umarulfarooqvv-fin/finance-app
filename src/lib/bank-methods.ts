@@ -92,6 +92,26 @@ export function resolveMethod(raw: string, mapping: BankMethods): string | null 
     if (kindMethods.size === 1) return kindHits[0]![1];
   }
 
+  /* The same account, MASKED DIFFERENTLY. One screen prints "Federal 2788",
+     another "Federal XXXXXXXXXX2788", a third "Federal XX88" — all the same
+     account, never character-for-character the same label. Compared on the
+     bank name plus the digits each side actually shows: one must end with the
+     other, at least two digits. That keeps the two accounts at one bank apart
+     — 2788 and 16 share no tail — which dropping the number entirely cannot,
+     and is why "Federal XXXXXXXXXX2788" used to resolve to nothing at all. */
+  const bank = foldForSearch(withoutAccount(withoutKind(raw)));
+  const digits = accountDigits(raw);
+  if (bank && digits.length >= 2) {
+    const tailHits = Object.entries(mapping).filter(([label]) => {
+      if (foldForSearch(withoutAccount(withoutKind(label))) !== bank) return false;
+      const theirs = accountDigits(label);
+      if (theirs.length < 2) return false;
+      return digits.endsWith(theirs) || theirs.endsWith(digits);
+    });
+    const tailMethods = new Set(tailHits.map(([, m]) => m));
+    if (tailMethods.size === 1) return tailHits[0]![1];
+  }
+
   /* Compared with the account number dropped from BOTH sides, so "Utkarsh"
      finds "Utkarsh XX24" and "CSB XX99" finds "CSB XX06". Not short-circuited
      when the query already has no number — that is the very case where only
@@ -106,5 +126,18 @@ export function resolveMethod(raw: string, mapping: BankMethods): string | null 
     ([label]) => foldForSearch(withoutAccount(label)) === trimmed,
   );
   const methods = new Set(hits.map(([, m]) => m));
-  return methods.size === 1 ? hits[0]![1] : null;
+  if (methods.size === 1) return hits[0]![1];
+  if (hits.length > 0) return null;
+
+  /* No mapping mentions this bank at all, but the bank IS one of this app's
+     own accounts under the same name: "Canara XX5598" is Canara. Only when
+     nothing is mapped for that bank — a mapped bank has said what its
+     accounts are, and that answer stands. */
+  return (ALL_METHODS as readonly string[]).find((m) => foldForSearch(m) === trimmed) ?? null;
+}
+
+/** The digits an account label shows: "XXXXXXXXXX2788" → "2788", "XX16" → "16". */
+function accountDigits(label: string): string {
+  const tail = /(?:XX)?[\dX]{2,}\s*$/i.exec(label.trim())?.[0] ?? '';
+  return tail.replace(/\D/g, '');
 }

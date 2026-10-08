@@ -35,6 +35,10 @@ DD/MM/YYYY HH:MM | amount | method | category | description
 
 Rules:
 - Copy every amount EXACTLY as shown, to the paisa. Never round.
+- Write the amount as a plain number with no + or - sign: every line is money
+  that went OUT.
+- Leave out money RECEIVED — refunds, cashback, payments made to you. This
+  list is for spending; money coming in is recorded separately.
 - Give the time in 24-hour form after the date ("22/09/2026 15:11") when the
   screenshot shows one; write the date alone when it does not. Never make up
   a time.
@@ -51,7 +55,7 @@ Rules:
   Leave it EMPTY if you cannot tell. Do not guess.
 - description is what it was for, in a few plain words. Use the merchant or
   person's name if that is all there is.
-- Leave out anything that is not money leaving or arriving: balance figures,
+- Leave out anything that is not money leaving: balance figures,
   totals, rewards points, "request sent" notices.
 - If a screenshot shows the same payment twice, include it once.
 - Do not invent a transaction you cannot see. If a value is unreadable, write

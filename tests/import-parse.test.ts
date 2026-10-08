@@ -100,9 +100,32 @@ describe('parseImport', () => {
     expect(parseImport('14/09/2026 | 450+230 | Fi | Food | Two teas').rows[0]!.amount).toBe(680);
   });
 
-  it('refuses a zero or negative amount rather than saving one', () => {
+  it('refuses a zero amount rather than saving one', () => {
     expect(parseImport('14/09/2026 | 0 | Fi | Food | Tea').skipped).toHaveLength(1);
-    expect(parseImport('14/09/2026 | -50 | Fi | Food | Tea').skipped).toHaveLength(1);
+    // A minus is read as "money out"; one left negative after that is refused.
+    expect(parseImport('14/09/2026 | --50 | Fi | Food | Tea').skipped).toHaveLength(1);
+  });
+
+  /* A UPI or bank history writes the direction as a sign. Read literally, a
+     pasted history of 324 lines was refused whole as "negative" while its
+     three "+" lines — cashback — were about to be saved as spends. */
+  it('reads a leading minus as money going out', () => {
+    const { rows, skipped } = parseImport(
+      ['05/10/2026 | -60.00 | Fi | Personal | Plastic Place', '03/10/2026 | \u22121701.00 | Fi | Groceries | Hypermarket'].join('\n'),
+    );
+    expect(skipped).toEqual([]);
+    expect(rows.map((r) => r.amount)).toEqual([60, 1701]);
+  });
+
+  it('leaves out money received (+) instead of saving it as a spend', () => {
+    const { rows, skipped } = parseImport('07/07/2026 | +30.76 | Fi | Super Money | super.money cashback');
+    expect(rows).toEqual([]);
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]!.why).toMatch(/money received/);
+  });
+
+  it('still reads a plain number as a spend', () => {
+    expect(parseImport('14/09/2026 | 450.15 | Fi | Food | Tea').rows[0]!.amount).toBe(450.15);
   });
 
   it('skips a header row without reporting it as broken', () => {

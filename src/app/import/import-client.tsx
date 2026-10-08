@@ -490,11 +490,11 @@ export function ImportClient({
       {skipped.length > 0 ? (
         <Panel className="mb-4">
           <SectionTitle>
-            {skipped.length} {skipped.length === 1 ? 'line' : 'lines'} could not be read
+            {skipped.length} {skipped.length === 1 ? 'line' : 'lines'} left out
           </SectionTitle>
           <p className="mb-2 text-xs text-[var(--color-ink-2)]">
-            Not imported and not counted. Shown so they can be fixed in the paste rather than
-            quietly missing from the batch.
+            Not imported and not counted — each says why. A line that could not be read can be
+            fixed in the paste; money received (a + amount) belongs under Income instead.
           </p>
           <ul className="flex flex-col gap-1">
             {skipped.map((s) => (

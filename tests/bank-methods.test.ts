@@ -77,3 +77,30 @@ describe('resolveMethod', () => {
     expect(resolveMethod('Weird Bank 1', bankMethodsFrom({ bank_methods: bad }))).toBeNull();
   });
 });
+
+/* The same account masked differently on different screens. A UPI history
+   printed "Federal XXXXXXXXXX2788" where the mapping says "Federal 2788", and
+   with three Federal accounts mapped, dropping the number could not choose. */
+describe('resolveMethod — masked account numbers', () => {
+  it('matches on the digits each side shows', () => {
+    expect(resolveMethod('Federal XXXXXXXXXX2788', MAPPING)).toBe('Fi');
+    expect(resolveMethod('Federal XXXXXXXXXX3838', MAPPING)).toBe('Jupiter');
+    expect(resolveMethod('Federal XXXX16', MAPPING)).toBe('Scapia');
+    expect(resolveMethod('Federal XX88', MAPPING)).toBe('Fi');
+  });
+
+  it('still refuses to guess between accounts at one bank', () => {
+    expect(resolveMethod('Federal XXXX9999', MAPPING)).toBeNull();
+    expect(resolveMethod('Federal', MAPPING)).toBeNull();
+  });
+
+  it('takes an unmapped bank that is itself one of the app\'s accounts', () => {
+    expect(resolveMethod('Canara XX5598', MAPPING)).toBe('Canara');
+  });
+
+  it('lets a mapped bank keep its own answer over a same-named account', () => {
+    // ICICI is an app account too, but "ICICI XX00" is mapped to Coral.
+    expect(resolveMethod('ICICI XX00', MAPPING)).toBe('Coral');
+  });
+});
+
