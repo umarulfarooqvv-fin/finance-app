@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/toast';
 import { reassignMethodAction } from './actions';
 import { TransactionDialog } from '@/app/transactions/transaction-dialog';
 import { EditEntryButton } from '@/components/entry/entry-editor';
+import { SelectBox, SelectionControls, useSelection } from '@/components/ui/selection';
 import type { MisfiledCandidate } from '@/lib/misfiled';
 
 /* ===========================================================================
@@ -85,7 +86,6 @@ export function MisfiledPanel({
   const [open, setOpen] = useState(asPage);
   const [method, setMethod] = useState<string | null>(null);
   const [q, setQ] = useState('');
-  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [moving, setMoving] = useState<string | null>(null);
   const [bulk, setBulk] = useState(false);
   const [withOwn, setWithOwn] = useState(false);
@@ -149,6 +149,13 @@ export function MisfiledPanel({
     );
   }, [pool, method, q]);
 
+  /* What can be ticked, in the order shown: a Shift-click range runs along
+     it. A row already on this card cannot be moved onto it, so it is never
+     part of a range. */
+  const pickOrder = useMemo(() => shown.filter((c) => !ownIds.has(c.id)).map((c) => c.id), [shown, ownIds]);
+  const sel = useSelection(pickOrder, { keys: asPage });
+  const picked = sel.selected;
+
   /* BY DAY, ALWAYS. A flat list makes the date column repeat on every row and
      still leaves the reader finding the boundaries by eye — and the question
      asked of this list is nearly always "what happened on the 22nd". */
@@ -190,14 +197,6 @@ export function MisfiledPanel({
      a selection even if its box was ticked before the toggle was switched on. */
   const selected = shown.filter((c) => picked.has(c.id) && !ownIds.has(c.id));
 
-  function toggle(id: string) {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
 
   function moveOne(c: MisfiledCandidate) {
     setMoving(c.id);
@@ -219,7 +218,7 @@ export function MisfiledPanel({
       else notify('error', `${c.description}: ${r.error}`);
     }
     setBulk(false);
-    setPicked(new Set());
+    sel.deselectAll();
     if (moved > 0) {
       notify('success', `${moved} ${moved === 1 ? 'entry' : 'entries'} moved to ${card}.`);
       router.refresh();
@@ -440,6 +439,17 @@ export function MisfiledPanel({
             </div>
           </div>
 
+          {pickOrder.length > 0 ? (
+            <SelectionControls
+              sel={sel}
+              total={pickOrder.length}
+              noun="entry"
+              nouns="entries"
+              shortcuts={asPage}
+              className="mt-2"
+            />
+          ) : null}
+
           {days.length === 0 ? (
             <p className="py-3 text-[11px] text-[var(--color-ink-3)]">Nothing matches that.</p>
           ) : (
@@ -519,13 +529,7 @@ export function MisfiledPanel({
                               aria-hidden="true"
                             />
                           ) : (
-                            <input
-                              type="checkbox"
-                              checked={picked.has(c.id)}
-                              onChange={() => toggle(c.id)}
-                              aria-label={`Select ${c.description}`}
-                              className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-                            />
+                            <SelectBox sel={sel} k={c.id} label={`Select ${c.description}`} />
                           )}
                           <span className="min-w-0 flex-1 truncate text-sm">
                             {c.description}

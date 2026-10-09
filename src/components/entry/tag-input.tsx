@@ -172,7 +172,7 @@ export function TagChips({ tags, className }: { tags: string[]; className?: stri
       {tags.map((t) => (
         <span
           key={tagKey(t)}
-          className="inline-flex max-w-[12rem] items-center gap-1 rounded-full bg-[var(--color-accent-soft)] px-1.5 py-px text-[10px] font-medium text-[var(--color-accent)]"
+          className="inline-flex max-w-[min(12rem,100%)] items-center gap-1 rounded-full bg-[var(--color-accent-soft)] px-1.5 py-px text-[10px] font-medium text-[var(--color-accent)]"
         >
           <Tag className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
           <span className="truncate">{t}</span>

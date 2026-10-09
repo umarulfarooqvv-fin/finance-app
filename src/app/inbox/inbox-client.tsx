@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Loader2, Plus, RotateCw, Sparkles, Trash2, X } from 'lucide-react';
 import { formatDayShort } from '@/lib/time';
@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/toast';
 import { cx, Empty } from '@/components/ui/primitives';
 import { captureSrc, SafeImage } from '@/components/capture-image';
 import { TransactionDialog } from '@/app/transactions/transaction-dialog';
+import { SelectBox, SelectionControls, useSelection } from '@/components/ui/selection';
 import { discardCaptureAction, linkCaptureAction } from './actions';
 import { IMPORT_DRAFT_KEY } from '@/lib/import-handoff';
 import { entryFromReading } from '@/lib/capture-entry';
@@ -78,7 +79,9 @@ export function InboxClient({
   /* Several photos can go to /import in one trip — a busy week's worth of
      receipts, not just one at a time. Nothing is ticked by default, and an
      empty selection means "everything that is ready". */
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const photoOrder = useMemo(() => captures.map((c) => c.id), [captures]);
+  const sel = useSelection(photoOrder, { keys: visionEnabled });
+  const selected = sel.selected;
 
   /* What has been read, starting from what the server already had. Kept here
      as well so a read finishing on this page updates the tile without a
@@ -93,13 +96,6 @@ export function InboxClient({
   });
   const [reading, setReading] = useState<Set<string>>(new Set());
 
-  const toggleSelected = (id: string) =>
-    setSelected((s) => {
-      const next = new Set(s);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
 
   /** Read these photos into rows, and remember the answers. */
   async function read(ids: string[], refresh = false) {
@@ -255,11 +251,7 @@ export function InboxClient({
               ? 'Nothing read yet'
               : `Review ${sendRows} ${sendRows === 1 ? 'row' : 'rows'} from ${sendIds.length} ${sendIds.length === 1 ? 'photo' : 'photos'}`}
           </Button>
-          {selected.size > 0 ? (
-            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
-              Clear the {selected.size} ticked
-            </Button>
-          ) : null}
+          <SelectionControls sel={sel} total={captures.length} noun="photo" shortcuts className="w-full" />
           <span className="min-w-0 flex-1 text-[11px] text-[var(--color-ink-3)]">
             {reading.size > 0
               ? `Reading ${reading.size} ${reading.size === 1 ? 'photo' : 'photos'}…`
@@ -287,12 +279,11 @@ export function InboxClient({
                   button's own click win over the checkbox's, which would make
                   it untoggleable rather than merely ugly markup. */}
               {visionEnabled ? (
-                <input
-                  type="checkbox"
-                  checked={selected.has(c.id)}
-                  onChange={() => toggleSelected(c.id)}
-                  aria-label={`Select the photo from ${formatDayShort(c.ts.slice(0, 10))} for import`}
-                  className="absolute left-2 top-2 z-10 h-4 w-4 accent-[var(--color-accent)]"
+                <SelectBox
+                  sel={sel}
+                  k={c.id}
+                  label={`Select the photo from ${formatDayShort(c.ts.slice(0, 10))} for import`}
+                  className="absolute left-2 top-2 z-10"
                 />
               ) : null}
               <button

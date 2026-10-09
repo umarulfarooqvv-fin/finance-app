@@ -1,5 +1,6 @@
 'use client';
 
+import { SelectBox, SelectionControls, useSelection, type ClickMods } from '@/components/ui/selection';
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, CheckCircle2, CircleHelp, CreditCard, FileWarning, Link2,
@@ -103,8 +104,6 @@ export function ReconcileClient({
   const [submitted, setSubmitted] = useState('');
 
   const [links, setLinks] = useState<ManualLink[]>([]);
-  const [pickedLines, setPickedLines] = useState<Set<number>>(new Set());
-  const [pickedApp, setPickedApp] = useState<Set<string>>(new Set());
   const [suggestFor_, setSuggestFor] = useState<number | null>(null);
   /* Whether the right-hand column lists only what is already on this card, or
      EVERY entry in the billing period whatever it was filed against.
@@ -142,7 +141,6 @@ export function ReconcileClient({
      on the interest — so the list has to be able to put them back together.
      Held by line number, and cleared whenever the paste is re-matched, because
      a number that survived a re-parse would point at a different row. */
-  const [merging, setMerging] = useState<Set<number>>(new Set());
 
   const parsed = useMemo(
     () => parseStatement(submitted, { dateOrder, assumeYear: periodYear }),
@@ -323,6 +321,20 @@ export function ReconcileClient({
     }));
   }, [parsed.lines, auto.matches, proposals, linkedLines]);
 
+  /* The three lists that can be ticked here, on the shared selection: the
+     same Shift-click ranges, Ctrl/⌘-click, Select all and Range mode as every
+     other list in the app. A matched entry has nothing left to do, so it is
+     never part of a range. */
+  const lineSel = useSelection(openLines.map((l) => l.line));
+  const appSel = useSelection(pool.map((e) => e.id), { disabled: (id) => matchedAppIds.has(id) });
+  const mergeSel = useSelection(
+    lineStates.filter((st) => !(st.matched || st.pairedByHand) && !st.proposal).map((st) => st.line.line),
+    { keys: true },
+  );
+  const pickedLines = lineSel.selected;
+  const pickedApp = appSel.selected;
+  const merging = mergeSel.selected;
+
   /* This card's own entries with nothing on the statement against them. The
      other half of the same question: the statement list asks what the bank
      billed that the app has not got, this asks what the app has that the bank
@@ -380,7 +392,7 @@ export function ReconcileClient({
       else notify('error', `${e.description}: ${result.error}`);
     }
     setBulkMoving(false);
-    setPickedApp(new Set());
+    appSel.deselectAll();
     if (moved > 0) {
       notify('success', `${moved} ${moved === 1 ? 'entry' : 'entries'} moved to ${card}.`);
       router.refresh();
@@ -395,8 +407,8 @@ export function ReconcileClient({
       ...prev,
       { id: `m-${Date.now()}`, statement: selectedLines, app: selectedApp },
     ]);
-    setPickedLines(new Set());
-    setPickedApp(new Set());
+    lineSel.deselectAll();
+    appSel.deselectAll();
     setSuggestFor(null);
   }
 
@@ -407,8 +419,8 @@ export function ReconcileClient({
   function applySuggestion(line: StatementLine, app: AppEntry[]) {
     setLinks((prev) => [...prev, { id: `m-${Date.now()}`, statement: [line], app }]);
     setSuggestFor(null);
-    setPickedLines(new Set());
-    setPickedApp(new Set());
+    lineSel.deselectAll();
+    appSel.deselectAll();
   }
 
   const toggle = <T,>(set: Set<T>, value: T, apply: (s: Set<T>) => void) => {
@@ -471,7 +483,7 @@ export function ReconcileClient({
 
           <Button
             type="button"
-            onClick={() => { setSubmitted(text); setLinks([]); setPickedLines(new Set()); setPickedApp(new Set()); setMerging(new Set()); }}
+            onClick={() => { setSubmitted(text); setLinks([]); lineSel.deselectAll(); appSel.deselectAll(); mergeSel.deselectAll(); }}
             disabled={!text.trim()}
           >
             Match against {card}
@@ -479,7 +491,7 @@ export function ReconcileClient({
           {hasRun ? (
             <Button
               type="button" variant="ghost"
-              onClick={() => { setText(''); setSubmitted(''); setLinks([]); setMerging(new Set()); }}
+              onClick={() => { setText(''); setSubmitted(''); setLinks([]); mergeSel.deselectAll(); }}
             >
               Clear
             </Button>
@@ -695,7 +707,7 @@ export function ReconcileClient({
                     </>
                   )}
                 </span>
-                <Button size="sm" variant="ghost" onClick={() => setMerging(new Set())}>
+                <Button size="sm" variant="ghost" onClick={() => mergeSel.deselectAll()}>
                   Clear
                 </Button>
                 <Button
@@ -708,6 +720,16 @@ export function ReconcileClient({
               </div>
             ) : null}
 
+            {mergeSel.count > 0 || lineStates.some((st) => !(st.matched || st.pairedByHand) && !st.proposal) ? (
+              <SelectionControls
+                sel={mergeSel}
+                total={lineStates.filter((st) => !(st.matched || st.pairedByHand) && !st.proposal).length}
+                noun="line to merge"
+                nouns="lines to merge"
+                shortcuts
+                className="mb-2"
+              />
+            ) : null}
             <ul className="flex flex-col">
               {lineStates.map((st) => (
                 <StatementRow
@@ -716,7 +738,7 @@ export function ReconcileClient({
                   card={card}
                   moving={moving}
                   ticked={merging.has(st.line.line)}
-                  onTick={() => toggle(merging, st.line.line, setMerging)}
+                  onTick={(e) => mergeSel.click(st.line.line, e)}
                   onAdd={() => setAdding([st.line])}
                   onMove={(id) => move(id, card, st.line.description)}
                 />
@@ -898,6 +920,7 @@ export function ReconcileClient({
                   <Side
                     title={`On the statement · ${openLines.length}`}
                     empty="Every statement line is accounted for."
+                    controls={<SelectionControls sel={lineSel} total={openLines.length} noun="line" className="mb-1.5" />}
                   >
                     {openLines.map((l) => {
                       const flag = chargeFlag(l.description);
@@ -921,13 +944,7 @@ export function ReconcileClient({
                       return (
                         <li key={l.line} className="border-b border-[var(--color-line)] last:border-b-0">
                           <div className="flex flex-wrap items-center gap-2 py-2">
-                            <input
-                              type="checkbox"
-                              checked={pickedLines.has(l.line)}
-                              onChange={() => toggle(pickedLines, l.line, setPickedLines)}
-                              aria-label={`Select ${l.description}`}
-                              className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-                            />
+                            <SelectBox sel={lineSel} k={l.line} label={`Select ${l.description}`} />
                             <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
                               {formatDayShort(l.day)}
                             </span>
@@ -1055,6 +1072,14 @@ export function ReconcileClient({
                         Every entry is accounted for.
                       </p>
                     ) : (
+                      <>
+                      <SelectionControls
+                        sel={appSel}
+                        total={pool.filter((e) => !matchedAppIds.has(e.id)).length}
+                        noun="entry"
+                        nouns="entries"
+                        className="mb-1.5"
+                      />
                       <ul className="flex flex-col">
                         {pool.map((e) => {
                           const filedElsewhere = elsewhereIds.has(e.id);
@@ -1088,13 +1113,7 @@ export function ReconcileClient({
                                   aria-hidden="true"
                                 />
                               ) : (
-                                <input
-                                  type="checkbox"
-                                  checked={pickedApp.has(e.id)}
-                                  onChange={() => toggle(pickedApp, e.id, setPickedApp)}
-                                  aria-label={`Select ${e.description}`}
-                                  className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-                                />
+                                <SelectBox sel={appSel} k={e.id} label={`Select ${e.description}`} />
                               )}
                               <span className="num w-20 shrink-0 text-xs text-[var(--color-ink-3)]">
                                 {formatDayShort(e.day)}
@@ -1138,6 +1157,7 @@ export function ReconcileClient({
                           );
                         })}
                       </ul>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1227,7 +1247,7 @@ export function ReconcileClient({
               }
             : null
         }
-        onSaved={() => { setAdding(null); setMerging(new Set()); router.refresh(); }}
+        onSaved={() => { setAdding(null); mergeSel.deselectAll(); router.refresh(); }}
       />
     </>
   );
@@ -1257,7 +1277,8 @@ function StatementRow({
   card: string;
   moving: string | null;
   ticked: boolean;
-  onTick: () => void;
+  /** The click, so Shift and Ctrl/⌘ reach the shared selection. */
+  onTick: (e: ClickMods) => void;
   onAdd: () => void;
   onMove: (entryId: string) => void;
 }) {
@@ -1282,7 +1303,9 @@ function StatementRow({
         <input
           type="checkbox"
           checked={ticked}
-          onChange={onTick}
+          readOnly
+          onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }}
+          onClick={onTick}
           aria-label={`Merge ${line.description} into one entry`}
           className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
         />
@@ -1359,13 +1382,16 @@ function StatementRow({
   );
 }
 
-function Side({ title, empty, children }: { title: string; empty: string; children: React.ReactNode }) {
+function Side({
+  title, empty, children, controls,
+}: { title: string; empty: string; children: React.ReactNode; controls?: React.ReactNode }) {
   const list = Array.isArray(children) ? children : [children];
   return (
     <div className="min-w-0">
       <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-3)]">
         {title}
       </div>
+      {list.length > 0 ? controls : null}
       {list.length === 0 ? (
         <p className="py-3 text-[11px] text-[var(--color-ink-3)]">{empty}</p>
       ) : (

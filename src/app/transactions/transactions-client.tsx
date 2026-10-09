@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Camera, CheckSquare, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import { captureSrc, SafeImage } from '@/components/capture-image';
@@ -14,6 +14,7 @@ import { TransactionDialog, type EditableTransaction } from './transaction-dialo
 import { deleteTransactionAction, restoreTransactionAction } from './actions';
 import { tagEntriesAction } from '@/app/tags/actions';
 import { TagChips, TagInput } from '@/components/entry/tag-input';
+import { SelectBox, SelectionControls, useSelection } from '@/components/ui/selection';
 
 /* ===========================================================================
    The client island for the transaction list.
@@ -67,15 +68,15 @@ export function TransactionsClient({
   /* Selecting, to tag many entries at once: filter to a trip's days, tick
      what belonged to it, tag them in one go. */
   const [selecting, setSelecting] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [toAdd, setToAdd] = useState<string[]>([]);
-  const toggle = (ids: string[], on: boolean) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      for (const id of ids) { if (on) next.add(id); else next.delete(id); }
-      return next;
-    });
-  const stopSelecting = () => { setSelecting(false); setSelected(new Set()); setToAdd([]); };
+  // The rows in the order shown, which is what a Shift-click range runs along.
+  const order = useMemo(() => groups.flatMap((g) => g.rows.filter((r) => !r.deleted).map((r) => r.id)), [groups]);
+  // Scoped to what the filters match: change the filter and anything ticked
+  // that it no longer shows is unticked, so no action reaches hidden rows.
+  const sel = useSelection(order, { keys: selecting, scope: matchedIds });
+  const selected = sel.selected;
+  const toggle = sel.set;
+  const stopSelecting = () => { setSelecting(false); sel.deselectAll(); setToAdd([]); };
 
   // The tags already on what is ticked — the ones that can be taken off.
   const selectedTags = (() => {
@@ -167,28 +168,28 @@ export function TransactionsClient({
 
         {selecting ? (
           <div className="mt-3 flex flex-col gap-2 rounded-[var(--radius-field)] border border-[var(--color-accent)] bg-[var(--color-accent-soft)] p-2.5">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-              <span className="font-semibold text-[var(--color-ink)]">
-                {selected.size} selected
-              </span>
-              {matchedIds.length > 0 && selected.size < matchedIds.length ? (
-                <button
-                  type="button"
-                  onClick={() => toggle(matchedIds, true)}
-                  className="font-medium text-[var(--color-accent)]"
-                >
-                  Select all {matchedIds.length.toLocaleString('en-IN')} matching
-                </button>
-              ) : null}
-              {selected.size > 0 ? (
-                <button type="button" onClick={() => setSelected(new Set())} className="font-medium text-[var(--color-ink-2)]">
-                  Clear
-                </button>
-              ) : null}
+            <div className="flex flex-wrap items-start gap-2">
+              <SelectionControls
+                sel={sel}
+                total={order.length}
+                noun="entry"
+                nouns="entries"
+                shortcuts
+                className="min-w-0 flex-1"
+                extra={matchedIds.length > order.length && selected.size < matchedIds.length ? (
+                  <button
+                    type="button"
+                    onClick={() => toggle(matchedIds, true)}
+                    className="font-medium text-[var(--color-accent)]"
+                  >
+                    Select all {matchedIds.length.toLocaleString('en-IN')} matching
+                  </button>
+                ) : null}
+              />
               <button
                 type="button"
                 onClick={stopSelecting}
-                className="ml-auto inline-flex items-center gap-1 font-medium text-[var(--color-ink-2)]"
+                className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-[var(--color-ink-2)]"
               >
                 <X className="h-3.5 w-3.5" aria-hidden="true" /> Done
               </button>
@@ -278,8 +279,8 @@ export function TransactionsClient({
                     <input
                       type="checkbox"
                       aria-label={`Select every entry on ${formatDayShort(g.day)}`}
-                      checked={g.rows.every((r) => selected.has(r.id))}
-                      onChange={(e) => toggle(g.rows.map((r) => r.id), e.target.checked)}
+                      checked={g.rows.filter((r) => !r.deleted).every((r) => selected.has(r.id))}
+                      onChange={(e) => toggle(g.rows.filter((r) => !r.deleted).map((r) => r.id), e.target.checked)}
                       className="h-4 w-4 accent-[var(--color-accent)]"
                     />
                   ) : null}
@@ -305,27 +306,33 @@ export function TransactionsClient({
                 {g.rows.map((t) => (
                   <li
                     key={t.id}
+                    /* While selecting, the whole row is a target — a Shift-click
+                       anywhere on it extends the range, not just on the box. */
+                    onMouseDown={selecting ? sel.noTextSelect : undefined}
+                    onClick={selecting && !t.deleted ? (e) => {
+                      if ((e.target as HTMLElement).closest('button,a,input,select,label')) return;
+                      sel.click(t.id, e);
+                    } : undefined}
                     className={cx(
                       'flex flex-wrap items-center gap-x-3 gap-y-0.5 border-b border-[var(--color-line)] px-3 py-2.5 last:border-b-0',
                       t.deleted && 'opacity-50',
+                      selecting && !t.deleted && 'cursor-pointer select-none',
+                      selecting && selected.has(t.id) && 'bg-[var(--color-accent-soft)]',
                     )}
                   >
-                    {selecting ? (
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${t.remarks || t.category}`}
-                        checked={selected.has(t.id)}
-                        onChange={(e) => toggle([t.id], e.target.checked)}
-                        className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-                      />
+                    {selecting && !t.deleted ? (
+                      <SelectBox sel={sel} k={t.id} label={`Select ${t.remarks || t.category}`} />
                     ) : null}
                     <span className="num hidden w-11 shrink-0 text-xs text-[var(--color-ink-3)] sm:block">
                       {t.ts.slice(11, 16)}
                     </span>
 
-                    <span className="flex min-w-0 flex-1 items-center gap-2 text-sm">
-                      <span className="truncate">{t.remarks || t.category}</span>
-                      <TagChips tags={t.tags} className="shrink-0" />
+                    {/* Wraps: tags go onto a second line rather than squeezing
+                        the description to nothing or running into the next
+                        column. */}
+                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                      <span className="min-w-0 max-w-full truncate">{t.remarks || t.category}</span>
+                      <TagChips tags={t.tags} className="min-w-0 max-w-full" />
                       {t.deleted ? <Badge tone="bad">deleted</Badge> : null}
                       {t.isFuture ? <Badge tone="neutral">upcoming</Badge> : null}
                       {t.kind === 'card_payment' ? <Badge tone="good">bill paid</Badge> : null}
