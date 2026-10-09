@@ -46,6 +46,7 @@ export async function loadEntryAction(id: string): Promise<ActionResult<LoadedEn
         method: t.method,
         category: t.category,
         remarks: t.remarks,
+        tags: t.userTags,
       },
     });
   }

@@ -1,5 +1,7 @@
 'use client';
 
+import { joinTags, uniqueTags } from '@/lib/user-tags';
+import { TagInput } from '@/components/entry/tag-input';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Camera, Check, Columns2, Copy, FileWarning, History, Sparkles, Trash2, X } from 'lucide-react';
@@ -54,8 +56,10 @@ type Draft = ImportRow & {
 };
 
 export function ImportClient({
-  methods, categories, serverNow, entryCount, bankMethods, visionEnabled, visionLabel, aiUsage,
+  methods, categories, serverNow, entryCount, bankMethods, visionEnabled, visionLabel, aiUsage, tagList,
 }: {
+  /** Tags already in use, most used first. */
+  tagList: string[];
   methods: string[];
   categories: string[];
   serverNow: string;
@@ -79,6 +83,7 @@ export function ImportClient({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [bulkRemark, setBulkRemark] = useState('');
+  const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [checking, setChecking] = useState(false);
 
   /* Photos read straight into paste-rows text, without a trip through an
@@ -227,6 +232,16 @@ export function ImportClient({
     setDrafts((d) => (d ?? []).map((r) => (picked.has(r.key) ? { ...r, ...patch } : r)));
   };
 
+  /* Tags ADD to what a row already has, rather than replacing it: a dinner
+     can be both "Banglore Trip" and "Work", and tagging the trip's rows
+     must not wipe the other. */
+  const tagPicked = (tags: string[]) => {
+    if (picked.size === 0 || tags.length === 0) return;
+    setDrafts((d) => (d ?? []).map((r) => (picked.has(r.key) ? { ...r, tags: uniqueTags([...r.tags, ...tags]) } : r)));
+  };
+  const untag = (key: string, tag: string) =>
+    setDrafts((d) => (d ?? []).map((r) => (r.key === key ? { ...r, tags: r.tags.filter((t) => t !== tag) } : r)));
+
   const toggle = (key: string) =>
     setPicked((p) => {
       const next = new Set(p);
@@ -277,7 +292,7 @@ export function ImportClient({
      once on a flaky connection — resolves to the same row rather than doubling
      the batch. */
   const keyFor = (r: Draft) =>
-    `import:${r.day}:${r.time}:${r.amount}:${r.method}:${r.category}:${r.remarks}`;
+    `import:${r.day}:${r.time}:${r.amount}:${r.method}:${r.category}:${joinTags(r.remarks, r.tags)}`;
 
   function save() {
     startTransition(async () => {
@@ -288,7 +303,8 @@ export function ImportClient({
           amount: String(r.amount),
           method: r.method,
           category: r.category,
-          remarks: r.remarks,
+          // Tags are stored in the remarks as "[Banglore Trip]" (lib/user-tags).
+          remarks: joinTags(r.remarks, r.tags),
         })),
       });
 
@@ -320,7 +336,7 @@ export function ImportClient({
       } else {
         // Keep only what did not land, so a second press cannot double what did.
         const bad = new Set(failed.map((f) => `${f.ts}|${f.remarks}`));
-        setDrafts(rows.filter((r) => bad.has(`${r.day}T${r.time}|${r.remarks}`)));
+        setDrafts(rows.filter((r) => bad.has(`${r.day}T${r.time}|${joinTags(r.remarks, r.tags)}`)));
       }
       router.refresh();
     });
@@ -595,6 +611,24 @@ export function ImportClient({
                 >
                   Set description
                 </Button>
+                <div className="flex w-full flex-wrap items-start gap-2">
+                  <div className="min-w-0 flex-1 basis-56">
+                    <TagInput
+                      value={bulkTags}
+                      onChange={setBulkTags}
+                      suggestions={tagList}
+                      compact
+                      placeholder="Tag for all selected — e.g. Banglore Trip"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={bulkTags.length === 0}
+                    onClick={() => { tagPicked(bulkTags); setBulkTags([]); }}
+                  >
+                    Add tag
+                  </Button>
+                </div>
                 <select
                   value=""
                   aria-label="Set the method for all selected rows"
@@ -686,6 +720,22 @@ export function ImportClient({
                         aria-label={`Description for the row on ${r.day}`}
                         className={cn(inputClass(), 'min-w-0 flex-1 basis-40 border-0 bg-transparent px-1 py-1 text-xs')}
                       />
+                      {r.tags.map((t) => (
+                        <span
+                          key={t}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--color-accent-soft)] py-0.5 pl-2 pr-1 text-[10px] font-medium text-[var(--color-accent)]"
+                        >
+                          {t}
+                          <button
+                            type="button"
+                            aria-label={`Remove the tag ${t}`}
+                            onClick={() => untag(r.key, t)}
+                            className="grid h-3.5 w-3.5 place-items-center rounded-full hover:bg-[var(--color-accent)] hover:text-white"
+                          >
+                            <X className="h-2.5 w-2.5" aria-hidden="true" />
+                          </button>
+                        </span>
+                      ))}
                       {/* One group, so the controls wrap TOGETHER onto a second
                           line when the column is halved for the comparison —
                           two tidy lines rather than five stacked ones. */}

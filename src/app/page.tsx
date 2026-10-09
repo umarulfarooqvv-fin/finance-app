@@ -8,6 +8,7 @@ import { Page, PageHeader } from '@/components/layout/page-header';
 import { photoNoticesForPage } from '@/lib/photo-check';
 import { getSnapshot } from '@/lib/snapshot';
 import { EditEntryButton } from '@/components/entry/entry-editor';
+import { TagChips } from '@/components/entry/tag-input';
 import { PhotoCorrections } from '@/components/photo-corrections';
 import { Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
 
@@ -285,7 +286,10 @@ export default async function TodayPage() {
                         className="flex items-center gap-2 border-b border-[var(--color-line)] py-2.5 last:border-0"
                       >
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm">{r.remarks || r.category}</div>
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-sm">{r.remarks || r.category}</span>
+                            <TagChips tags={r.tags} className="shrink-0" />
+                          </div>
                           <div className="text-[11px] text-[var(--color-ink-3)]">
                             {r.method}
                             {r.kind === 'card_payment' ? ' · bill payment' : ''}

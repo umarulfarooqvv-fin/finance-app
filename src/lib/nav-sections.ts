@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, BellRing, BookOpen, Camera, CreditCard, Home, LineChart, MessageCircleQuestion, Scale, ScanLine, Search, Settings, Smartphone, TrendingUp, Upload, Wallet, type LucideIcon,
+  ArrowLeftRight, BellRing, BookOpen, Camera, CreditCard, Home, LineChart, MessageCircleQuestion, Scale, ScanLine, Search, Settings, Smartphone, Tag, TrendingUp, Upload, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 /* ===========================================================================
@@ -71,6 +71,15 @@ export const NAV_SECTIONS: NavSection[] = [
                    'search', 'filter', 'ledger', 'all activity'],
         match: ['/transactions'],
         primary: true,
+      },
+      {
+        label: 'Tags',
+        href: '/tags',
+        icon: Tag,
+        hint: 'Trips and occasions, and what each one cost',
+        keywords: ['tag', 'label', 'trip', 'occasion', 'event', 'travel', 'hospital',
+                   'wedding', 'group', 'project'],
+        match: ['/tags'],
       },
       {
         label: 'Spending',

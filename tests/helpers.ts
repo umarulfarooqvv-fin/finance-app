@@ -56,6 +56,7 @@ export function tx(over: Partial<Transaction> = {}): Transaction {
     method,
     category,
     remarks,
+    userTags: [],
     kind: derived.kind,
     cardAffected: derived.cardAffected,
     cardDirection: derived.cardDirection,

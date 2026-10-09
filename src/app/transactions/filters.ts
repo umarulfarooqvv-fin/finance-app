@@ -1,6 +1,8 @@
 import type { Transaction } from '@/lib/types';
 import { monthKey } from '@/lib/time';
 import { looseIncludes } from '@/lib/search-text';
+import { entryTags } from '@/lib/analytics';
+import { tagKey } from '@/lib/user-tags';
 
 /* ===========================================================================
    Reading a filter set off the URL, and applying it.
@@ -25,6 +27,11 @@ export type Filters = {
   category: string[];
   /** Chosen methods. Empty means any. */
   method: string[];
+  /** Chosen tags (lib/user-tags). Empty means any; several mean any OF those. */
+  tag: string[];
+  /** An inclusive span of days, "YYYY-MM-DD" — a trip, a hospital week. */
+  from: string;
+  to: string;
   /** Inclusive bounds on the absolute amount, or null for unbounded. */
   min: number | null;
   max: number | null;
@@ -70,6 +77,9 @@ export function readFilters(sp: RawParams): Filters {
     day: DAY_RE.test(day) ? day : '',
     category: list(sp['cat']),
     method: list(sp['method']),
+    tag: list(sp['tag']),
+    from: DAY_RE.test(str(sp['from'])) ? str(sp['from']) : '',
+    to: DAY_RE.test(str(sp['to'])) ? str(sp['to']) : '',
     min: bound(sp['min']),
     max: bound(sp['max']),
     upcoming: str(sp['upcoming']) === '1',
@@ -82,6 +92,7 @@ export function readFilters(sp: RawParams): Filters {
 export function isNarrowed(f: Filters): boolean {
   return Boolean(
     f.q || f.month || f.day || f.category.length > 0 || f.method.length > 0
+    || f.tag.length > 0 || f.from || f.to
     || f.min !== null || f.max !== null,
   );
 }
@@ -98,7 +109,8 @@ export function isNarrowed(f: Filters): boolean {
  * exact range is what is wanted; this is for remembering.
  */
 function matchesText(t: Transaction, q: string): boolean {
-  if (looseIncludes(`${t.remarks} ${t.category} ${t.method}`, q)) return true;
+  // Tags too, so typing an occasion's name finds everything filed under it.
+  if (looseIncludes(`${t.remarks} ${t.category} ${t.method} ${entryTags(t).join(' ')}`, q)) return true;
 
   const digits = q.replace(/[,\s₹]/g, '');
   if (!/^\d+(\.\d+)?$/.test(digits)) return false;
@@ -128,6 +140,16 @@ export function applyFilters(
     // "Food and Fuel" a wider question rather than an impossible one.
     if (f.category.length > 0 && !f.category.includes(t.category)) return false;
     if (f.method.length > 0 && !f.method.includes(t.method)) return false;
+    if (f.tag.length > 0) {
+      const mine = new Set(entryTags(t).map(tagKey));
+      if (!f.tag.some((x) => mine.has(tagKey(x)))) return false;
+    }
+
+    // A span of days, for a period that is not a calendar month. Either end
+    // may be open; both apply alongside a month, as a narrowing of it.
+    const d = t.ts.slice(0, 10);
+    if (f.from && d < f.from) return false;
+    if (f.to && d > f.to) return false;
 
     /* Bounds compare the magnitude. Every amount in this ledger is stored
        positive and the direction lives in `kind`, so a sign test here would

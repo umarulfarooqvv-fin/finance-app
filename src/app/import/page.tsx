@@ -1,3 +1,4 @@
+import { tagNames } from '@/lib/tag-summary';
 import { getSnapshot } from '@/lib/snapshot';
 import { nowIST } from '@/lib/time';
 import { ALL_CATEGORIES, ALL_METHODS } from '@/lib/types';
@@ -48,6 +49,7 @@ export default async function ImportPage() {
         visionEnabled={vision.name !== 'off'}
         visionLabel={vision.label}
         aiUsage={aiUsage}
+        tagList={tagNames(snap)}
       />
     </Page>
   );

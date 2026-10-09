@@ -1,3 +1,4 @@
+import { tagKey, uniqueTags } from '@/lib/user-tags';
 import {
   addDays, dayOf, daysBetween, endOfDay, monthEnd, monthKey, monthStart, startOfDay,
   type Day, type Instant,
@@ -70,9 +71,38 @@ export function byMethod(rows: Transaction[]): Breakdown[] {
   return breakdownBy(rows, (t) => t.method);
 }
 
-export function byTrip(rows: Transaction[]): Breakdown[] {
-  return breakdownBy(rows.filter((t) => t.tags.trip), (t) => t.tags.trip ?? '');
+/**
+ * An entry's tags (lib/user-tags), plus an old "(Trip X)" label that has not
+ * been turned into a tag yet — so the history written before tags existed
+ * still answers "what did that trip cost".
+ */
+export function entryTags(t: Transaction): string[] {
+  return uniqueTags([...t.userTags, ...(t.tags.trip ? [`Trip ${t.tags.trip}`] : [])]);
 }
+
+/**
+ * Spend by tag. An entry with two tags counts in both, so the shares are each
+ * tag's part of ALL the spend given — they need not add up to 100%.
+ */
+export function byTag(rows: Transaction[]): Breakdown[] {
+  const all = rows.reduce((a, t) => a + (t.amount ?? 0), 0);
+  const sums = new Map<string, { key: string; total: number; count: number }>();
+  for (const t of rows) {
+    for (const tag of entryTags(t)) {
+      const k = tagKey(tag);
+      const cur = sums.get(k) ?? { key: tag, total: 0, count: 0 };
+      cur.total += t.amount ?? 0;
+      cur.count += 1;
+      sums.set(k, cur);
+    }
+  }
+  return [...sums.values()]
+    .map((v) => ({ key: v.key, total: round2(v.total), count: v.count, share: all > 0 ? v.total / all : 0 }))
+    .sort((a, b) => b.total - a.total);
+}
+
+/** Kept for the Ask tool's "trip" grouping, which now means any tag. */
+export const byTrip = byTag;
 
 /** Daily totals across a range, with zero-filled gaps so charts stay honest. */
 export function dailySeries(snapshot: Snapshot, from: Day, to: Day): { day: Day; total: number }[] {
@@ -194,6 +224,7 @@ export type RecentEntry = {
   method: string;
   category: string;
   remarks: string;
+  tags: string[];
   kind: Transaction['kind'];
   verified: boolean;
 };
@@ -213,6 +244,7 @@ export function recentActivity(snapshot: Snapshot, today: Day, limit = 8): Recen
       method: t.method,
       category: t.category,
       remarks: t.remarks,
+      tags: entryTags(t),
       kind: t.kind,
       verified: t.verified,
     }));

@@ -5,6 +5,7 @@ import { ChevronDown, Search, X } from 'lucide-react';
 import { Money, SectionTitle, cx } from '@/components/ui/primitives';
 import { inputClass } from '@/components/ui/field';
 import { EditEntryButton } from '@/components/entry/entry-editor';
+import { TagChips } from '@/components/entry/tag-input';
 import { formatDayShort } from '@/lib/time';
 import {
   byDay, exploreCategories,
@@ -168,6 +169,7 @@ export function CategoryExplorer({ rows }: { rows: ExploreRow[] }) {
                           >
                             <span className="num w-10 shrink-0 text-[var(--color-ink-3)]">{r.ts.slice(11, 16)}</span>
                             <span className="min-w-0 flex-1 truncate">{r.remarks || g.category}</span>
+                            <TagChips tags={r.tags} />
                             <Money value={r.amount} size="sm" tone="debt" />
                             <EditEntryButton id={r.id} label={`Edit ${r.remarks || g.category}`} className="-my-1" />
                           </div>

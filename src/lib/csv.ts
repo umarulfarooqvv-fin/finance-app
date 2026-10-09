@@ -1,3 +1,4 @@
+import { splitTags } from '@/lib/user-tags';
 import { classify, parseTimestamp } from '@/lib/classify';
 import { round2 } from '@/lib/money';
 import type { Transaction } from '@/lib/types';
@@ -78,10 +79,12 @@ export async function transactionsFromCsv(text: string): Promise<Transaction[]> 
     // put identical numbers into the engine.
     const parsedAmount = amtRaw.trim() === '' ? null : Number(amtRaw.replace(/,/g, ''));
     const amount = parsedAmount !== null && Number.isFinite(parsedAmount) ? round2(parsedAmount) : parsedAmount;
+    // Tags split off exactly as the live loader does (lib/user-tags).
+    const split = splitTags(remarks.trim());
     const cls = classify({
       method: method.trim(),
       category: category.trim(),
-      remarks: remarks.trim(),
+      remarks: split.text,
     });
 
     out.push({
@@ -90,7 +93,8 @@ export async function transactionsFromCsv(text: string): Promise<Transaction[]> 
       amount: Number.isFinite(amount) ? amount : null,
       method: method.trim(),
       category: category.trim(),
-      remarks: remarks.trim(),
+      remarks: split.text,
+      userTags: split.tags,
       kind: cls.kind,
       cardAffected: cls.cardAffected,
       cardDirection: cls.cardDirection,

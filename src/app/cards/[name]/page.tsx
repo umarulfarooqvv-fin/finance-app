@@ -14,6 +14,7 @@ import { money, percent } from '@/lib/format';
 import { round2 } from '@/lib/money';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import { EditEntryButton } from '@/components/entry/entry-editor';
+import { TagChips } from '@/components/entry/tag-input';
 import {
   Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, Stat, StatGrid, TableWrap, Td, Th,
 } from '@/components/ui/primitives';
@@ -73,6 +74,7 @@ function Ledger({ entries, empty }: { entries: LedgerEntry[]; empty: string }) {
                   <span className="flex items-center gap-2">
                     <span className="num w-10 shrink-0 text-xs text-[var(--color-ink-3)]">{e.ts.slice(11, 16)}</span>
                     <span className="truncate">{e.description}</span>
+                    <TagChips tags={e.tags} />
                     {e.verified ? (
                       <span
                         className="text-[var(--color-pos)]"

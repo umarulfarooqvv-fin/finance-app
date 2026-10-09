@@ -31,6 +31,7 @@ import { readFileSync } from 'node:fs';
 import crypto from 'node:crypto';
 import { classify } from '@/lib/classify.ts';
 import { round2 } from '@/lib/money.ts';
+import { joinTags, splitTags } from '@/lib/user-tags.ts';
 import { diff, loadDb, loadSheet } from './sheet-diff.mjs';
 
 const APPLY = process.argv.includes('--apply');
@@ -53,7 +54,8 @@ function rowId(r, n) {
 
 /** Build the Postgres row, deriving everything derivable. */
 function toRow(r, id) {
-  const cls = classify({ method: r.method, category: r.category, remarks: r.remarks });
+  // Classified on the words alone, as the app's loader does (lib/user-tags).
+  const cls = classify({ method: r.method, category: r.category, remarks: splitTags(r.remarks).text });
   return {
     id,
     ts: r.ts,
@@ -91,7 +93,9 @@ const { toInsert, toUpdate, orphans } = diff(sheet, db);
 
 // Assign occurrence indices so identical same-day rows get distinct ids.
 const seen = new Map();
-const inserts = toInsert.map((r) => {
+const inserts = toInsert.map((sheetRow) => {
+  // Stored as the sheet's words, with a "(label)" naming a known tag as that tag.
+  const r = { ...sheetRow, remarks: sheetRow.remarksOut ?? sheetRow.remarks };
   const base = [r.ts?.slice(0, 10), r.amount, r.method, r.category, r.remarks].join('|');
   const n = seen.get(base) ?? 0;
   seen.set(base, n + 1);
@@ -126,6 +130,9 @@ for (let i = 0; i < inserts.length; i += 500) {
 
 let updated = 0;
 for (const u of toUpdate) {
+  /* The sheet's words, but the app's TAGS: a tag added in the app is never
+     taken away by a sheet that does not know it exists. */
+  const remarks = joinTags(u.after.remarks, [...(u.before.tagsRaw ?? []), ...(u.after.labelTags ?? [])]);
   const cls = classify({ method: u.after.method, category: u.after.category, remarks: u.after.remarks });
   await post(
     `transactions?id=eq.${encodeURIComponent(u.before.id)}`,
@@ -133,7 +140,7 @@ for (const u of toUpdate) {
       amount: u.after.amount === null ? null : round2(u.after.amount),
       method: u.after.method,
       category: u.after.category,
-      remarks: u.after.remarks,
+      remarks,
       kind: cls.kind,
       card_affected: cls.cardAffected,
       card_direction: cls.cardDirection,

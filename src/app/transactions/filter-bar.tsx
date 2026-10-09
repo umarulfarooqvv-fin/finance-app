@@ -30,6 +30,9 @@ export type InitialFilters = {
   day: string;
   category: string[];
   method: string[];
+  tag: string[];
+  from: string;
+  to: string;
   min?: string;
   max?: string;
   upcoming: boolean;
@@ -56,9 +59,11 @@ const without = (values: string[], drop: string): string | undefined =>
   asParam(values.filter((v) => v !== drop));
 
 export function FilterBar({
-  months, initial, narrowed, matched, total, spend,
+  months, tags, initial, narrowed, matched, total, spend,
 }: {
   months: string[];
+  /** Tags in use, most used first. */
+  tags: string[];
   initial: InitialFilters;
   narrowed: boolean;
   matched: number;
@@ -106,6 +111,16 @@ export function FilterBar({
       key: `method-${m}`,
       label: `from ${m}`,
       clear: { method: without(initial.method, m) },
+    });
+  }
+  for (const t of initial.tag) {
+    chips.push({ key: `tag-${t}`, label: <># {t}</>, clear: { tag: without(initial.tag, t) } });
+  }
+  if (initial.from || initial.to) {
+    chips.push({
+      key: 'range',
+      label: `${initial.from ? formatDay(initial.from) : 'start'} – ${initial.to ? formatDay(initial.to) : 'today'}`,
+      clear: { from: undefined, to: undefined },
     });
   }
   if (initial.min) {
@@ -176,7 +191,7 @@ export function FilterBar({
           ))}
           <button
             type="button"
-            onClick={() => set({ q: undefined, month: undefined, day: undefined, cat: undefined, method: undefined, min: undefined, max: undefined })}
+            onClick={() => set({ q: undefined, month: undefined, day: undefined, cat: undefined, method: undefined, tag: undefined, from: undefined, to: undefined, min: undefined, max: undefined })}
             className="px-1.5 text-[11px] font-medium text-[var(--color-accent)]"
           >
             Clear all
@@ -251,6 +266,45 @@ export function FilterBar({
               <option value="">{initial.method.length > 0 ? 'Add another…' : 'Any method'}</option>
               {ALL_METHODS.filter((m) => !initial.method.includes(m))
                 .map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </label>
+
+          {/* A span of days — a trip, a hospital week — which a calendar month
+              never quite is. Either end may be left open. */}
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">From</span>
+            <input
+              type="date"
+              value={initial.from}
+              onChange={(e) => set({ from: e.target.value || undefined, day: undefined })}
+              className={inputClass()}
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">To</span>
+            <input
+              type="date"
+              value={initial.to}
+              onChange={(e) => set({ to: e.target.value || undefined, day: undefined })}
+              className={inputClass()}
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">
+              Tag{initial.tag.length > 0 ? ` · ${initial.tag.length}` : ''}
+            </span>
+            <select
+              value=""
+              onChange={(e) => e.target.value && set({ tag: withValue(initial.tag, e.target.value) })}
+              className={inputClass()}
+              disabled={tags.length === 0}
+            >
+              <option value="">
+                {tags.length === 0 ? 'No tags yet' : initial.tag.length > 0 ? 'Add another…' : 'Any tag'}
+              </option>
+              {tags.filter((t) => !initial.tag.includes(t)).map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
 

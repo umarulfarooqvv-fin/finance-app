@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import { getSnapshot } from '@/lib/snapshot';
+import { tagNames } from '@/lib/tag-summary';
 import { frequentPairs, type EntryPair } from '@/lib/entry-hints';
 import { dayOf } from '@/lib/time';
 
@@ -71,5 +72,7 @@ export async function GET(): Promise<Response> {
 
   const pairs: EntryPair[] = frequentPairs(snap, dayOf(snap.loadedAt), PAIRS);
 
-  return NextResponse.json({ ok: true, suggestions, pairs });
+  // Tags already in use, most used first — offered by the tag field so an
+  // occasion is reused rather than retyped a slightly different way.
+  return NextResponse.json({ ok: true, suggestions, pairs, tags: tagNames(snap) });
 }

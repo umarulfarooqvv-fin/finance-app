@@ -22,6 +22,7 @@ export type ExploreRow = {
   amount: number;
   category: string;
   remarks: string;
+  tags: string[];
   kind: TxKind;
 };
 
@@ -50,7 +51,7 @@ export function inScope(row: ExploreRow, scope: ExploreScope): boolean {
 export function matchesQuery(row: ExploreRow, query: string): boolean {
   const words = foldForSearch(query).split(/\s+/).filter(Boolean);
   if (words.length === 0) return true;
-  const hay = foldForSearch(`${row.remarks} ${row.category}`);
+  const hay = foldForSearch(`${row.remarks} ${row.category} ${row.tags.join(' ')}`);
   return words.every((w) => hay.includes(w));
 }
 

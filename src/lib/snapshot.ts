@@ -1,5 +1,6 @@
 import 'server-only';
 import { classify } from '@/lib/classify';
+import { splitTags } from '@/lib/user-tags';
 import { round2 } from '@/lib/money';
 import { DEFAULT_ACCOUNTS, DEFAULT_CARDS } from '@/lib/defaults';
 import { nowIST } from '@/lib/time';
@@ -69,7 +70,11 @@ const bool = (v: unknown): boolean => v === true || v === 'true' || v === 1;
 function toTransaction(r: Row): Transaction {
   const method = str(r['method']);
   const category = str(r['category']);
-  const remarks = str(r['remarks']);
+  /* Tags live in the remarks as "[Banglore Trip]" (lib/user-tags). Split
+     here, once, so every screen shows the words and the tags apart — and so
+     a tag can never be mistaken for a person or an instalment counter by
+     the classifier, which reads only the words. */
+  const { text: remarks, tags: userTags } = splitTags(str(r['remarks']));
   const cls = classify({ method, category, remarks });
 
   const ts = str(r['ts'], '');
@@ -82,6 +87,7 @@ function toTransaction(r: Row): Transaction {
     method,
     category,
     remarks,
+    userTags,
     kind: cls.kind,
     cardAffected: cls.cardAffected,
     cardDirection: cls.cardDirection,

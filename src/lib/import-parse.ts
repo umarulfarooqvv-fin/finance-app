@@ -1,3 +1,4 @@
+import { splitTags } from '@/lib/user-tags';
 import { evaluateAmount } from '@/lib/calc';
 import { foldForSearch } from '@/lib/search-text';
 import { ALL_CATEGORIES } from '@/lib/types';
@@ -40,7 +41,10 @@ export type ImportRow = {
       was resolved to one of this app's names. */
   methodRaw: string;
   category: string;
+  /** The description, without its tags. */
   remarks: string;
+  /** "[Banglore Trip]" written in the description — see lib/user-tags. */
+  tags: string[];
   /** What still needs a person. Empty means ready to save. */
   issues: ImportIssue[];
 };
@@ -236,8 +240,9 @@ export function parseImport(
       methodRaw: methodRaw.trim(),
       category,
       // Everything after the four known columns, so a description containing a
-      // pipe survives instead of being cut at it.
-      remarks: rest.join(' | ').trim(),
+      // pipe survives instead of being cut at it. A [Tag] in it is a tag.
+      remarks: splitTags(rest.join(' | ')).text,
+      tags: splitTags(rest.join(' | ')).tags,
       issues,
     });
   });

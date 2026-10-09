@@ -72,7 +72,7 @@ export function buildTools(snapshot: Snapshot, today: Day) {
   const spending = betaTool({
     name: 'get_spending',
     description:
-      'Total spending over a date range, optionally broken down by category, payment method, or trip. Spending means money consumed: card bill payments, money lent out, and transfers into savings are all excluded. Use for "how much did I spend on X", comparisons between periods, and category questions.',
+      'Total spending over a date range, optionally broken down by category, payment method, or tag (an occasion such as a trip — "trip" groups by tag). Spending means money consumed: card bill payments, money lent out, and transfers into savings are all excluded. Use for "how much did I spend on X", comparisons between periods, and category questions.',
     inputSchema: {
       type: 'object',
       properties: {

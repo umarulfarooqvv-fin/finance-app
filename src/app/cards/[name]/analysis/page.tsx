@@ -1,3 +1,4 @@
+import { entryTags } from '@/lib/analytics';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getSnapshot } from '@/lib/snapshot';
@@ -13,6 +14,7 @@ import { inputClass } from '@/components/ui/field';
 import type { ExploreRow } from '@/lib/category-explore';
 import { CategoryExplorer } from './category-explorer';
 import { EditEntryButton } from '@/components/entry/entry-editor';
+import { TagChips } from '@/components/entry/tag-input';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,6 +97,7 @@ export default async function CardAnalysisPage({
     amount: t.amount ?? 0,
     category: t.category ?? '',
     remarks: t.remarks ?? '',
+    tags: entryTags(t),
     kind: t.kind,
   }));
 
@@ -210,6 +213,7 @@ export default async function CardAnalysisPage({
                   {formatDayShort(t.ts!.slice(0, 10))}
                 </span>
                 <span className="min-w-0 flex-1 truncate">{t.remarks || t.category}</span>
+                <TagChips tags={entryTags(t)} />
                 <Badge tone={t.kind === 'credit_given' ? 'warn' : 'neutral'}>{t.category}</Badge>
                 <Money value={t.amount ?? 0} size="sm" tone="debt" />
                 <EditEntryButton id={t.id} label={`Edit ${t.remarks || t.category}`} />

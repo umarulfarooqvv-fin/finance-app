@@ -84,7 +84,10 @@ export type Transaction = {
   amount: number | null;
   method: Method;
   category: string;
+  /** What the entry says, without its tags — see lib/user-tags. */
   remarks: string;
+  /** Occasions it belongs to: "Banglore Trip". Stored in the remarks as [Tag]. */
+  userTags: string[];
   kind: TxKind;
   cardAffected: CardName | null;
   cardDirection: CardDirection | null;

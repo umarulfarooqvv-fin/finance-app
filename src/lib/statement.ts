@@ -1,3 +1,4 @@
+import { entryTags } from '@/lib/analytics';
 import { creditLedger } from '@/lib/credit';
 import {
   cycleFor, cycleOverridesFrom, daysUntilDue, dueStatus, recentCycles,
@@ -229,6 +230,7 @@ export type LedgerEntry = {
   ts: Instant;
   day: Day;
   description: string;
+  tags: string[];
   category: string;
   debit: number | null;
   credit: number | null;
@@ -255,6 +257,7 @@ export function cardDetail(snapshot: Snapshot, card: Card, today: Day): CardDeta
     ts: t.ts as Instant,
     day: dayOf(t.ts as Instant),
     description: t.remarks || t.category || '—',
+    tags: entryTags(t),
     category: t.category,
     debit: t.cardDirection === 'debt+' ? (t.amount as number) : null,
     credit: t.cardDirection === 'debt-' ? (t.amount as number) : null,

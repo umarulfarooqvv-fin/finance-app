@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { byDay, exploreCategories, type ExploreRow } from '@/lib/category-explore';
 
 const row = (id: string, ts: string, amount: number, category: string, remarks = '', kind: ExploreRow['kind'] = 'spend'): ExploreRow =>
-  ({ id, ts, amount, category, remarks, kind });
+  ({ id, ts, amount, category, remarks, tags: [], kind });
 
 const rows: ExploreRow[] = [
   row('a', '2026-09-01T10:00:00', 100.1, 'Food', 'Tea'),

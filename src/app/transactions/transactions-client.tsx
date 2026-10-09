@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { Camera, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import { Camera, CheckSquare, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import { captureSrc, SafeImage } from '@/components/capture-image';
 import { formatDayShort } from '@/lib/time';
 import { money } from '@/lib/format';
@@ -12,6 +12,8 @@ import { useToast } from '@/components/ui/toast';
 import { Badge, cx, Empty, Money } from '@/components/ui/primitives';
 import { TransactionDialog, type EditableTransaction } from './transaction-dialog';
 import { deleteTransactionAction, restoreTransactionAction } from './actions';
+import { tagEntriesAction } from '@/app/tags/actions';
+import { TagChips, TagInput } from '@/components/entry/tag-input';
 
 /* ===========================================================================
    The client island for the transaction list.
@@ -38,8 +40,13 @@ export type DayGroup = {
 };
 
 export function TransactionsClient({
-  groups, defaultTs, nowIso, toolbar,
+  groups, defaultTs, nowIso, toolbar, tagList, matchedIds,
 }: {
+  /** Tags in use, most used first — offered when tagging a selection. */
+  tagList: string[];
+  /** Every entry the current filters match, across all pages — so a whole
+      trip can be selected at once, not just the page on screen. */
+  matchedIds: string[];
   /** Search, filters and the row-visibility links, rendered inside the frozen
       bar rather than in a panel of their own. They belong with New entry: one
       strip of controls that stays put over a list thousands of rows long. */
@@ -56,6 +63,48 @@ export function TransactionsClient({
   const [editing, setEditing] = useState<EditableTransaction | null>(null);
   const [confirming, setConfirming] = useState<Row | null>(null);
   const [zoomedPhoto, setZoomedPhoto] = useState<string | null>(null);
+
+  /* Selecting, to tag many entries at once: filter to a trip's days, tick
+     what belonged to it, tag them in one go. */
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [toAdd, setToAdd] = useState<string[]>([]);
+  const toggle = (ids: string[], on: boolean) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) { if (on) next.add(id); else next.delete(id); }
+      return next;
+    });
+  const stopSelecting = () => { setSelecting(false); setSelected(new Set()); setToAdd([]); };
+
+  // The tags already on what is ticked — the ones that can be taken off.
+  const selectedTags = (() => {
+    const seen = new Map<string, string>();
+    for (const g of groups) for (const r of g.rows) {
+      if (selected.has(r.id)) for (const t of r.tags) seen.set(t.toLowerCase(), t);
+    }
+    return [...seen.values()];
+  })();
+
+  function applyTags(tags: string[], remove: boolean) {
+    const ids = [...selected];
+    if (ids.length === 0 || tags.length === 0) return;
+    startTransition(async () => {
+      let changed = 0;
+      for (const tag of tags) {
+        const r = await tagEntriesAction({ ids, tag, remove });
+        if (!r.ok) { notify('error', r.error); return; }
+        changed += r.data.changed;
+        if (r.data.tooLong) notify('error', `${r.data.tooLong} entries were left as they were: their remarks would pass 500 characters.`);
+      }
+      const what = tags.map((t) => `“${t}”`).join(', ');
+      notify('success', remove
+        ? `Took ${what} off ${changed} ${changed === 1 ? 'entry' : 'entries'}.`
+        : `Tagged ${changed} ${changed === 1 ? 'entry' : 'entries'} ${what}.`);
+      setToAdd([]);
+      router.refresh();
+    });
+  }
 
   const openAdd = () => { setEditing(null); setFormOpen(true); };
   const openEdit = (r: Row) => { setEditing(r); setFormOpen(true); };
@@ -115,6 +164,77 @@ export function TransactionsClient({
         className="sticky top-0 z-30 -mx-4 mb-3 rounded-t-[var(--radius-card)] border-b border-[var(--color-line)] bg-[var(--color-surface)] px-4 pb-3 pt-4 sm:-mx-5 sm:px-5 sm:pt-5"
       >
         {toolbar}
+
+        {selecting ? (
+          <div className="mt-3 flex flex-col gap-2 rounded-[var(--radius-field)] border border-[var(--color-accent)] bg-[var(--color-accent-soft)] p-2.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              <span className="font-semibold text-[var(--color-ink)]">
+                {selected.size} selected
+              </span>
+              {matchedIds.length > 0 && selected.size < matchedIds.length ? (
+                <button
+                  type="button"
+                  onClick={() => toggle(matchedIds, true)}
+                  className="font-medium text-[var(--color-accent)]"
+                >
+                  Select all {matchedIds.length.toLocaleString('en-IN')} matching
+                </button>
+              ) : null}
+              {selected.size > 0 ? (
+                <button type="button" onClick={() => setSelected(new Set())} className="font-medium text-[var(--color-ink-2)]">
+                  Clear
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={stopSelecting}
+                className="ml-auto inline-flex items-center gap-1 font-medium text-[var(--color-ink-2)]"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" /> Done
+              </button>
+            </div>
+            <div className="flex flex-wrap items-start gap-2">
+              <div className="min-w-0 flex-1 basis-56">
+                <TagInput value={toAdd} onChange={setToAdd} suggestions={tagList} compact placeholder="Tag to add — pick or type one" />
+              </div>
+              <Button
+                size="sm"
+                disabled={pending || selected.size === 0 || toAdd.length === 0}
+                onClick={() => applyTags(toAdd, false)}
+              >
+                Tag {selected.size || ''}
+              </Button>
+            </div>
+            {selectedTags.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--color-ink-2)]">
+                Take off:
+                {selectedTags.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    disabled={pending}
+                    onClick={() => applyTags([t], true)}
+                    className="inline-flex items-center gap-1 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-0.5 hover:border-[var(--color-bad,#e5484d)]"
+                  >
+                    {t} <X className="h-3 w-3" aria-hidden="true" />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setSelecting(true)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--color-accent)]"
+            >
+              <CheckSquare className="h-3.5 w-3.5" aria-hidden="true" />
+              Select to tag
+            </button>
+          </div>
+        )}
+
         {/* Desktop only. On a phone this row is 48px of PERMANENTLY frozen
             height for one button, and it puts that button in the hardest
             corner of the screen to reach — so there it lives above the thumb
@@ -153,7 +273,16 @@ export function TransactionsClient({
           {groups.map((g) => (
             <section key={g.day}>
               <h3 className="sticky top-[var(--tx-bar-h,0px)] z-10 -mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
-                <span className="text-xs font-semibold">
+                <span className="flex items-center gap-2 text-xs font-semibold">
+                  {selecting ? (
+                    <input
+                      type="checkbox"
+                      aria-label={`Select every entry on ${formatDayShort(g.day)}`}
+                      checked={g.rows.every((r) => selected.has(r.id))}
+                      onChange={(e) => toggle(g.rows.map((r) => r.id), e.target.checked)}
+                      className="h-4 w-4 accent-[var(--color-accent)]"
+                    />
+                  ) : null}
                   {formatDayShort(g.day)}
                   <span className="ml-2 font-normal text-[var(--color-ink-3)]">
                     {g.rows.length} {g.rows.length === 1 ? 'entry' : 'entries'}
@@ -181,12 +310,22 @@ export function TransactionsClient({
                       t.deleted && 'opacity-50',
                     )}
                   >
+                    {selecting ? (
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${t.remarks || t.category}`}
+                        checked={selected.has(t.id)}
+                        onChange={(e) => toggle([t.id], e.target.checked)}
+                        className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
+                      />
+                    ) : null}
                     <span className="num hidden w-11 shrink-0 text-xs text-[var(--color-ink-3)] sm:block">
                       {t.ts.slice(11, 16)}
                     </span>
 
                     <span className="flex min-w-0 flex-1 items-center gap-2 text-sm">
                       <span className="truncate">{t.remarks || t.category}</span>
+                      <TagChips tags={t.tags} className="shrink-0" />
                       {t.deleted ? <Badge tone="bad">deleted</Badge> : null}
                       {t.isFuture ? <Badge tone="neutral">upcoming</Badge> : null}
                       {t.kind === 'card_payment' ? <Badge tone="good">bill paid</Badge> : null}

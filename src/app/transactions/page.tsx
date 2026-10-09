@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { currentSnapshot } from '@/lib/views';
 import { photosByTransaction } from '@/lib/captures';
 import { photoNoticesForPage } from '@/lib/photo-check';
+import { tagNames } from '@/lib/tag-summary';
 import { getSnapshot } from '@/lib/snapshot';
 import { PhotoCorrections } from '@/components/photo-corrections';
 import { isSpend, upcomingRows } from '@/lib/analytics';
@@ -87,6 +88,7 @@ export default async function TransactionsPage({
         method: t.method,
         category: t.category,
         remarks: t.remarks,
+        tags: t.userTags,
         kind: t.kind,
         verified: t.verified,
         deleted: t.deleted,
@@ -104,6 +106,8 @@ export default async function TransactionsPage({
   const months = [...new Set(snap.transactions.filter((t) => t.ts).map((t) => monthKey(t.ts!)))]
     .sort()
     .reverse();
+
+  const tagList = tagNames(snap);
 
   const totalShown = round2(matched.reduce((a, t) => a + (t.amount ?? 0), 0));
   const spendShown = round2(matched.filter(isSpend).reduce((a, t) => a + (t.amount ?? 0), 0));
@@ -126,18 +130,24 @@ export default async function TransactionsPage({
         <div className="px-4 pb-4 sm:px-5 sm:pb-5">
           <TransactionsClient
             groups={dayGroups}
+            tagList={tagList}
+            matchedIds={matched.filter((t) => !t.deleted).slice(0, 1000).map((t) => t.id)}
             defaultTs={nowIST()}
             nowIso={now}
             toolbar={
               <>
                 <FilterBar
                   months={months}
+                  tags={tagList}
                   initial={{
                     q: sp['q'] as string | undefined,
                     month: f.month,
                     day: f.day,
                     category: f.category,
                     method: f.method,
+                    tag: f.tag,
+                    from: f.from,
+                    to: f.to,
                     min: sp['min'] as string | undefined,
                     max: sp['max'] as string | undefined,
                     upcoming: f.upcoming,

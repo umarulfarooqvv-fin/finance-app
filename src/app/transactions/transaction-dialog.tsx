@@ -1,5 +1,7 @@
 'use client';
 
+import { joinTags } from '@/lib/user-tags';
+import { TagInput } from '@/components/entry/tag-input';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { Camera, X } from 'lucide-react';
 import { captureSrc, SafeImage } from '@/components/capture-image';
@@ -45,7 +47,10 @@ export type EditableTransaction = {
   amount: number;
   method: string;
   category: string;
+  /** The words only — tags travel separately and are joined back on save. */
   remarks: string;
+  /** Required: an edit that forgot them would save the entry without its tags. */
+  tags: string[];
 };
 
 type ExistingPhoto = { id: string; bytes: number };
@@ -84,7 +89,9 @@ type Props = {
   note?: string | null;
 };
 
-const blank = (ts: string) => ({ amount: '', method: '', category: '', remarks: '', ts });
+const blank = (ts: string) => ({
+  amount: '', method: '', category: '', remarks: '', ts, tags: [] as string[],
+});
 
 /** A draft's set fields, as form strings. Nulls and undefineds are dropped so
     they cannot overwrite a blank with `undefined` and break the inputs. */
@@ -92,9 +99,10 @@ function clean(draft: Props['draft']): Partial<ReturnType<typeof blank>> {
   if (!draft) return {};
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(draft)) {
+    if (k === 'tags') continue;
     if (v !== null && v !== undefined && v !== '') out[k] = String(v);
   }
-  return out;
+  return draft.tags?.length ? { ...out, tags: [...draft.tags] } : out;
 }
 
 export function TransactionDialog({
@@ -137,16 +145,18 @@ export function TransactionDialog({
   const [listOpen, setListOpen] = useState(false);
   const [pairs, setPairs] = useState<EntryPair[]>([]);
   const [history, setHistory] = useState<RemarkSuggestion[] | null>(null);
+  const [tagList, setTagList] = useState<string[]>([]);
 
   useEffect(() => {
     if (!open) return;
     let live = true;
     void fetch('/api/remarks')
       .then((r) => r.json())
-      .then((j: { ok: boolean; suggestions?: RemarkSuggestion[]; pairs?: EntryPair[] }) => {
+      .then((j: { ok: boolean; suggestions?: RemarkSuggestion[]; pairs?: EntryPair[]; tags?: string[] }) => {
         if (!live || !j.ok) return;
         setPairs(j.pairs ?? []);
         setHistory(j.suggestions ?? []);
+        setTagList(j.tags ?? []);
       })
       .catch(() => {
         // Hints are a convenience. Losing them must not break the form, so a
@@ -193,6 +203,7 @@ export function TransactionDialog({
             category: editing.category,
             remarks: editing.remarks,
             ts: editing.ts,
+            tags: editing.tags,
           }
         : { ...blank(defaultTs), ...clean(latestDraft.current) },
     );
@@ -333,7 +344,10 @@ export function TransactionDialog({
     /* The box may hold "450+230+120"; the ledger stores 800. Converted once,
        here, so both the create and the edit path send the same thing and
        neither can drift into saving an expression as text. */
-    const payload = { ...form, amount: amountToSubmit(form.amount) };
+    /* Tags are stored inside the remarks, as "[Banglore Trip]" — see
+       lib/user-tags. Joined here, once, for the create and the edit alike. */
+    const { tags, ...fields } = form;
+    const payload = { ...fields, amount: amountToSubmit(form.amount), remarks: joinTags(form.remarks, tags) };
 
     startTransition(async () => {
       let savedId: string | undefined;
@@ -505,6 +519,19 @@ export function TransactionDialog({
               // Picking is vouching, the same as typing into the field.
               setUncertain((u) => u.filter((x) => x !== 'remarks' && x !== 'category'));
             }}
+          />
+        </Field>
+
+        <Field
+          label="Tags"
+          htmlFor="tags"
+          hint="Optional — an occasion this belongs to, like a trip. Reuse one, or type a new name."
+        >
+          <TagInput
+            id="tags"
+            value={form.tags}
+            onChange={(tags) => setForm((f) => ({ ...f, tags }))}
+            suggestions={tagList}
           />
         </Field>
 

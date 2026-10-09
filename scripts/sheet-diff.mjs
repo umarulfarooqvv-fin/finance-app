@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { parseTimestamp } from '@/lib/classify.ts';
 import { round2 } from '@/lib/money.ts';
+import { comparableRemarks, joinTags, knownLabelTags, splitTags, tagKey } from '@/lib/user-tags.ts';
 
 const SEP = String.fromCharCode(31); // unit separator: cannot occur in the data
 
@@ -105,12 +106,32 @@ export async function loadDb() {
   return out;
 }
 
-export function diff(sheetRows, dbRows) {
+export function diff(sheetRowsIn, dbRows) {
+  /* TAGS. The app keeps tags in the remarks ("Dinner [Banglore Trip]",
+     lib/user-tags); the sheet never learned about them. Compared raw, a
+     tagged row no longer matches its sheet copy, and the sync would either
+     insert the sheet's copy again or "correct" the remarks and drop the tag.
+     So both sides are compared with their tags left out — the app's
+     [markers], and the sheet's (labels) that name a tag the app knows — and
+     what each side said is kept for writing back. */
+  const known = new Map();
+  for (const r of dbRows) for (const t of splitTags(r.remarks).tags) known.set(tagKey(t), t);
+  const knownKeys = new Set(known.keys());
+
   const norm2 = (r) => ({
     ...r,
     amount: r.amount === null ? null : round2(Number(r.amount)),
+    remarksRaw: r.remarks,
+    tagsRaw: splitTags(r.remarks).tags,
+    remarks: comparableRemarks(r.remarks ?? '', knownKeys),
   });
   const db = dbRows.map(norm2);
+  const sheetRows = sheetRowsIn.map((s) => {
+    const remarks = comparableRemarks(s.remarks, knownKeys);
+    const labelTags = knownLabelTags(s.remarks, known);
+    // What to store for a NEW row: its words, with any known label as a tag.
+    return { ...s, remarks, labelTags, remarksOut: joinTags(remarks, labelTags) };
+  });
 
   // Pass 1 — exact match on the natural key (day + amount + method + category
   // + remarks). Multiset, so genuine duplicates pair off one for one.

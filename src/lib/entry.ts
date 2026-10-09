@@ -1,3 +1,4 @@
+import { splitTags } from '@/lib/user-tags';
 import { classify } from '@/lib/classify';
 import type { TablesInsert } from '@/types/database';
 import { nowIST, type Instant } from '@/lib/time';
@@ -46,10 +47,13 @@ export async function normaliseEntry(input: EntryInput, source = 'shortcut'): Pr
   const amount = parseAmount(input.amount);
   const method = (input.method ?? '').trim();
   const category = (input.category ?? '').trim();
+  // Stored as typed, tags and all — "[Banglore Trip]" from the Shortcut is
+  // a tag. Classified on the words alone, as the loader does.
   const remarks = (input.remarks ?? '').trim();
+  const split = splitTags(remarks);
   const ts = input.ts ?? nowIST();
 
-  const cls = classify({ method, category, remarks });
+  const cls = classify({ method, category, remarks: split.text });
 
   return {
     id: await entryId([ts, amount, method, category, remarks]),
@@ -58,6 +62,7 @@ export async function normaliseEntry(input: EntryInput, source = 'shortcut'): Pr
     method,
     category,
     remarks,
+    userTags: split.tags,
     kind: cls.kind,
     cardAffected: cls.cardAffected,
     cardDirection: cls.cardDirection,

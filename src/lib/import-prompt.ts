@@ -62,8 +62,9 @@ Rules:
   UNREADABLE in that field rather than guessing.
 
 If several payments belong to one occasion — a day at a hospital, a trip —
-give them the same description, and still give each its own line and its own
-category.`;
+add the occasion's name in square brackets at the end of each one's
+description, e.g. "Dinner [Banglore Trip]". Still give each its own line and
+its own category.`;
 
 /** A worked example in exactly the shape the prompt asks for. Parsed by a test. */
 export const IMPORT_EXAMPLE = `14/09/2026 13:05 | 450.00 | Fi | Food | Hospital canteen

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getSnapshot } from '@/lib/snapshot';
 import {
-  byCategory, byMethod, byTrip, dailySeries, incomeBetween, lastCompleteMonth,
+  byCategory, byMethod, byTag, dailySeries, incomeBetween, lastCompleteMonth,
   monthlySeries, round2, spendBetween, total,
 } from '@/lib/analytics';
 import { forecast } from '@/lib/forecast';
@@ -59,7 +59,7 @@ export default async function SpendingPage({
   const cost = cardCost(snap, period.from, period.to);
   const daily = dailySeries(snap, period.from, period.to);
   const byMonth = monthsWithin(rows, period.from, period.to);
-  const trips = byTrip(rows);
+  const trips = byTag(rows);
 
   // Offered periods come from the data, so an empty month is never a choice.
   const months = [...new Set(dated.map((t) => monthKey(t.ts!)))].sort().reverse();
@@ -181,7 +181,11 @@ export default async function SpendingPage({
 
       {trips.length > 0 ? (
         <Panel className="mt-4">
-          <SectionTitle>Trips in this period</SectionTitle>
+          <SectionTitle
+            action={<Link href="/tags" className="text-xs font-medium text-[var(--color-accent)]">All tags</Link>}
+          >
+            By tag in this period
+          </SectionTitle>
           <RankedBars data={trips} hue="var(--card-3)" limit={6} />
         </Panel>
       ) : null}
