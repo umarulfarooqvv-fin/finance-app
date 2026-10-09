@@ -235,6 +235,17 @@ export function classify(input: { method: string; category: string; remarks: str
       ? { cardAffected: method as CardName, cardDirection: 'debt+' }
       : { cardAffected: null, cardDirection: null };
 
+  /* A card "paying its own bill" — method Scapia, category Scapia — is not a
+     payment: no money moved from anywhere. It is always a slip, usually the
+     category picked on the Shortcut where a spend category was meant. Read
+     as a payment it once took ₹10,350 off Scapia and showed the card
+     overpaid by ₹4,879. The app's form already refuses this pair; the
+     Shortcut does not, so it is caught here, where every row is re-read on
+     load: counted as nothing, and flagged for review until it is fixed. */
+  if (isCard(category) && method === category) {
+    return { kind: 'unknown', cardAffected: null, cardDirection: null, tags };
+  }
+
   if (isCard(category)) {
     // Paying a card bill. The money came FROM `method` (usually Fi, sometimes
     // Perks points, occasionally another card) and lands ON `category`.

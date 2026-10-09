@@ -160,3 +160,16 @@ test('the real sheet fixture parses cleanly end to end', async () => {
     if (r.cardDirection) assert.ok(r.cardAffected, 'a direction with no card is incoherent');
   }
 });
+
+test('a card paying its own bill is not a payment — it is flagged, and moves nothing', () => {
+  // Logged from the Shortcut as Scapia → Scapia, it was read as ₹10,350 paid
+  // off Scapia and showed the card ₹4,879 overpaid.
+  const self = classify({ method: 'Scapia', category: 'Scapia', remarks: 'Ashiq sudu' });
+  assert.equal(self.kind, 'unknown');
+  assert.equal(self.cardAffected, null);
+  assert.equal(self.cardDirection, null);
+
+  // A real payment, from a bank or from another card, is untouched.
+  assert.equal(classify({ method: 'Fi', category: 'Scapia', remarks: '' }).cardDirection, 'debt-');
+  assert.equal(classify({ method: 'Edge', category: 'Scapia', remarks: '' }).kind, 'card_payment');
+});
