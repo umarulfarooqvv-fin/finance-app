@@ -117,11 +117,26 @@ describe('parseImport', () => {
     expect(rows.map((r) => r.amount)).toEqual([60, 1701]);
   });
 
-  it('leaves out money received (+) instead of saving it as a spend', () => {
-    const { rows, skipped } = parseImport('07/07/2026 | +30.76 | Fi | Super Money | super.money cashback');
-    expect(rows).toEqual([]);
-    expect(skipped).toHaveLength(1);
-    expect(skipped[0]!.why).toMatch(/money received/);
+  it('reads money received (+) as income, never as a spend', () => {
+    const { rows, skipped } = parseImport('07/07/2026 | +30.76 | Fi | Credit Return | Arshad');
+    expect(skipped).toEqual([]);
+    expect(rows[0]).toMatchObject({ direction: 'in', amount: 30.76, method: 'Fi', category: 'Credit Return' });
+    // A spending category is not an income source: left for the person to choose.
+    expect(parseImport('07/07/2026 | +30 | Fi | Super Money | cashback').rows[0]!.category).toBe('');
+  });
+
+  it('turns money received onto a CARD into that card\'s refund, paid from Perks', () => {
+    const r = parseImport('20/08/2026 | +5.90 | Scapia | | Fuel surcharge waiver').rows[0]!;
+    expect(r).toMatchObject({ direction: 'out', method: 'Perks', category: 'Scapia', remarks: 'Refund: Fuel surcharge waiver' });
+  });
+
+  it('cuts a batch pasted as one line back into its rows', () => {
+    const line = '01/07/2026 10:44 | 3000 | Fi | Credit Given | Rahees 02/07/2026 11:07 | 3000 | Fi | Credit Given | Faisal 03/07/2026 | 100 | Jupiter |  | Adeeb M';
+    const { rows, skipped } = parseImport(line);
+    expect(skipped).toEqual([]);
+    expect(rows.map((r) => [r.day, r.remarks])).toEqual([
+      ['2026-07-01', 'Rahees'], ['2026-07-02', 'Faisal'], ['2026-07-03', 'Adeeb M'],
+    ]);
   });
 
   it('still reads a plain number as a spend', () => {

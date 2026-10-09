@@ -154,7 +154,21 @@ per-request dedupe.
   method and category lists; `lib/import-parse` reads what comes back. A
   photo can be read straight into the same rows if `IMPORT_AI` is set — see
   Voice entry and the AI layer below. (v2's `/api/import` does not exist in
-  v3.)
+  v3.) A row is `direction: 'out'` (a spend) or `'in'` (money received,
+  saved as INCOME with an account, a source and an optional "repaid by"
+  debtor — `assignRepayment`, so the credit ledger pays down that person's
+  oldest lendings; a partial return just leaves the rest owed). A "+" amount
+  is money received; money received onto a card becomes that card's refund
+  (Perks → card). A Google Pay statement is read directly
+  (`lib/gpay-statement`), from its PDF via `/api/import/pdf` (unpdf, nothing
+  stored) or its copied text; the UPI id is the idempotency key. A Federal
+  Bank account statement is read too (`lib/bank-statement`, password-locked
+  PDFs supported, the password never stored): direction comes from the
+  running BALANCE, since the text loses the withdrawal/deposit column, and
+  money between the owner's own accounts (Fi auto-save, FDs, Jupiter, ATM)
+  arrives unticked with the reason. Every selectable list uses
+  `components/ui/selection` (Shift-click ranges, Ctrl/⌘, Select all, Range
+  mode on a phone); a selection never holds rows its filter no longer shows.
 - **Reminders.** `/reminders`, `/api/cron/reminders` (Vercel Cron, 08:00 IST)
   and `/api/calendar` (an .ics feed). See `docs/REMINDERS.md` — and note that
   `docs/DEPLOY.md` section 4 describes v2's ntfy alerts, which v3 does not have.

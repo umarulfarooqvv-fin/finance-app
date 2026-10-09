@@ -2,7 +2,9 @@
 
 import { guardedAction, MONEY_PATHS } from '@/lib/actions';
 import { createTransaction } from '@/lib/transactions';
-import { validateTransaction, type TransactionInput } from '@/lib/validation';
+import { createIncome } from '@/lib/income';
+import { assignRepayment } from '@/lib/credit-config';
+import { validateIncome, validateTransaction, type TransactionInput } from '@/lib/validation';
 import { currentSnapshot } from '@/lib/views';
 import type { FieldErrors } from '@/lib/action-result';
 
@@ -71,6 +73,20 @@ export type ImportInput = {
     category: string;
     remarks: string;
   }[];
+  /** Money received, saved as income. */
+  income?: {
+    clientKey: string;
+    ts: string;
+    amount: string;
+    account: string;
+    source: string;
+    remarks: string;
+    /**
+     * Who it repaid: a name from the credit ledger, '' for "not a repayment",
+     * or null to leave it to the ledger's own reading of the wording.
+     */
+    person: string | null;
+  }[];
 };
 
 export type ImportOutcome = {
@@ -79,6 +95,9 @@ export type ImportOutcome = {
   /** Of those saved, how many went in with no category and need filing. */
   unsorted: number;
   failed: { remarks: string; ts: string; error: string }[];
+  /** Income rows saved, and of those, how many were tied to a debtor. */
+  income: number;
+  repayments: number;
   /** Ids of the rows that are now in the ledger, including ones that were
       already there — so a caller can point a capture at the entry it became
       whether this press or a previous one actually wrote it. */
@@ -86,18 +105,28 @@ export type ImportOutcome = {
 };
 
 /** Above this a paste is more likely a mistake than an evening's backlog. */
-const MAX_ROWS = 200;
+const MAX_ROWS = 500;
 
 export const importEntriesAction = guardedAction(
   {
     name: 'transaction.import',
-    revalidate: MONEY_PATHS,
+    revalidate: [...MONEY_PATHS, '/income'],
     validate: (input: ImportInput): FieldErrors | null => {
-      if (!Array.isArray(input.rows) || input.rows.length === 0) {
+      const income = input.income ?? [];
+      if (!Array.isArray(input.rows) || input.rows.length + income.length === 0) {
         return { rows: 'There is nothing to import.' };
       }
-      if (input.rows.length > MAX_ROWS) {
-        return { rows: `That is ${input.rows.length} rows. Import at most ${MAX_ROWS} at a time.` };
+      const count = input.rows.length + income.length;
+      if (count > MAX_ROWS) {
+        return { rows: `That is ${count} rows. Import at most ${MAX_ROWS} at a time.` };
+      }
+      for (const r of income) {
+        const errors = validateIncome(r, r.ts.slice(0, 10));
+        if (errors) {
+          const first = Object.values(errors)[0] ?? 'Invalid row.';
+          return { rows: `${r.remarks || 'Money received'} on ${r.ts.slice(0, 10)}: ${first}` };
+        }
+        if (!r.clientKey) return { rows: 'A row arrived without an idempotency key.' };
       }
       /* Validated here as well as per row below, so a batch with an obviously
          broken row is refused before any of it is written rather than
@@ -117,7 +146,9 @@ export const importEntriesAction = guardedAction(
     // Re-checked against the SERVER's date, never the client's.
     const { today } = await currentSnapshot();
 
-    const out: ImportOutcome = { saved: 0, duplicates: 0, unsorted: 0, failed: [], ids: [] };
+    const out: ImportOutcome = {
+      saved: 0, duplicates: 0, unsorted: 0, failed: [], ids: [], income: 0, repayments: 0,
+    };
 
     for (const row of input.rows) {
       const errors = validateImportRow(row, today);
@@ -138,6 +169,37 @@ export const importEntriesAction = guardedAction(
         } else {
           out.saved += 1;
           if (row.category.trim() === '') out.unsorted += 1;
+        }
+      } catch (err) {
+        out.failed.push({
+          remarks: row.remarks,
+          ts: row.ts,
+          error: err instanceof Error ? err.message : 'Could not save this row.',
+        });
+      }
+    }
+
+    /* Money received. Saved as income, then — when the table named who it
+       came from — tied to that person in the credit ledger, which pays down
+       their oldest lendings first. A partial repayment is simply a smaller
+       one: what is left stays owed. */
+    for (const row of input.income ?? []) {
+      const errors = validateIncome(row, today);
+      if (errors) {
+        out.failed.push({ remarks: row.remarks, ts: row.ts, error: Object.values(errors)[0] ?? 'Invalid row.' });
+        continue;
+      }
+      try {
+        const result = await createIncome(
+          { amount: row.amount, source: row.source, account: row.account, remarks: row.remarks, ts: row.ts, clientKey: row.clientKey },
+          ctx,
+        );
+        out.ids.push(result.id);
+        if (result.duplicate) out.duplicates += 1;
+        else { out.saved += 1; out.income += 1; }
+        if (row.person !== null) {
+          await assignRepayment(result.id, row.person, ctx);
+          if (row.person !== '') out.repayments += 1;
         }
       } catch (err) {
         out.failed.push({

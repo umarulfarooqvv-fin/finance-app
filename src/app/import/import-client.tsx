@@ -2,9 +2,12 @@
 
 import { joinTags, uniqueTags } from '@/lib/user-tags';
 import { TagInput } from '@/components/entry/tag-input';
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { SelectBox, SelectionControls, useSelection } from '@/components/ui/selection';
+import { guessDebtor, type Debtor } from '@/lib/repayment-guess';
+import { matchIncome } from '@/lib/income-match';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Camera, Check, Columns2, Copy, FileWarning, History, Sparkles, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowDownLeft, Camera, Check, Columns2, Copy, FileText, FileWarning, History, Sparkles, Trash2, X } from 'lucide-react';
 import { parseImport, readyToImport, unsortedCount, type ImportRow } from '@/lib/import-parse';
 import type { BankMethods } from '@/lib/bank-methods';
 import { IMPORT_EXAMPLE, IMPORT_PROMPT } from '@/lib/import-prompt';
@@ -47,6 +50,14 @@ type Existing = Ledger | null;
 
 type Draft = ImportRow & {
   key: string;
+  /** How many identical rows came before this one in the paste. Two ₹100
+      payments from one person on one day are two payments: each copy after
+      the first gets its own save key, or the second would be taken for a
+      retry of the first and silently dropped. */
+  copy: number;
+  /** Money received only: who it repaid — a debtor's name, '' for "not a
+      repayment", or null to leave it to the ledger's reading of the words. */
+  person: string | null;
   time: string;
   /** What the ledger says about this row. 'new' until the check has answered. */
   level: MatchLevel;
@@ -57,7 +68,15 @@ type Draft = ImportRow & {
 
 export function ImportClient({
   methods, categories, serverNow, entryCount, bankMethods, visionEnabled, visionLabel, aiUsage, tagList,
+  incomeAccounts, incomeSources, debtors, existingIncome,
 }: {
+  /** Where money received can land, and what it can be filed as. */
+  incomeAccounts: string[];
+  incomeSources: string[];
+  /** Everyone who still owes money, from the credit ledger. */
+  debtors: Debtor[];
+  /** Income already recorded, to spot a received payment imported twice. */
+  existingIncome: { day: string; amount: number; account: string; source: string; remarks: string }[];
   /** Tags already in use, most used first. */
   tagList: string[];
   methods: string[];
@@ -80,7 +99,17 @@ export function ImportClient({
   const [dateOrder, setDateOrder] = useState<'dmy' | 'mdy'>('dmy');
   const [drafts, setDrafts] = useState<Draft[] | null>(null);
   const [skipped, setSkipped] = useState<{ line: number; raw: string; why: string }[]>([]);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
+  /* Rows in the order the table shows them — by day, then as pasted — which
+     is what a Shift-click range runs along. */
+  const importOrder = useMemo(
+    () => (drafts ?? [])
+      .map((r, i) => ({ r, i }))
+      .sort((a, b) => a.r.day.localeCompare(b.r.day) || a.i - b.i)
+      .map(({ r }) => r.key),
+    [drafts],
+  );
+  const sel = useSelection(importOrder, { keys: (drafts?.length ?? 0) > 0 });
+  const picked = sel.selected;
   const [copied, setCopied] = useState(false);
   const [bulkRemark, setBulkRemark] = useState('');
   const [bulkTags, setBulkTags] = useState<string[]>([]);
@@ -148,22 +177,94 @@ export function ImportClient({
   const [ledger, setLedger] = useState<Ledger[]>([]);
   const [compare, setCompare] = useState(false);
 
-  function read() {
-    const parsed = parseImport(text, { dateOrder, bankMethods });
+  function read(source: string = text) {
+    const parsed = parseImport(source, { dateOrder, bankMethods });
     /* Noon, like every other date this app writes without a time: an entry at
        00:00 on a bill date sits exactly on the boundary between two
        statements, which is the one timestamp whose cycle depends on a rule. */
-    const fresh: Draft[] = parsed.rows.map((r) => ({
+    const fresh: Draft[] = parsed.rows.map((r): Draft => ({
       // The time the row carried, when it carried one — a payment screen's
       // "3:11 PM" is the real moment, and noon is only the fallback.
       ...r, key: `r${r.line}`, time: r.time ?? '12:00:00',
-      level: 'new', existing: null, include: true,
-    }));
+      level: 'new' as MatchLevel, existing: null, include: !r.skip, person: null, copy: 0,
+    })).map((r) => (r.direction === 'in' ? receivedDefaults(r) : r));
+    fresh.splice(0, fresh.length, ...markReceived(fresh));
+    const seen = new Map<string, number>();
+    for (const r of fresh) {
+      const sig = [r.direction, r.day, r.time, r.amount, r.method, r.category, r.remarks, r.ref ?? ''].join('|');
+      r.copy = seen.get(sig) ?? 0;
+      seen.set(sig, r.copy + 1);
+    }
     setDrafts(fresh);
     setSkipped(parsed.skipped);
-    setPicked(new Set());
+    sel.deselectAll();
     setLedger([]);
-    void checkAgainstLedger(fresh);
+    // The ledger check is about spending; money received is checked above.
+    void checkAgainstLedger(fresh.filter((r) => r.direction === 'out'));
+  }
+
+  /* Money received: suggest who it repaid, by name, and file it as a Credit
+     Return when someone is found. Never more than a suggestion — the person
+     can be changed in the row, and nothing is saved until Import. Also marks
+     a payment the income list already holds. */
+  function receivedDefaults(r: Draft): Draft {
+    const who = guessDebtor(r.remarks, debtors);
+    return { ...r, person: who ?? null, category: r.category || (who ? 'Credit Return' : '') };
+  }
+
+  /* Which received rows the income list already has — the same sender on
+     the same day for the same amount is the same payment (unticked); the
+     same day and amount from someone else is only a maybe (left ticked).
+     Each recorded entry answers for one row at most: lib/income-match. */
+  function markReceived(rows: Draft[]): Draft[] {
+    const ins = rows.filter((r) => r.direction === 'in');
+    const answers = matchIncome(
+      ins.map((r) => ({ day: r.day, amount: r.amount, account: r.method, remarks: r.remarks })),
+      existingIncome,
+    );
+    const byKey = new Map(ins.map((r, i) => [r.key, answers[i]]));
+    return rows.map((r) => {
+      const m = byKey.get(r.key);
+      if (!m) return r;
+      const x = m.existing;
+      return {
+        ...r,
+        level: m.level as MatchLevel,
+        existing: { id: '', ts: `${x.day}T12:00:00`, amount: x.amount, method: x.account, category: x.source, remarks: x.remarks },
+        include: m.level !== 'exact' && !r.skip,
+      };
+    });
+  }
+
+  /* A statement PDF: its text goes into the box — so what was read can be
+     seen — and is read straight away, exactly like a paste. */
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+  const [readingPdf, setReadingPdf] = useState(false);
+  /* A locked PDF — bank statements usually are — waits here for its password.
+     The password is sent once with the file and kept nowhere. */
+  const [lockedPdf, setLockedPdf] = useState<{ file: File; error: string } | null>(null);
+  const [pdfPassword, setPdfPassword] = useState('');
+  async function loadPdf(file: File, password?: string) {
+    setReadingPdf(true);
+    try {
+      const body = new FormData();
+      body.set('file', file);
+      if (password) body.set('password', password);
+      const res = await fetch('/api/import/pdf', { method: 'POST', body });
+      const json = (await res.json()) as { ok: boolean; text?: string; error?: string; pages?: number; needsPassword?: boolean };
+      if (json.needsPassword) { setLockedPdf({ file, error: json.error ?? 'This PDF is locked.' }); return; }
+      if (!json.ok || !json.text) { notify('error', json.error ?? 'Could not read that PDF.'); return; }
+      setLockedPdf(null);
+      setPdfPassword('');
+      setText(json.text);
+      read(json.text);
+      notify('success', `Read ${json.pages ?? 1} ${json.pages === 1 ? 'page' : 'pages'} of ${file.name}.`);
+    } catch {
+      notify('error', 'Could not reach the server to read that PDF.');
+    } finally {
+      setReadingPdf(false);
+      if (pdfInputRef.current) pdfInputRef.current.value = '';
+    }
   }
 
   /* Ask the ledger which of these it already has. The idempotency key stops a
@@ -201,7 +302,8 @@ export function ImportClient({
       setDrafts((d) => (d ?? []).map((r) => {
         const m = byLine.get(r.line);
         if (!m) return r;
-        return { ...r, level: m.level, existing: m.existing, include: m.level !== 'exact' };
+        // A row left out on purpose (money between own accounts) stays out.
+        return { ...r, level: m.level, existing: m.existing, include: m.level !== 'exact' && !r.skip };
       }));
     } catch {
       // The check is a safeguard, not a gate. Losing it must not stop an
@@ -218,8 +320,25 @@ export function ImportClient({
      from the table, where it still explains itself. */
   const chosen = rows.filter((r) => r.include);
   const ready = readyToImport(chosen);
-  const total = chosen.reduce((a, r) => a + r.amount, 0);
+  const total = chosen.filter((r) => r.direction === 'out').reduce((a, r) => a + r.amount, 0);
+  const received = chosen.filter((r) => r.direction === 'in').reduce((a, r) => a + r.amount, 0);
   const noMethod = chosen.filter((r) => !r.method).length;
+  const noSource = chosen.filter((r) => r.direction === 'in' && !r.category).length;
+
+  /* What each debtor still owes as the ticked repayments land, in date order
+     — so a partial return reads as "₹2,000 left", and a payment larger than
+     the debt says so before it is saved. */
+  const owedAfter = (() => {
+    const left = new Map(debtors.map((d) => [d.person, d.outstanding]));
+    const out = new Map<string, number>();
+    for (const r of [...chosen].sort((a, b) => `${a.day}${a.time}`.localeCompare(`${b.day}${b.time}`))) {
+      if (r.direction !== 'in' || !r.person) continue;
+      const now = (left.get(r.person) ?? 0) - r.amount;
+      left.set(r.person, now);
+      out.set(r.key, Math.round(now * 100) / 100);
+    }
+    return out;
+  })();
   const unsorted = unsortedCount(chosen);
   const already = rows.filter((r) => r.level === 'exact').length;
   const maybe = rows.filter((r) => r.level === 'likely').length;
@@ -227,10 +346,16 @@ export function ImportClient({
   const set = (key: string, patch: Partial<Draft>) =>
     setDrafts((d) => (d ?? []).map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
-  const applyToPicked = (patch: Partial<Draft>) => {
+  /* A method or category set in bulk applies to SPENDING rows only: a card is
+     not an account money is received into, nor "Food" a source of income.
+     Received rows have their own two controls below. */
+  const applyToPicked = (patch: Partial<Draft>, only?: 'out' | 'in') => {
     if (picked.size === 0) return;
-    setDrafts((d) => (d ?? []).map((r) => (picked.has(r.key) ? { ...r, ...patch } : r)));
+    const scope = only ?? ('method' in patch || 'category' in patch ? 'out' : undefined);
+    setDrafts((d) => (d ?? []).map((r) =>
+      picked.has(r.key) && (!scope || r.direction === scope) ? { ...r, ...patch } : r));
   };
+  const pickedIn = rows.filter((r) => picked.has(r.key) && r.direction === 'in').length;
 
   /* Tags ADD to what a row already has, rather than replacing it: a dinner
      can be both "Banglore Trip" and "Work", and tagging the trip's rows
@@ -242,15 +367,6 @@ export function ImportClient({
   const untag = (key: string, tag: string) =>
     setDrafts((d) => (d ?? []).map((r) => (r.key === key ? { ...r, tags: r.tags.filter((t) => t !== tag) } : r)));
 
-  const toggle = (key: string) =>
-    setPicked((p) => {
-      const next = new Set(p);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-
-  const allPicked = rows.length > 0 && picked.size === rows.length;
 
   /* Grouped by day, because every transaction list in this app is. A flat run
      of seventy rows gives no sense of WHEN, which is the thing being checked
@@ -281,7 +397,10 @@ export function ImportClient({
         day,
         items,
         mine,
-        total: items.reduce((a, r) => a + (r.include ? r.amount : 0), 0),
+        // Spent and received apart: a day's money going out and coming in
+        // added together is a number that means neither.
+        total: items.reduce((a, r) => a + (r.include && r.direction === 'out' ? r.amount : 0), 0),
+        received: items.reduce((a, r) => a + (r.include && r.direction === 'in' ? r.amount : 0), 0),
         recorded: mine.reduce((a, t) => a + t.amount, 0),
         chosen: items.filter((r) => r.include).length,
       };
@@ -292,12 +411,27 @@ export function ImportClient({
      once on a flaky connection — resolves to the same row rather than doubling
      the batch. */
   const keyFor = (r: Draft) =>
-    `import:${r.day}:${r.time}:${r.amount}:${r.method}:${r.category}:${joinTags(r.remarks, r.tags)}`;
+    // A UPI id names the payment itself: the same statement imported twice,
+    // edited or not, resolves to the same entry.
+    r.ref
+      ? `import:${r.direction}:ref:${r.ref}`
+      // The first copy keeps the key it always had, so re-importing a batch
+      // still resolves to what is there; later copies are their own rows.
+      : `import:${r.day}:${r.time}:${r.amount}:${r.method}:${r.category}:${joinTags(r.remarks, r.tags)}${r.copy ? `:copy${r.copy}` : ''}`;
 
   function save() {
     startTransition(async () => {
       const result = await importEntriesAction({
-        rows: chosen.map((r) => ({
+        income: chosen.filter((r) => r.direction === 'in').map((r) => ({
+          clientKey: keyFor(r),
+          ts: `${r.day}T${r.time}`,
+          amount: String(r.amount),
+          account: r.method,
+          source: r.category,
+          remarks: joinTags(r.remarks, r.tags),
+          person: r.person,
+        })),
+        rows: chosen.filter((r) => r.direction === 'out').map((r) => ({
           clientKey: keyFor(r),
           ts: `${r.day}T${r.time}`,
           amount: String(r.amount),
@@ -310,8 +444,9 @@ export function ImportClient({
 
       if (!result.ok) { notify('error', result.error); return; }
 
-      const { saved, duplicates, unsorted: unfiled, failed } = result.data;
+      const { saved, duplicates, unsorted: unfiled, failed, income, repayments } = result.data;
       const parts = [`${saved} saved`];
+      if (income > 0) parts.push(`${income} as income${repayments > 0 ? `, ${repayments} as repayments` : ''}`);
       if (unfiled > 0) parts.push(`${unfiled} unfiled`);
       if (duplicates > 0) parts.push(`${duplicates} already there`);
       if (failed.length > 0) parts.push(`${failed.length} refused`);
@@ -464,6 +599,54 @@ export function ImportClient({
           )}
         </div>
 
+        {/* A statement PDF — Google Pay's, or a bank's — read here, no
+            assistant needed. Its text lands in the box below. */}
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <input
+            ref={pdfInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void loadPdf(f); }}
+          />
+          <Button
+            type="button" variant="secondary" size="sm" pending={readingPdf}
+            onClick={() => pdfInputRef.current?.click()}
+          >
+            <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+            {readingPdf ? 'Reading the PDF…' : 'Choose a PDF statement'}
+          </Button>
+          <span className="text-[11px] text-[var(--color-ink-3)]">
+            Google Pay and Federal Bank statements — what was sent AND received; money received becomes income
+          </span>
+        </div>
+        {lockedPdf ? (
+          <form
+            className="mb-2 flex flex-wrap items-center gap-2 rounded-[var(--radius-field)] border border-[var(--color-warn)] bg-[var(--color-warn-soft)] p-2"
+            onSubmit={(e) => { e.preventDefault(); if (pdfPassword) void loadPdf(lockedPdf.file, pdfPassword); }}
+          >
+            <span className="text-[11px] text-[var(--color-ink-2)]">
+              {lockedPdf.error} <span className="text-[var(--color-ink-3)]">({lockedPdf.file.name})</span>
+            </span>
+            <input
+              type="password"
+              value={pdfPassword}
+              onChange={(e) => setPdfPassword(e.target.value)}
+              autoComplete="off"
+              aria-label="PDF password"
+              placeholder="PDF password"
+              className={cn(inputClass(), 'w-40 py-1 text-xs')}
+            />
+            <Button type="submit" size="sm" pending={readingPdf} disabled={!pdfPassword}>Open</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => { setLockedPdf(null); setPdfPassword(''); }}>
+              Cancel
+            </Button>
+            <span className="w-full text-[10px] text-[var(--color-ink-3)]">
+              Used only to open this file on the server, then forgotten — never stored or logged.
+            </span>
+          </form>
+        ) : null}
+
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -485,13 +668,13 @@ export function ImportClient({
               <option value="mdy">Month first (12/08 = 8 Dec)</option>
             </select>
           </label>
-          <Button onClick={read} disabled={text.trim() === ''}>Read the rows</Button>
+          <Button onClick={() => read()} disabled={text.trim() === ''}>Read the rows</Button>
           {drafts ? (
             <Button
               variant="ghost"
               onClick={() => {
                 setText(''); setDrafts(null); setSkipped([]);
-                setPicked(new Set()); setLedger([]); setCompare(false);
+                sel.deselectAll(); setLedger([]); setCompare(false);
               }}
             >
               Clear
@@ -544,19 +727,28 @@ export function ImportClient({
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
             <span className="text-[var(--color-ink-2)]">
               Totalling <Money value={total} size="sm" tone="debt" className="font-semibold" />
+              {received > 0 ? (
+                <> · received <Money value={received} size="sm" tone="credit" className="font-semibold" /></>
+              ) : null}
             </span>
+            {noSource > 0 ? (
+              <span className="flex items-center gap-1.5 text-[var(--color-warn)]">
+                <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+                {noSource} received {noSource === 1 ? 'payment needs' : 'payments need'} a source
+              </span>
+            ) : null}
             {noMethod > 0 ? (
               <span className="flex items-center gap-1.5 text-[var(--color-warn)]">
                 <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
                 {noMethod} still {noMethod === 1 ? 'needs' : 'need'} a method &mdash; without one the
                 money lands on no card
               </span>
-            ) : (
+            ) : ready ? (
               <span className="flex items-center gap-1.5 text-[var(--color-pos)]">
                 <Check className="h-3.5 w-3.5" aria-hidden="true" />
                 Ready to import
               </span>
-            )}
+            ) : null}
             {unsorted > 0 ? (
               <span className="text-[var(--color-ink-3)]">
                 {unsorted} will go in <strong className="text-[var(--color-ink-2)]">unfiled</strong>
@@ -647,21 +839,43 @@ export function ImportClient({
                   <option value="">Set category…</option>
                   {categories.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
+                {pickedIn > 0 ? (
+                  <>
+                    <select
+                      value=""
+                      aria-label="Set the source for the selected money received"
+                      onChange={(e) => e.target.value && applyToPicked({ category: e.target.value }, 'in')}
+                      className={cn(inputClass(), 'w-36 shrink-0 text-xs')}
+                    >
+                      <option value="">Set source…</option>
+                      {incomeSources.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <select
+                      value=""
+                      aria-label="Say who the selected money received came back from"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (!v) return;
+                        const person = v === '__none__' ? '' : v;
+                        setDrafts((d) => (d ?? []).map((r) =>
+                          picked.has(r.key) && r.direction === 'in'
+                            ? { ...r, person, category: person && !r.category ? 'Credit Return' : r.category }
+                            : r));
+                      }}
+                      className={cn(inputClass(), 'w-40 shrink-0 text-xs')}
+                    >
+                      <option value="">Repaid by…</option>
+                      <option value="__none__">Not a repayment</option>
+                      {debtors.map((d) => <option key={d.person} value={d.person}>{d.person}</option>)}
+                    </select>
+                  </>
+                ) : null}
               </div>
             </div>
           ) : null}
 
           <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-[var(--color-line)] pt-2.5 text-[11px] text-[var(--color-ink-3)]">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={allPicked}
-                onChange={() => setPicked(allPicked ? new Set() : new Set(rows.map((r) => r.key)))}
-                aria-label="Select every row"
-                className="h-4 w-4 accent-[var(--color-accent)]"
-              />
-              Select all, to set them together
-            </label>
+            <SelectionControls sel={sel} total={rows.length} shortcuts />
             {ledger.length > 0 ? (
               <>
                 <span aria-hidden="true">&middot;</span>
@@ -681,14 +895,26 @@ export function ImportClient({
           {groups.map((g) => (
             <section key={g.day}>
               <h3 className="-mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
-                <span className="text-xs font-semibold">
+                <span className="flex items-center gap-2 text-xs font-semibold">
+                  {g.items.length > 0 ? (
+                    <input
+                      type="checkbox"
+                      aria-label={`Select every row on ${formatDayShort(g.day)}`}
+                      checked={g.items.every((r) => picked.has(r.key))}
+                      onChange={(e) => sel.set(g.items.map((r) => r.key), e.target.checked)}
+                      className="h-4 w-4 accent-[var(--color-accent)]"
+                    />
+                  ) : null}
                   {formatDayShort(g.day)}
                   <span className="ml-2 font-normal text-[var(--color-ink-3)]">
                     {g.chosen} of {g.items.length}
                   </span>
                 </span>
-                {g.total > 0 ? (
-                  <Money value={g.total} size="sm" tone="debt" className="font-semibold" />
+                {g.total > 0 || g.received > 0 ? (
+                  <span className="flex items-baseline gap-2">
+                    {g.received > 0 ? <Money value={g.received} size="sm" tone="credit" className="font-semibold" /> : null}
+                    {g.total > 0 ? <Money value={g.total} size="sm" tone="debt" className="font-semibold" /> : null}
+                  </span>
                 ) : (
                   <span className="text-xs text-[var(--color-ink-3)]">nothing to add</span>
                 )}
@@ -706,13 +932,7 @@ export function ImportClient({
                     )}
                   >
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-                      <input
-                        type="checkbox"
-                        checked={picked.has(r.key)}
-                        onChange={() => toggle(r.key)}
-                        aria-label={`Select ${r.remarks || 'row'} on ${r.day}`}
-                        className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-                      />
+                      <SelectBox sel={sel} k={r.key} label={`Select ${r.remarks || 'row'} on ${r.day}`} />
                       <input
                         value={r.remarks}
                         onChange={(e) => set(r.key, { remarks: e.target.value })}
@@ -740,29 +960,40 @@ export function ImportClient({
                           line when the column is halved for the comparison —
                           two tidy lines rather than five stacked ones. */}
                       <span className="flex shrink-0 items-center gap-1">
+                      {r.direction === 'in' ? (
+                        <span
+                          className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-[var(--color-pos-soft)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-pos)]"
+                          title="Money received — saved as income"
+                        >
+                          <ArrowDownLeft className="h-3 w-3" aria-hidden="true" /> received
+                        </span>
+                      ) : null}
                       <select
                         value={r.method}
                         onChange={(e) => set(r.key, { method: e.target.value })}
-                        aria-label={`Method for the row on ${r.day}`}
+                        aria-label={r.direction === 'in' ? `Account the money on ${r.day} landed in` : `Method for the row on ${r.day}`}
                         className={cn(
                           inputClass(), 'w-[6.5rem] shrink-0 px-1.5 py-1 text-[11px]',
                           !r.method && 'border-[var(--color-warn)]',
                         )}
                       >
-                        <option value="">Method…</option>
-                        {methods.map((m) => <option key={m} value={m}>{m}</option>)}
+                        <option value="">{r.direction === 'in' ? 'Into…' : 'Method…'}</option>
+                        {(r.direction === 'in' ? incomeAccounts : methods).map((m) => <option key={m} value={m}>{m}</option>)}
                       </select>
                       <select
                         value={r.category}
                         onChange={(e) => set(r.key, { category: e.target.value })}
-                        aria-label={`Category for the row on ${r.day}`}
-                        className={cn(inputClass(), 'w-[7.5rem] shrink-0 px-1.5 py-1 text-[11px]')}
+                        aria-label={r.direction === 'in' ? `Source of the money on ${r.day}` : `Category for the row on ${r.day}`}
+                        className={cn(
+                          inputClass(), 'w-[7.5rem] shrink-0 px-1.5 py-1 text-[11px]',
+                          r.direction === 'in' && !r.category && 'border-[var(--color-warn)]',
+                        )}
                       >
-                        <option value="">Unfiled</option>
-                        {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                        <option value="">{r.direction === 'in' ? 'Source…' : 'Unfiled'}</option>
+                        {(r.direction === 'in' ? incomeSources : categories).map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                       <span className="w-[4.5rem] shrink-0 text-right">
-                        <Money value={r.amount} size="sm" tone="debt" />
+                        <Money value={r.amount} size="sm" tone={r.direction === 'in' ? 'credit' : 'debt'} />
                       </span>
                       <Button
                         variant="ghost"
@@ -770,13 +1001,77 @@ export function ImportClient({
                         aria-label={`Drop the row on ${r.day}`}
                         onClick={() => {
                           setDrafts((d) => (d ?? []).filter((x) => x.key !== r.key));
-                          setPicked((p) => { const n = new Set(p); n.delete(r.key); return n; });
+                          sel.set([r.key], false);
                         }}
                       >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                       </Button>
                       </span>
                     </div>
+
+                    {r.skip || r.hint ? (
+                      <p className="mt-0.5 flex flex-wrap items-center gap-1.5 pl-6 text-[11px] text-[var(--color-ink-3)]">
+                        {r.skip ? (
+                          <>
+                            <span className="font-medium text-[var(--color-ink-2)]">Left out:</span> {r.skip}
+                            <button
+                              type="button"
+                              onClick={() => set(r.key, { include: !r.include })}
+                              className="font-medium text-[var(--color-accent)]"
+                            >
+                              {r.include ? 'Leave it out' : 'Import it anyway'}
+                            </button>
+                          </>
+                        ) : null}
+                        {r.hint ? <span>{r.skip ? ' · ' : ''}{r.hint}</span> : null}
+                      </p>
+                    ) : null}
+
+                    {/* Money received: who it paid back. Picking a person makes it
+                        a repayment against their oldest lendings; a part of
+                        what they owe is a partial return, and the rest stays
+                        owed. */}
+                    {r.direction === 'in' ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-6 text-[11px]">
+                        <span className="text-[var(--color-ink-3)]">Repaid by</span>
+                        <select
+                          value={r.person ?? '__auto__'}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            const person = v === '__auto__' ? null : v === '__none__' ? '' : v;
+                            set(r.key, {
+                              person,
+                              // Naming a debtor makes it a Credit Return unless a source was chosen.
+                              category: person && !r.category ? 'Credit Return' : r.category,
+                            });
+                          }}
+                          aria-label={`Who the money on ${r.day} came back from`}
+                          className={cn(inputClass(), 'w-auto max-w-[12rem] px-1.5 py-0.5 text-[11px]')}
+                        >
+                          <option value="__auto__">Not a repayment I know of</option>
+                          <option value="__none__">Not a repayment</option>
+                          {debtors.map((d) => (
+                            <option key={d.person} value={d.person}>{d.person}</option>
+                          ))}
+                        </select>
+                        {r.person ? (() => {
+                          const owed = debtors.find((d) => d.person === r.person)?.outstanding ?? 0;
+                          const after = owedAfter.get(r.key);
+                          return (
+                            <span className="text-[var(--color-ink-3)]">
+                              owed <Money value={owed} size="sm" />
+                              {after === undefined ? null : after > 0.005 ? (
+                                <> · <Money value={after} size="sm" /> left after this</>
+                              ) : after < -0.005 ? (
+                                <span className="text-[var(--color-warn)]"> · <Money value={-after} size="sm" /> more than owed</span>
+                              ) : (
+                                <span className="text-[var(--color-pos)]"> · fully repaid</span>
+                              )}
+                            </span>
+                          );
+                        })() : null}
+                      </div>
+                    ) : null}
 
                     {/* What it matched, said out loud rather than hidden in a
                         tooltip — the whole decision rests on this line. */}

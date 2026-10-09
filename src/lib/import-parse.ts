@@ -1,7 +1,9 @@
 import { splitTags } from '@/lib/user-tags';
 import { evaluateAmount } from '@/lib/calc';
 import { foldForSearch } from '@/lib/search-text';
-import { ALL_CATEGORIES } from '@/lib/types';
+import { ALL_CATEGORIES, INCOME_SOURCES, isCard } from '@/lib/types';
+import { isGpayStatement, parseGpayStatement } from '@/lib/gpay-statement';
+import { isFederalStatement, parseFederalStatement, readBankRow, regularNeftSenders } from '@/lib/bank-statement';
 import { resolveMethod, type BankMethods } from '@/lib/bank-methods';
 import type { Day } from '@/lib/time';
 
@@ -28,6 +30,20 @@ export type ImportIssue = 'no-method' | 'no-category' | 'unknown-method' | 'unkn
 export type ImportRow = {
   /** 1-based line in the pasted text, so a row can be found again. */
   line: number;
+  /**
+   * out — money spent: a transaction, method = what paid, category = what for.
+   * in  — money received: INCOME, method = the account it landed in, category
+   *       = the income source ("Credit Return", "Salary"…), or blank.
+   */
+  direction: 'out' | 'in';
+  /** A reference the source printed — a UPI transaction id — so the same
+      payment imported twice resolves to the same entry. */
+  ref: string | null;
+  /** Left unticked by default, with this reason: money between the owner's
+      own accounts, which is neither spending nor income. */
+  skip?: string | null;
+  /** One line of explanation shown under the row. */
+  hint?: string | null;
   raw: string;
   day: Day;
   /** "HH:MM:SS" when the date column carried a time, else null — and the
@@ -144,7 +160,13 @@ export function parseImport(
   const rows: ImportRow[] = [];
   const skipped: ImportSkip[] = [];
 
-  text.split(/\r?\n/).forEach((raw, i) => {
+  // A Google Pay statement (the PDF, or its text copied out) has its own
+  // layout, and carries the direction and the UPI id a summary loses.
+  if (isGpayStatement(text)) return fromGpay(text, bankMethods);
+  // A bank's own account statement: every transaction on one account.
+  if (isFederalStatement(text)) return fromFederal(text, bankMethods);
+
+  splitRecords(text).forEach((raw, i) => {
     const line = i + 1;
     const trimmed = raw.trim();
     if (trimmed === '') return;
@@ -183,19 +205,11 @@ export function parseImport(
        whole history at once — while the few "+" rows sailed through as
        spends, so cashback was about to be recorded as spending.
 
-       So a leading minus is dropped and the row is a spend of that amount.
-       A leading plus is money received, which this importer has no way to
-       record correctly (it makes spends): it is left out, and says where it
-       belongs instead. A number with no sign is a spend, as it always was. */
-    const sign = /^[+\-−]/.exec(plain)?.[0] ?? '';
-    if (sign === '+') {
-      skipped.push({
-        line,
-        raw,
-        why: 'money received (+), not a spend — add it under Income, or as a refund',
-      });
-      return;
-    }
+       So a leading minus is dropped and the row is a spend of that amount,
+       and a leading plus is money RECEIVED: an income row, filed by source
+       and account (see ImportRow.direction). No sign is a spend, as always. */
+    const sign = /^[+\-\u2212]/.exec(plain)?.[0] ?? '';
+    const direction: 'out' | 'in' = sign === '+' ? 'in' : 'out';
     const parsed = evaluateAmount(sign ? plain.slice(1) : plain);
     if (!parsed.ok) {
       skipped.push({ line, raw, why: `could not read the amount "${amountRaw}"` });
@@ -221,17 +235,22 @@ export function parseImport(
       else issues.push('unknown-method');
     }
 
+    // Money received is filed by SOURCE, not by spending category.
+    const allowed: readonly string[] = direction === 'in' ? INCOME_SOURCES : ALL_CATEGORIES;
     let category = '';
     if (categoryRaw.trim() === '' || /^unreadable$/i.test(categoryRaw)) {
       issues.push('no-category');
     } else {
-      const hit = match(categoryRaw, ALL_CATEGORIES);
+      const hit = match(categoryRaw, allowed);
       if (hit) category = hit;
-      else issues.push('unknown-category');
+      // "Super Money" is not an income source: leave it to be chosen, not refused.
+      else issues.push(direction === 'in' ? 'no-category' : 'unknown-category');
     }
 
-    rows.push({
+    rows.push(settle({
       line,
+      direction,
+      ref: null,
       raw,
       day,
       time,
@@ -244,9 +263,105 @@ export function parseImport(
       remarks: splitTags(rest.join(' | ')).text,
       tags: splitTags(rest.join(' | ')).tags,
       issues,
-    });
+    }));
   });
 
+  return { rows, skipped };
+}
+
+/* A whole batch pasted as ONE line — what an assistant's answer becomes when
+   its line breaks are lost on the way — reads as a single row with a
+   paragraph for a description. Each record starts with a date and a pipe, so
+   a line holding several is cut back into one per record. */
+const RECORD_START = /\s+(?=\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)?\s*\|)/gi;
+
+function splitRecords(text: string): string[] {
+  return text.split(/\r?\n/).flatMap((line) => {
+    const parts = line.split(RECORD_START);
+    return parts.length > 1 ? parts : [line];
+  });
+}
+
+/**
+ * Money received onto a CARD is not income: it is a refund that lowers the
+ * card's balance. This app records that as the card's bill paid from Perks
+ * (as the fuel-surcharge waivers are), so such a row becomes exactly that.
+ */
+function settle(row: ImportRow): ImportRow {
+  if (row.direction !== 'in' || !row.method || !isCard(row.method)) return row;
+  return {
+    ...row,
+    direction: 'out',
+    category: row.method,
+    method: 'Perks',
+    remarks: row.remarks ? `Refund: ${row.remarks}` : 'Refund',
+    issues: row.issues.filter((x) => x !== 'no-category' && x !== 'unknown-category'),
+  };
+}
+
+function fromGpay(text: string, bankMethods: BankMethods): ImportParse {
+  const rows: ImportRow[] = [];
+  const skipped: ImportSkip[] = [];
+  parseGpayStatement(text).forEach((m, i) => {
+    const issues: ImportIssue[] = [];
+    const method = m.account ? resolveMethod(m.account, bankMethods) : null;
+    if (!m.account) issues.push('no-method');
+    else if (!method) issues.push('unknown-method');
+    issues.push('no-category');
+    rows.push(settle({
+      line: i + 1,
+      direction: m.direction,
+      ref: m.ref,
+      raw: `${m.day} ${m.time ?? ''} | ${m.direction === 'in' ? '+' : '-'}${m.amount} | ${m.account} | ${m.party}`,
+      day: m.day,
+      time: m.time,
+      amount: m.amount,
+      method: method ?? '',
+      methodRaw: m.account,
+      category: '',
+      remarks: m.party,
+      tags: [],
+      issues,
+    }));
+  });
+  if (rows.length === 0) {
+    skipped.push({ line: 1, raw: text.slice(0, 120), why: 'looked like a Google Pay statement, but no payments could be read' });
+  }
+  return { rows, skipped };
+}
+
+function fromFederal(text: string, bankMethods: BankMethods): ImportParse {
+  const st = parseFederalStatement(text);
+  const label = st.account ? `Federal ${st.account}` : 'Federal';
+  const account = resolveMethod(label, bankMethods);
+  const salaryFrom = regularNeftSenders(st.rows);
+  const skipped: ImportSkip[] = [];
+  if (st.unreconciled > 0) {
+    skipped.push({
+      line: 0, raw: `${st.unreconciled} rows`,
+      why: 'some amounts did not match the change in balance — check those rows against the PDF',
+    });
+  }
+  const rows = st.rows.map((r, i): ImportRow => {
+    const read = readBankRow(r, { salaryFrom });
+    return settle({
+      line: i + 1,
+      direction: r.direction,
+      ref: `${r.day}:${r.ref}`,
+      skip: read.skip,
+      hint: read.hint,
+      raw: `${r.day} | ${r.direction === 'in' ? '+' : '-'}${r.amount} | ${label} | ${r.particulars}`,
+      day: r.day,
+      time: null,
+      amount: r.amount,
+      method: account ?? '',
+      methodRaw: label,
+      category: read.category,
+      remarks: read.label,
+      tags: [],
+      issues: [...(account ? [] : (['unknown-method'] as ImportIssue[])), ...(read.category ? [] : (['no-category'] as ImportIssue[]))],
+    });
+  });
   return { rows, skipped };
 }
 
@@ -261,10 +376,11 @@ export function parseImport(
  * leaving the expense recorded nowhere at all.
  */
 export function readyToImport(rows: ImportRow[]): boolean {
-  return rows.length > 0 && rows.every((r) => r.method !== '');
+  // Money received also needs its source: income without one cannot be saved.
+  return rows.length > 0 && rows.every((r) => r.method !== '' && (r.direction === 'out' || r.category !== ''));
 }
 
 /** Rows that will go in unfiled, so the page can say how many before saving. */
 export function unsortedCount(rows: ImportRow[]): number {
-  return rows.filter((r) => r.category === '').length;
+  return rows.filter((r) => r.direction === 'out' && r.category === '').length;
 }

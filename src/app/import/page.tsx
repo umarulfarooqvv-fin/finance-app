@@ -1,7 +1,8 @@
 import { tagNames } from '@/lib/tag-summary';
 import { getSnapshot } from '@/lib/snapshot';
 import { nowIST } from '@/lib/time';
-import { ALL_CATEGORIES, ALL_METHODS } from '@/lib/types';
+import { ALL_CATEGORIES, ALL_METHODS, INCOME_ACCOUNTS, INCOME_SOURCES } from '@/lib/types';
+import { creditLedger } from '@/lib/credit';
 import { bankMethodsFrom } from '@/lib/bank-methods';
 import { visionConfig } from '@/lib/ai/vision';
 import { describeUsage } from '@/lib/ai/usage';
@@ -50,6 +51,15 @@ export default async function ImportPage() {
         visionLabel={vision.label}
         aiUsage={aiUsage}
         tagList={tagNames(snap)}
+        incomeAccounts={[...INCOME_ACCOUNTS]}
+        incomeSources={[...INCOME_SOURCES]}
+        debtors={creditLedger(snap).people
+          .filter((p) => !p.settled && p.outstanding > 0.005)
+          .sort((a, b) => a.person.localeCompare(b.person))
+          .map((p) => ({ person: p.person, outstanding: p.outstanding }))}
+        existingIncome={snap.income
+          .filter((i) => !i.deleted && i.ts && i.amount != null)
+          .map((i) => ({ day: i.ts!.slice(0, 10), amount: i.amount!, account: i.account, source: i.source, remarks: i.remarks }))}
       />
     </Page>
   );
