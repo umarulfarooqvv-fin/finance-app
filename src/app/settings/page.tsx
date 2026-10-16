@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers';
 import { getSnapshot } from '@/lib/snapshot';
 import { cardColor } from '@/lib/statement';
 import { Page, PageHeader } from '@/components/layout/page-header';
@@ -6,6 +7,8 @@ import { AccountSettings, CardSettings } from './settings-client';
 import { BankMethodSettings } from './bank-methods-client';
 import { bankMethodsFrom } from '@/lib/bank-methods';
 import { ALL_METHODS } from '@/lib/types';
+import { TABS_COOKIE, TABS_MODE_COOKIE } from '@/lib/nav-sections';
+import { TabBarSettings } from './tab-bar-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +24,9 @@ export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
   const snap = await getSnapshot();
+  const jar = await cookies();
+  const tabs = jar.get(TABS_COOKIE)?.value ?? null;
+  const tabsMode = jar.get(TABS_MODE_COOKIE)?.value === 'auto' ? 'auto' : 'fixed';
   const needsReview = snap.transactions.filter((t) => t.needsReview).length;
   const cards = snap.cards.map((c) => ({ ...c, color: cardColor(c.slot) }));
 
@@ -62,6 +68,17 @@ export default async function SettingsPage() {
           unknown rather than guessed &mdash; a wrong method moves money onto the wrong card, and
           nothing afterwards looks wrong.
         </p>
+      </Panel>
+
+      <Panel className="mt-4 scroll-mt-4" as="section">
+        <span id="tabs" />
+        <SectionTitle>Phone tab bar</SectionTitle>
+        <p className="mb-3 text-xs text-[var(--color-ink-2)]">
+          Choose which pages get a tab at the bottom of the screen, and their order &mdash; or let
+          the pages you use most come first. Today is always the first tab. The rest stay one tap
+          away under More. Saved on this device.
+        </p>
+        <TabBarSettings current={tabs} mode={tabsMode} />
       </Panel>
 
       <Panel className="mt-4">

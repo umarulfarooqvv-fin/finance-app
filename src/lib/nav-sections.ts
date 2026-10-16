@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, BellRing, BookOpen, Camera, CreditCard, Home, LineChart, MessageCircleQuestion, Scale, ScanLine, Search, Settings, Smartphone, Tag, TrendingUp, Upload, Wallet, type LucideIcon,
+  ArrowLeftRight, BellRing, BookOpen, Camera, CreditCard, Home, LineChart, MessageCircleQuestion, Scale, ScanLine, Search, Settings, Sheet, Smartphone, Tag, TrendingUp, Upload, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 /* ===========================================================================
@@ -71,6 +71,15 @@ export const NAV_SECTIONS: NavSection[] = [
                    'search', 'filter', 'ledger', 'all activity'],
         match: ['/transactions'],
         primary: true,
+      },
+      {
+        label: 'Sheet',
+        href: '/sheet',
+        icon: Sheet,
+        hint: 'Every entry as a spreadsheet: filter, sort, group, total, pivot',
+        keywords: ['spreadsheet', 'excel', 'table', 'grid', 'pivot', 'sort', 'filter',
+                   'analyse', 'analyze', 'export', 'csv', 'sum', 'total'],
+        match: ['/sheet'],
       },
       {
         label: 'Tags',
@@ -200,7 +209,8 @@ export const NAV_SECTIONS: NavSection[] = [
         href: '/settings',
         icon: Settings,
         hint: 'Cards, accounts and data',
-        keywords: ['config', 'preferences', 'cards', 'limits', 'opening balance'],
+        keywords: ['config', 'preferences', 'cards', 'limits', 'opening balance',
+                   'tab bar', 'tabs', 'arrange', 'reorder', 'order', 'menu', 'bottom bar'],
         match: ['/settings'],
       },
     ],
@@ -209,8 +219,81 @@ export const NAV_SECTIONS: NavSection[] = [
 
 export const ALL_NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((s) => s.items);
 
-/** The destinations the phone tab bar shows. */
+/** The destinations the phone tab bar shows by default. */
 export const PRIMARY_NAV_ITEMS: NavItem[] = ALL_NAV_ITEMS.filter((i) => i.primary);
+
+/* ---------------------------------------------------------------------------
+   The phone tab bar is the owner's to arrange: which pages, in what order.
+
+   Kept in a cookie, like the theme, so the server renders the right bar on
+   first paint instead of the default one flickering into the chosen one. It is
+   a per-device preference — the desktop has the full rail and no tab bar.
+   --------------------------------------------------------------------------- */
+
+export const TABS_COOKIE = 'nav_tabs';
+/** 'auto' = most used first; anything else = the owner's own order. */
+export const TABS_MODE_COOKIE = 'nav_tabs_mode';
+/** Pages by use, most first — written by the visit tracker for 'auto'. */
+export const RANK_COOKIE = 'nav_rank';
+/** Seven tabs plus More is what fits a phone's width at a readable size. */
+export const MAX_TABS = 7;
+export const MIN_TABS = 2;
+/** Today is always the first tab, in every mode — home is where the thumb starts. */
+export const HOME_HREF = '/';
+
+export type TabsMode = 'fixed' | 'auto';
+
+function hrefsToItems(raw: string | null | undefined): NavItem[] {
+  const byHref = new Map(ALL_NAV_ITEMS.map((i) => [i.href, i]));
+  const seen = new Set<string>();
+  const out: NavItem[] = [];
+  let text = raw ?? '';
+  try { text = decodeURIComponent(text); } catch { /* already plain */ }
+  for (const href of text.split(',')) {
+    const item = byHref.get(href.trim());
+    if (!item || seen.has(item.href)) continue;
+    seen.add(item.href);
+    out.push(item);
+  }
+  return out;
+}
+
+/**
+ * The tab bar. Today first, always. Then either the owner's own order, or —
+ * in 'auto' — the most used pages first, filled out from that order when
+ * there is not yet enough history.
+ */
+export function tabsFrom(
+  raw: string | null | undefined,
+  opts: { mode?: TabsMode; rank?: string | null } = {},
+): NavItem[] {
+  const chosen = hrefsToItems(raw);
+  const base = chosen.length >= MIN_TABS ? chosen : PRIMARY_NAV_ITEMS;
+  const home = ALL_NAV_ITEMS.find((i) => i.href === HOME_HREF)!;
+  const ordered = opts.mode === 'auto' ? [...hrefsToItems(opts.rank), ...base] : base;
+  const out: NavItem[] = [home];
+  for (const item of ordered) {
+    if (out.length === MAX_TABS) break;
+    if (!out.some((o) => o.href === item.href)) out.push(item);
+  }
+  return out;
+}
+
+/** Fired on window when the order changes, so the bar follows at once. */
+export const TABS_EVENT = 'nav-tabs-change';
+
+const cookie = (name: string, value: string) =>
+  `${name}=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax`;
+
+export function tabsCookie(hrefs: string[]): string {
+  return cookie(TABS_COOKIE, hrefs.join(','));
+}
+export function tabsModeCookie(mode: TabsMode): string {
+  return cookie(TABS_MODE_COOKIE, mode);
+}
+export function rankCookie(hrefs: string[]): string {
+  return cookie(RANK_COOKIE, hrefs.join(','));
+}
 
 /**
  * Which destination is active for a pathname.

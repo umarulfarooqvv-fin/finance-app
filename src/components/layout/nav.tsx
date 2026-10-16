@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { IndianRupee, MoreHorizontal } from 'lucide-react';
 import {
-  NAV_SECTIONS, PRIMARY_NAV_ITEMS, isActive, resolveActiveHref, type NavItem,
+  NAV_SECTIONS, isActive, resolveActiveHref, tabsFrom, TABS_EVENT, type NavItem, type TabsMode,
 } from '@/lib/nav-sections';
 import { cx } from '@/components/ui/primitives';
 import { CommandPalette, CommandTrigger } from '@/components/layout/command-palette';
@@ -35,8 +35,23 @@ const BARE_ROUTES = ['/lock'];
 const isBare = (pathname: string) =>
   BARE_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`));
 
-export function BottomBar() {
+export type TabsState = { order: string | null; mode: TabsMode; rank: string | null };
+
+export function BottomBar({ tabs }: { tabs: TabsState }) {
   const pathname = usePathname();
+  // Which pages and in what order is the owner's choice (Settings). The
+  // server renders from the cookie; a change in Settings arrives as an event
+  // so the bar moves the moment the button is pressed.
+  // The rank is NOT followed live: in "most used first" the bar is ordered
+  // when the app opens and then holds still, so a tab never moves under the
+  // thumb between two taps.
+  const [live, setLive] = useState<{ order: string; mode: TabsMode } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => setLive((e as CustomEvent<{ order: string; mode: TabsMode }>).detail);
+    window.addEventListener(TABS_EVENT, on);
+    return () => window.removeEventListener(TABS_EVENT, on);
+  }, []);
+  const items = tabsFrom(live?.order ?? tabs.order, { mode: live?.mode ?? tabs.mode, rank: tabs.rank });
   const [paletteOpen, setPaletteOpen] = useState(false);
   if (isBare(pathname)) return null;
 
@@ -44,7 +59,7 @@ export function BottomBar() {
   // its own — e.g. /settings — so More lights up instead of nothing lighting
   // up at all, which otherwise looks like the bar lost track of where you are.
   const activeHref = resolveActiveHref(pathname);
-  const onHiddenPage = activeHref !== null && !PRIMARY_NAV_ITEMS.some((i) => i.href === activeHref);
+  const onHiddenPage = activeHref !== null && !items.some((i) => i.href === activeHref);
 
   return (
     <>
@@ -54,7 +69,7 @@ export function BottomBar() {
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="mx-auto flex max-w-lg items-stretch gap-0.5 px-2 py-1">
-          {PRIMARY_NAV_ITEMS.map((item) => {
+          {items.map((item) => {
             const active = isActive(pathname, item);
             const Icon = item.icon;
             return (

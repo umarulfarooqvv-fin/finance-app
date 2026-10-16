@@ -68,6 +68,14 @@ export function frequentPages(
     .map(([h]) => h);
 }
 
+/** Every page by how much it is used now — frequency, faded by recency. */
+export function rankedPages(state: PageVisits, n: number): string[] {
+  return Object.entries(state.pages)
+    .sort(([, a], [, b]) => b.score - a.score || b.last - a.last)
+    .slice(0, n)
+    .map(([h]) => h);
+}
+
 /** Tolerant read: anything malformed is treated as no history at all. */
 export function parseVisits(raw: string | null): PageVisits {
   if (!raw) return EMPTY_VISITS;

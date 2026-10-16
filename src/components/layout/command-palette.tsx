@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Command } from 'cmdk';
 import { CornerDownLeft, Search } from 'lucide-react';
-import { ALL_NAV_ITEMS, NAV_SECTIONS, navItemFor, type NavItem } from '@/lib/nav-sections';
+import { ALL_NAV_ITEMS, NAV_SECTIONS, navItemFor, rankCookie, type NavItem } from '@/lib/nav-sections';
 import {
-  frequentPages, parseVisits, recentPages, recordVisit, EMPTY_VISITS, type PageVisits,
+  frequentPages, parseVisits, rankedPages, recentPages, recordVisit, EMPTY_VISITS, type PageVisits,
 } from '@/lib/page-history';
 
 /* ===========================================================================
@@ -36,7 +36,11 @@ export function VisitTracker() {
     const item = navItemFor(pathname);
     if (!item) return;
     try {
-      localStorage.setItem(VISITS_KEY, JSON.stringify(recordVisit(readVisits(), item.href)));
+      const visits = recordVisit(readVisits(), item.href);
+      localStorage.setItem(VISITS_KEY, JSON.stringify(visits));
+      // For the tab bar's "most used first": the server reads it next time the
+      // app opens (see nav.tsx — the bar does not reshuffle mid-session).
+      document.cookie = rankCookie(rankedPages(visits, 10));
     } catch { /* private browsing: the palette just shows its ordinary list */ }
   }, [pathname]);
   return null;

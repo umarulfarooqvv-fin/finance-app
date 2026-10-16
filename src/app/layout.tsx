@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { BottomBar, SideRail } from '@/components/layout/nav';
+import { RANK_COOKIE, TABS_COOKIE, TABS_MODE_COOKIE } from '@/lib/nav-sections';
 import { VisitTracker } from '@/components/layout/command-palette';
 import { ToastProvider } from '@/components/ui/toast';
 import { PrivacyProvider } from '@/contexts/privacy-context';
@@ -37,7 +38,14 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // Read the theme server-side so the first paint is already correct — a
   // client-side toggle would flash the wrong palette before hydrating.
-  const theme = (await cookies()).get('theme')?.value;
+  const jar = await cookies();
+  const theme = jar.get('theme')?.value;
+  // The owner's own tab order (Settings → Phone tab bar), for the same reason.
+  const tabs = {
+    order: jar.get(TABS_COOKIE)?.value ?? null,
+    mode: jar.get(TABS_MODE_COOKIE)?.value === 'auto' ? 'auto' as const : 'fixed' as const,
+    rank: jar.get(RANK_COOKIE)?.value ?? null,
+  };
   const themeAttr = theme === 'light' || theme === 'dark' ? theme : undefined;
 
   return (
@@ -55,7 +63,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <main className="min-w-0 flex-1 pb-24 lg:pb-8">{children}</main>
               <VisitTracker />
             </div>
-            <BottomBar />
+            <BottomBar tabs={tabs} />
             </EntryEditorProvider>
             </CalculatorProvider>
           </ToastProvider>
