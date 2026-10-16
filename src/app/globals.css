@@ -247,3 +247,19 @@ body {
 @media (prefers-reduced-motion: reduce) {
   [data-privacy='hidden'] .sensitive { transition: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   The page header is frozen to the top of every page (PageHeader). Its height
+   is one variable so everything else that sticks — the Entries filter bar,
+   day headings — can sit just under it instead of sliding beneath it. On an
+   installed iPhone app the status bar is translucent and overlays the page,
+   so the bar grows by the safe-area inset and keeps its buttons below it.
+   --------------------------------------------------------------------------- */
+:root {
+  --app-top: calc(3.5rem + env(safe-area-inset-top, 0px));
+}
+@media (min-width: 640px) {
+  :root {
+    --app-top: calc(4rem + env(safe-area-inset-top, 0px));
+  }
+}

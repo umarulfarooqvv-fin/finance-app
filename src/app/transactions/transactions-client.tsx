@@ -162,7 +162,7 @@ export function TransactionsClient({
 
            Rounded at the top to match the panel it is flush with, which also
            reads correctly once it detaches and floats. */
-        className="sticky top-0 z-30 -mx-4 mb-3 rounded-t-[var(--radius-card)] border-b border-[var(--color-line)] bg-[var(--color-surface)] px-4 pb-3 pt-4 sm:-mx-5 sm:px-5 sm:pt-5"
+        className="sticky top-[var(--app-top)] z-30 -mx-4 mb-3 rounded-t-[var(--radius-card)] border-b border-[var(--color-line)] bg-[var(--color-surface)] px-4 pb-3 pt-4 sm:-mx-5 sm:px-5 sm:pt-5"
       >
         {toolbar}
 
@@ -273,7 +273,7 @@ export function TransactionsClient({
               again, so nothing is lost on a desktop. */}
           {groups.map((g) => (
             <section key={g.day}>
-              <h3 className="sticky top-[var(--tx-bar-h,0px)] z-10 -mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
+              <h3 className="sticky top-[calc(var(--app-top)_+_var(--tx-bar-h,0px))] z-10 -mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
                 <span className="flex items-center gap-2 text-xs font-semibold">
                   {selecting ? (
                     <input

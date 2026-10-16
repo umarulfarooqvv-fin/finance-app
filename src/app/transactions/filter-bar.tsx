@@ -74,6 +74,10 @@ export function FilterBar({
   const params = useSearchParams();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState(initial.q ?? '');
+  const [custom, setCustom] = useState(false);
+  // One "When": a month, or a range (an exact day is a range of one).
+  const when = custom || initial.from || initial.to || initial.day ? 'custom' : initial.month;
+  const compact = cn(inputClass(), 'h-8 px-2 py-0 text-xs');
 
   /** One writer for the URL, so no control can forget to reset the page. */
   function set(over: Record<string, string | undefined>) {
@@ -139,8 +143,8 @@ export function FilterBar({
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-2">
         <form
           className="flex min-w-0 flex-1 gap-2"
           onSubmit={(e) => { e.preventDefault(); set({ q }); }}
@@ -153,23 +157,26 @@ export function FilterBar({
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search remarks, category, method or amount"
-              aria-label="Search transactions"
-              className={cn(inputClass(), 'pl-9')}
+              type="search"
+              enterKeyHint="search"
+              placeholder="Search entries"
+              aria-label="Search transactions — press Enter"
+              className={cn(inputClass(), 'h-9 py-1 pl-9')}
             />
           </div>
-          <Button type="submit" size="sm">Search</Button>
         </form>
 
         <Button
           type="button"
           size="sm"
-          variant={narrowed ? 'secondary' : 'ghost'}
+          variant={narrowed || open ? 'secondary' : 'ghost'}
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
+          aria-label="Filters"
         >
           <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-          Filters{chips.length ? ` · ${chips.length}` : ''}
+          <span className="hidden sm:inline">Filters</span>
+          {chips.length ? <span className="num text-xs">{chips.length}</span> : null}
         </Button>
       </div>
 
@@ -199,136 +206,118 @@ export function FilterBar({
         </div>
       ) : null}
 
+      {/* Compact by design: three rows on a phone. Each select names its
+          own "any" state, so the controls need no labels above them; a month,
+          an exact day and a range are one "When", since they are one question. */}
       {open ? (
-        <div className="grid gap-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] p-3 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">Month</span>
+        <div className="grid grid-cols-2 gap-2 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] p-2">
+          <div className="col-span-2 grid gap-2">
             <select
-              value={initial.month}
-              onChange={(e) => set({ month: e.target.value || undefined, day: undefined })}
-              className={inputClass()}
+              aria-label="When"
+              value={when}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === 'custom') { setCustom(true); return; }
+                setCustom(false);
+                set({ month: v || undefined, day: undefined, from: undefined, to: undefined });
+              }}
+              className={compact}
             >
-              <option value="">Any month</option>
-              {months.map((m) => (
-                <option key={m} value={m}>{formatMonth(m)}</option>
-              ))}
+              <option value="">Any time</option>
+              <option value="custom">Custom dates…</option>
+              <optgroup label="Month">
+                {months.map((m) => <option key={m} value={m}>{formatMonth(m)}</option>)}
+              </optgroup>
             </select>
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">Exact day</span>
-            <input
-              type="date"
-              value={initial.day}
-              onChange={(e) => set({ day: e.target.value || undefined, month: undefined })}
-              className={inputClass()}
-            />
-          </label>
+            {when === 'custom' ? (
+              <span className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1">
+                <input
+                  type="date"
+                  aria-label="From"
+                  value={initial.from || initial.day}
+                  onChange={(e) => set({ from: e.target.value || undefined, to: initial.to || initial.day || undefined, day: undefined, month: undefined })}
+                  className={cn(compact, 'min-w-0')}
+                />
+                <span className="text-xs text-[var(--color-ink-3)]">–</span>
+                <input
+                  type="date"
+                  aria-label="To"
+                  value={initial.to || initial.day}
+                  onChange={(e) => set({ to: e.target.value || undefined, from: initial.from || initial.day || undefined, day: undefined, month: undefined })}
+                  className={cn(compact, 'min-w-0')}
+                />
+              </span>
+            ) : null}
+          </div>
 
           {/* Choose several. The select ADDS and the chips REMOVE, rather than
               a multi-select box: twenty-two categories will not fit as a wall
               of chips, and a native multiple-select is close to unusable on a
               phone. Several chosen means ANY of them. */}
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">
-              Category{initial.category.length > 0 ? ` · ${initial.category.length}` : ''}
-            </span>
-            <select
-              value=""
-              onChange={(e) => e.target.value && set({ cat: withValue(initial.category, e.target.value) })}
-              className={inputClass()}
-            >
-              <option value="">{initial.category.length > 0 ? 'Add another…' : 'Any category'}</option>
-              <optgroup label="Spending">
-                {SPEND_CATEGORIES.filter((c) => !initial.category.includes(c))
-                  .map((c) => <option key={c} value={c}>{c}</option>)}
-              </optgroup>
-              <optgroup label="Bill paid to a card">
-                {CARD_NAMES.filter((c) => !initial.category.includes(c))
-                  .map((c) => <option key={c} value={c}>{c}</option>)}
-              </optgroup>
-              <optgroup label="Transfers">
-                {TRANSFER_CATEGORIES.filter((c) => !initial.category.includes(c))
-                  .map((c) => <option key={c} value={c}>{c}</option>)}
-              </optgroup>
-            </select>
-          </label>
+          <select
+            aria-label="Category"
+            value=""
+            onChange={(e) => e.target.value && set({ cat: withValue(initial.category, e.target.value) })}
+            className={compact}
+          >
+            <option value="">{initial.category.length > 0 ? '+ Category' : 'Any category'}</option>
+            <optgroup label="Spending">
+              {SPEND_CATEGORIES.filter((c) => !initial.category.includes(c))
+                .map((c) => <option key={c} value={c}>{c}</option>)}
+            </optgroup>
+            <optgroup label="Bill paid to a card">
+              {CARD_NAMES.filter((c) => !initial.category.includes(c))
+                .map((c) => <option key={c} value={c}>{c}</option>)}
+            </optgroup>
+            <optgroup label="Transfers">
+              {TRANSFER_CATEGORIES.filter((c) => !initial.category.includes(c))
+                .map((c) => <option key={c} value={c}>{c}</option>)}
+            </optgroup>
+          </select>
 
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">
-              Paid with{initial.method.length > 0 ? ` · ${initial.method.length}` : ''}
-            </span>
-            <select
-              value=""
-              onChange={(e) => e.target.value && set({ method: withValue(initial.method, e.target.value) })}
-              className={inputClass()}
-            >
-              <option value="">{initial.method.length > 0 ? 'Add another…' : 'Any method'}</option>
-              {ALL_METHODS.filter((m) => !initial.method.includes(m))
-                .map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </label>
+          <select
+            aria-label="Paid with"
+            value=""
+            onChange={(e) => e.target.value && set({ method: withValue(initial.method, e.target.value) })}
+            className={compact}
+          >
+            <option value="">{initial.method.length > 0 ? '+ Paid with' : 'Any payment'}</option>
+            {ALL_METHODS.filter((m) => !initial.method.includes(m))
+              .map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
 
-          {/* A span of days — a trip, a hospital week — which a calendar month
-              never quite is. Either end may be left open. */}
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">From</span>
+          <select
+            aria-label="Tag"
+            value=""
+            onChange={(e) => e.target.value && set({ tag: withValue(initial.tag, e.target.value) })}
+            className={compact}
+            disabled={tags.length === 0}
+          >
+            <option value="">
+              {tags.length === 0 ? 'No tags yet' : initial.tag.length > 0 ? '+ Tag' : 'Any tag'}
+            </option>
+            {tags.filter((t) => !initial.tag.includes(t)).map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+
+          <span className="flex min-w-0 items-center gap-1">
             <input
-              type="date"
-              value={initial.from}
-              onChange={(e) => set({ from: e.target.value || undefined, day: undefined })}
-              className={inputClass()}
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">To</span>
-            <input
-              type="date"
-              value={initial.to}
-              onChange={(e) => set({ to: e.target.value || undefined, day: undefined })}
-              className={inputClass()}
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">
-              Tag{initial.tag.length > 0 ? ` · ${initial.tag.length}` : ''}
-            </span>
-            <select
-              value=""
-              onChange={(e) => e.target.value && set({ tag: withValue(initial.tag, e.target.value) })}
-              className={inputClass()}
-              disabled={tags.length === 0}
-            >
-              <option value="">
-                {tags.length === 0 ? 'No tags yet' : initial.tag.length > 0 ? 'Add another…' : 'Any tag'}
-              </option>
-              {tags.filter((t) => !initial.tag.includes(t)).map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">At least</span>
-            <input
+              aria-label="At least"
               defaultValue={initial.min ?? ''}
               onBlur={(e) => set({ min: e.target.value.trim() || undefined })}
               inputMode="decimal"
-              placeholder="0"
-              className={cn(inputClass(), 'num')}
+              placeholder="Min ₹"
+              className={cn(compact, 'num min-w-0')}
             />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-[var(--color-ink-3)]">At most</span>
+            <span className="text-xs text-[var(--color-ink-3)]">–</span>
             <input
+              aria-label="At most"
               defaultValue={initial.max ?? ''}
               onBlur={(e) => set({ max: e.target.value.trim() || undefined })}
               inputMode="decimal"
-              placeholder="No limit"
-              className={cn(inputClass(), 'num')}
+              placeholder="Max ₹"
+              className={cn(compact, 'num min-w-0')}
             />
-          </label>
+          </span>
         </div>
       ) : null}
 

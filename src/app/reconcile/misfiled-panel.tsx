@@ -274,7 +274,7 @@ export function MisfiledPanel({
                 'mb-3 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-canvas)] px-3 py-2.5',
                 // Frozen on the page: the figure being closed should stay in
                 // view while the list that closes it is worked through.
-                asPage && 'sticky top-0 z-30 shadow-[var(--shadow-card)]',
+                asPage && 'sticky top-[var(--app-top)] z-30 shadow-[var(--shadow-card)]',
               )}
             >
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -474,7 +474,7 @@ export function MisfiledPanel({
                       the same weight on the same background as the rows, and a
                       sticky header that looks like a row looks like it is
                       slicing the one it covers. */}
-                  <h4 className="sticky top-[var(--misfiled-bar-h,0px)] z-10 -mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
+                  <h4 className="sticky top-[calc(var(--app-top)_+_var(--misfiled-bar-h,0px))] z-10 -mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
                     <span className="text-xs font-semibold">
                       {formatDayShort(g.day)}
                       <span className="ml-2 font-normal text-[var(--color-ink-3)]">

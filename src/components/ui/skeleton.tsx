@@ -66,10 +66,13 @@ export function TableSkeleton({ rows = 6 }: { rows?: number }) {
 /** The page frame every loading.tsx reuses, so the header never shifts. */
 export function PageSkeleton({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
+    <div className="mx-auto w-full max-w-5xl px-4 pb-5 sm:px-6 sm:pb-8">
+      {/* Same geometry as PageHeader's frozen row, so nothing jumps on load. */}
       <div className="mb-5">
-        <Shimmer className="h-7 w-40" />
-        <Shimmer className="mt-2 h-3 w-64" />
+        <div className="flex h-[var(--app-top)] items-center pt-[env(safe-area-inset-top)]">
+          <Shimmer className="h-7 w-40" />
+        </div>
+        <Shimmer className="h-3 w-64" />
       </div>
       <div className="flex flex-col gap-4">{children}</div>
     </div>

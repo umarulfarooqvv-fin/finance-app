@@ -71,7 +71,7 @@ export function IncomeClient({
         <div className="flex flex-col">
           {groups.map((g) => (
             <section key={g.month}>
-              <h3 className="sticky top-0 z-10 -mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
+              <h3 className="sticky top-[var(--app-top)] z-10 -mx-4 flex items-baseline justify-between gap-3 border-y border-[var(--color-line)] bg-[var(--color-raised)] px-4 py-1.5 sm:-mx-5 sm:px-5">
                 <span className="text-xs font-semibold">
                   {g.label}
                   <span className="ml-2 font-normal text-[var(--color-ink-3)]">
