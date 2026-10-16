@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getSnapshot } from '@/lib/snapshot';
 import { creditLedger } from '@/lib/credit';
 import { recovery, STALE_DAYS } from '@/lib/recovery';
@@ -126,7 +127,15 @@ export default async function LedgersPage() {
       ) : null}
 
       <Panel className="mt-4">
-        <SectionTitle>Owed to you</SectionTitle>
+        <SectionTitle
+          action={
+            <Link href="/ledgers/credit" className="text-xs font-medium text-[var(--color-accent)] hover:underline">
+              Search all · by person or description →
+            </Link>
+          }
+        >
+          Owed to you
+        </SectionTitle>
 
         {owedToMe.length === 0 ? (
           <Empty
