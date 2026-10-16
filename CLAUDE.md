@@ -224,6 +224,15 @@ Two separate paths, with different requirements:
   photo shown in its Photo field and linked on save. A read date is trusted
   only within 45 days before the photo; an invented year is replaced with the
   photo's own, because payment screens print "September 22" with none.
+  The same readings are also offered on **Entries as drafts**
+  (`lib/draft-entries`, `transactions/draft-entries.tsx`): dashed, marked
+  "Draft", in no total. **Add** saves the row as READ — the server finds it
+  again in the stored reading (`draft-actions`), never trusting the browser's
+  values — and only when amount, method and category are all known; anything
+  less opens the ordinary form ("Finish"). Each row added is cut out of the
+  reading at once (`consumeDraftRow`), so the inbox cannot offer it again, and
+  the photo is linked to the first entry when no row is left. "Hide" only
+  takes it off Entries (`hidden` on the draft); the photo stays in the inbox.
   The provider's allowance (`x-ratelimit-*` headers, a 429's own wording) is
   read off every reply by `lib/ai/usage` and kept in `app_config` as
   `ai_usage`; the Inbox and `/import` show "N of 1,000 AI reads left", and

@@ -87,21 +87,8 @@ export function entryFromReading(
   if (rows.length > 1) return { kind: 'several', rows: rows.length };
 
   const row = rows[0]!;
-  const captureDay: Day = dayOf(captureTs);
-  const gap = daysBetween(row.day, captureDay);
-  const asRead = gap >= 0 && gap <= PLAUSIBLE_DAYS;
-  const repaired = asRead ? null : withBelievableYear(row.day, captureDay);
-  const day = asRead ? row.day : repaired;
-
-  // The time printed on the screen, when there was one, is the real moment.
-  // Otherwise: same day as the photo takes the photo's own time; an earlier
-  // day takes noon, like every other date written without a time — an entry
-  // at 00:00 on a bill date sits on the boundary between two statements.
-  const ts = !day
-    ? captureTs
-    : row.time
-      ? `${day}T${row.time}`
-      : day === captureDay ? captureTs : `${day}T12:00:00`;
+  const dated = dateFromReading(row.day, row.time, captureTs);
+  const { ts } = dated;
 
   const draft: EntryDraft = { ts };
   if (row.amount > 0) draft.amount = row.amount;
@@ -112,6 +99,37 @@ export function entryFromReading(
   return {
     kind: 'one',
     draft,
+    datedByReading: dated.datedByReading,
+    yearCorrected: dated.yearCorrected,
+    dateDoubtful: dated.dateDoubtful,
+  };
+}
+
+/**
+ * When one read row happened — the same rules for the inbox form and for the
+ * drafts listed on Entries, so a draft is never dated differently in two
+ * places.
+ *
+ * The time printed on the screen, when there was one, is the real moment.
+ * Otherwise: same day as the photo takes the photo's own time; an earlier
+ * day takes noon, like every other date written without a time — an entry
+ * at 00:00 on a bill date sits on the boundary between two statements.
+ */
+export function dateFromReading(rowDay: Day, rowTime: string | null, captureTs: Instant): {
+  ts: Instant; datedByReading: boolean; yearCorrected: boolean; dateDoubtful: boolean;
+} {
+  const captureDay: Day = dayOf(captureTs);
+  const gap = daysBetween(rowDay, captureDay);
+  const asRead = gap >= 0 && gap <= PLAUSIBLE_DAYS;
+  const repaired = asRead ? null : withBelievableYear(rowDay, captureDay);
+  const day = asRead ? rowDay : repaired;
+  const ts = !day
+    ? captureTs
+    : rowTime
+      ? `${day}T${rowTime}`
+      : day === captureDay ? captureTs : `${day}T12:00:00`;
+  return {
+    ts,
     datedByReading: day !== null && day !== captureDay,
     yearCorrected: repaired !== null,
     dateDoubtful: day === null,

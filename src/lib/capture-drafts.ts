@@ -50,6 +50,15 @@ export type CaptureDraft = {
    * limit lifts, which is the whole point of reading without being asked.
    */
   limited?: boolean;
+  /**
+   * Rows already made into entries from the drafts on Entries, and the entry
+   * each became. The row is cut out of `text` at the same moment, so neither
+   * the inbox nor Entries can offer it a second time; the first entry is the
+   * one the photo is linked to once every row has been dealt with.
+   */
+  added?: { raw: string; tx: string }[];
+  /** Rows hidden from Entries ("not now"). The inbox still shows the photo. */
+  hidden?: string[];
 };
 
 export type CaptureDrafts = Record<string, CaptureDraft>;
@@ -147,4 +156,44 @@ export async function readCaptureIntoDraft(id: string): Promise<CaptureDraft | n
   const draft = await readCapture(id);
   if (draft && !draft.limited) await saveCaptureDraft(id, draft);
   return draft;
+}
+
+/** The reading's text without one row — the first line that is that row. */
+export function withoutRow(text: string, raw: string): string {
+  const lines = text.split(/\r?\n/);
+  const i = lines.findIndex((l) => l.trim() === raw.trim());
+  if (i >= 0) lines.splice(i, 1);
+  else return text.replace(raw, '');
+  return lines.join('\n');
+}
+
+/**
+ * One row of a photo became an entry: cut it from the reading and remember
+ * the entry. Returns what is left to read, and the first entry made, so the
+ * caller can retire the photo once nothing is left.
+ */
+export async function consumeDraftRow(
+  captureId: string,
+  raw: string,
+  tx: string,
+): Promise<{ remaining: string; firstTx: string } | null> {
+  let out: { remaining: string; firstTx: string } | null = null;
+  await updateConfigKey<CaptureDrafts>(KEY, (current) => {
+    const d = current[captureId];
+    if (!d?.text) return current;
+    const remaining = withoutRow(d.text, raw);
+    const added = [...(d.added ?? []), { raw, tx }];
+    out = { remaining, firstTx: added[0]!.tx };
+    return { ...current, [captureId]: { ...d, text: remaining, added } };
+  });
+  return out;
+}
+
+/** Stop listing one row on Entries. Nothing else changes. */
+export async function hideDraftRow(captureId: string, raw: string): Promise<void> {
+  await updateConfigKey<CaptureDrafts>(KEY, (current) => {
+    const d = current[captureId];
+    if (!d) return current;
+    return { ...current, [captureId]: { ...d, hidden: [...new Set([...(d.hidden ?? []), raw])] } };
+  });
 }

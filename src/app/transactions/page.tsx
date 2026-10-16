@@ -1,6 +1,10 @@
 import Link from 'next/link';
 import { currentSnapshot } from '@/lib/views';
-import { photosByTransaction } from '@/lib/captures';
+import { listCaptures, photosByTransaction } from '@/lib/captures';
+import { readCaptureDrafts } from '@/lib/capture-drafts';
+import { draftEntries, type DraftEntry } from '@/lib/draft-entries';
+import { bankMethodsFrom } from '@/lib/bank-methods';
+import { DraftEntries } from './draft-entries';
 import { photoNoticesForPage } from '@/lib/photo-check';
 import { tagNames } from '@/lib/tag-summary';
 import { getSnapshot } from '@/lib/snapshot';
@@ -48,6 +52,24 @@ export default async function TransactionsPage({
   const now = endOfDay(today);
 
   const f = readFilters(sp);
+
+  /* Rows the AI read off inbox photos, offered as drafts at the top of the
+     first page — only when nothing is filtered, since a filter describes the
+     ledger and a draft is not in it yet. A missing captures table (the
+     migration not run) just means no drafts. */
+  let drafts: DraftEntry[] = [];
+  if (f.page === 1 && !f.deleted && !isNarrowed(f)) {
+    const [pending, readings] = await Promise.all([
+      listCaptures('pending').catch(() => []),
+      readCaptureDrafts(),
+    ]);
+    drafts = draftEntries(
+      pending.map((c) => ({ id: c.id, ts: c.ts, bytes: c.bytes })),
+      readings,
+      bankMethodsFrom(snap.config),
+      snap.transactions,
+    );
+  }
   const matched = applyFilters(snap.transactions, f, now).sort((a, b) => (a.ts! < b.ts! ? 1 : -1));
 
   // Group first, then page over whole days.
@@ -120,6 +142,8 @@ export default async function TransactionsPage({
       />
 
       <PhotoCorrections corrections={corrections} questions={questions} />
+
+      <DraftEntries drafts={drafts} defaultTs={nowIST()} />
 
       {/* Search, filters and New entry live INSIDE this panel now, in a bar
           frozen to the top of it — they were a separate panel above, which
