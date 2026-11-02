@@ -99,10 +99,13 @@ export function formatPlace(p: Place): string {
   return p.label || `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`;
 }
 
-/** Opens Apple Maps on the phone, and the web map anywhere else. */
+/**
+ * Opens Google Maps at the exact spot — its app on the phone when installed,
+ * the website otherwise. By coordinates, never by name: a name is a SEARCH
+ * and can land on a different shop of the same name across town.
+ */
 export function mapsUrl(p: Place): string {
-  const q = encodeURIComponent(p.label || 'Photo taken here');
-  return `https://maps.apple.com/?ll=${p.lat},${p.lon}&q=${q}`;
+  return `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}`;
 }
 
 /** A label from an OpenStreetMap reverse lookup: "Lulu Mall, Edappally".

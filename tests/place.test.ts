@@ -29,7 +29,7 @@ describe('where a photo was taken', () => {
     const p = parsePlace(from({ lat: '9.93123456', lon: '76.26734567' }))!;
     expect(p).toEqual({ lat: 9.931235, lon: 76.267346 });
     expect(formatPlace(p)).toBe('9.9312, 76.2673');
-    expect(mapsUrl(p)).toBe('https://maps.apple.com/?ll=9.931235,76.267346&q=Photo%20taken%20here');
+    expect(mapsUrl(p)).toBe('https://www.google.com/maps/search/?api=1&query=9.931235,76.267346');
   });
 
   it('rides along on the drafts read from that photo', () => {

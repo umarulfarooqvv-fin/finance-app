@@ -37,7 +37,7 @@ function popup(p: Pin): string {
       <strong class="sensitive">${esc(title)}</strong>
       <div class="map-pop-sum">${p.count} ${p.count === 1 ? 'entry' : 'entries'} · spent <span class="num sensitive">${esc(money(p.spent))}</span></div>
       <ul>${rows}${more}</ul>
-      <a href="${esc(mapsUrl({ lat: p.lat, lon: p.lon, ...(p.label ? { label: p.label } : {}) }))}" target="_blank" rel="noopener noreferrer">Open in Maps</a>
+      <a href="${esc(mapsUrl({ lat: p.lat, lon: p.lon, ...(p.label ? { label: p.label } : {}) }))}" target="_blank" rel="noopener noreferrer">Open in Google Maps</a>
     </div>`;
 }
 

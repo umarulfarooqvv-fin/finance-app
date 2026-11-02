@@ -724,7 +724,7 @@ export function TransactionDialog({
                   </span>
                   <PlaceAddress place={place} />
                   <span className="sensitive num text-[11px] text-[var(--color-accent)]">
-                    {place.lat.toFixed(4)}, {place.lon.toFixed(4)} · open in Maps
+                    {place.lat.toFixed(4)}, {place.lon.toFixed(4)} · open in Google Maps
                   </span>
                 </span>
               </a>

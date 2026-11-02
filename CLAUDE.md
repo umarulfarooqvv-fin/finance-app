@@ -229,7 +229,7 @@ Two separate paths, with different requirements:
   "Draft", in no total. A capture may carry where it was taken (`lat`/`lon`
   or `location`, optional `place`; `x-lat`/`x-lon`/`x-place` headers beside a
   raw photo — `lib/place`), kept as `capture_places` in `app_config`
-  and shown on each draft as a map link; it survives the photo becoming an
+  and shown on each draft with a Google Maps link; it survives the photo becoming an
   entry (which takes the place — `placeFromPhoto`) and goes when the photo is
   discarded. **Add** saves the row as READ — the server finds it
   again in the stored reading (`draft-actions`), never trusting the browser's

@@ -349,7 +349,7 @@ export function TransactionsClient({
                           href={mapsUrl(t.place)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          title="Open in Maps"
+                          title="Open in Google Maps"
                           className="flex w-full min-w-0 items-center gap-1 text-[11px] text-[var(--color-ink-3)] hover:text-[var(--color-accent)]"
                         >
                           <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
