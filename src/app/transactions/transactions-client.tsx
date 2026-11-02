@@ -11,7 +11,8 @@ import { Dialog } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { Badge, cx, Empty, Money } from '@/components/ui/primitives';
 import { TransactionDialog, type EditableTransaction } from './transaction-dialog';
-import { formatPlace, mapsUrl } from '@/lib/place';
+import { mapsUrl } from '@/lib/place';
+import { PlaceText } from '@/components/place-name';
 import { deleteTransactionAction, restoreTransactionAction } from './actions';
 import { tagEntriesAction } from '@/app/tags/actions';
 import { TagChips, TagInput } from '@/components/entry/tag-input';
@@ -352,7 +353,7 @@ export function TransactionsClient({
                           className="flex w-full min-w-0 items-center gap-1 text-[11px] text-[var(--color-ink-3)] hover:text-[var(--color-accent)]"
                         >
                           <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
-                          <span className="sensitive truncate">{formatPlace(t.place)}</span>
+                          <span className="sensitive truncate"><PlaceText place={t.place} /></span>
                         </a>
                       ) : null}
                       {t.photoId ? (

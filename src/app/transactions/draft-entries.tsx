@@ -11,7 +11,8 @@ import { TransactionDialog } from './transaction-dialog';
 import { addDraftEntryAction, draftSavedAction, hideDraftAction } from './draft-actions';
 import { formatDayShort } from '@/lib/time';
 import type { DraftEntry } from '@/lib/draft-entries';
-import { formatPlace, mapsUrl } from '@/lib/place';
+import { mapsUrl } from '@/lib/place';
+import { PlaceText } from '@/components/place-name';
 
 /* ===========================================================================
    Drafts on Entries: rows the AI read off inbox photos, waiting for a yes.
@@ -127,7 +128,7 @@ export function DraftEntries({ drafts, defaultTs }: { drafts: DraftEntry[]; defa
                           className="mt-0.5 flex w-fit max-w-full items-center gap-1 text-[11px] text-[var(--color-ink-3)] hover:text-[var(--color-accent)]"
                         >
                           <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
-                          <span className="sensitive truncate">{formatPlace(d.place)}</span>
+                          <span className="sensitive truncate">Spent at <PlaceText place={d.place} /></span>
                         </a>
                       ) : null}
 

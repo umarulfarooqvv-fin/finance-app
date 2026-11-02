@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { listCaptures } from '@/lib/captures';
 import { visionConfig } from '@/lib/ai/vision';
 import { readCaptureDrafts, type CaptureDrafts } from '@/lib/capture-drafts';
+import { readCapturePlaces } from '@/lib/capture-places';
 import { getSnapshot } from '@/lib/snapshot';
 import { bankMethodsFrom } from '@/lib/bank-methods';
 import { describeUsage } from '@/lib/ai/usage';
@@ -39,7 +40,7 @@ export default async function InboxPage() {
      in a row. The three app_config reads go out as ONE request (see
      lib/config), and listCaptures answering is itself the proof the captures
      table exists, so the separate probe is gone. */
-  const [rows, drafts, snap, usage, voices] = await Promise.all([
+  const [rows, drafts, snap, usage, voices, places] = await Promise.all([
     listCaptures('pending').catch(() => null),
     /* What the AI already read out of each waiting photo, mostly at the
        moment it arrived — so the inbox opens with the rows on screen. */
@@ -48,6 +49,8 @@ export default async function InboxPage() {
     // How much of the provider's allowance is left, as of its last reply.
     reading ? readAiUsage() : Promise.resolve(null),
     readVoiceDrafts(),
+    // Where each photo was taken, when the phone said.
+    readCapturePlaces(),
   ]);
   const ready = rows !== null;
   /* The bank's own labels ("Federal CC XX16") mapped to this ledger's names,
@@ -67,6 +70,7 @@ export default async function InboxPage() {
     bytes: r.bytes,
     draft: drafts[r.id]?.text ?? null,
     draftError: drafts[r.id]?.error ?? null,
+    place: places[r.id] ?? null,
   }));
 
   const waiting = [

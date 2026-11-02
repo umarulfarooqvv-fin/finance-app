@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Loader2, Plus, RotateCw, Sparkles, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Loader2, MapPin, Plus, RotateCw, Sparkles, Trash2, X } from 'lucide-react';
 import { formatDayShort } from '@/lib/time';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -10,6 +10,8 @@ import { useToast } from '@/components/ui/toast';
 import { cx, Empty } from '@/components/ui/primitives';
 import { captureSrc, SafeImage } from '@/components/capture-image';
 import { TransactionDialog } from '@/app/transactions/transaction-dialog';
+import { mapsUrl, type Place } from '@/lib/place';
+import { PlaceText } from '@/components/place-name';
 import { SelectBox, SelectionControls, useSelection } from '@/components/ui/selection';
 import { discardCaptureAction, linkCaptureAction } from './actions';
 import { IMPORT_DRAFT_KEY } from '@/lib/import-handoff';
@@ -45,6 +47,8 @@ export type Capture = {
   draft: string | null;
   /** Why it could not be read, when that is what happened. */
   draftError: string | null;
+  /** Where the photo was taken, when the Shortcut sent it. */
+  place: Place | null;
 };
 
 type DraftState = { text?: string; error?: string };
@@ -310,6 +314,17 @@ export function InboxClient({
                 <div className="num text-[11px] text-[var(--color-ink-3)]">
                   {c.ts.slice(11, 16)} · {Math.max(1, Math.round(c.bytes / 1024))} KB
                 </div>
+                {c.place ? (
+                  <a
+                    href={mapsUrl(c.place)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 flex items-center gap-1 text-[11px] text-[var(--color-ink-3)] hover:text-[var(--color-accent)]"
+                  >
+                    <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    <span className="sensitive truncate"><PlaceText place={c.place} /></span>
+                  </a>
+                ) : null}
                 {c.note ? (
                   <p className="mt-1 line-clamp-2 text-[11px] text-[var(--color-ink-2)]">{c.note}</p>
                 ) : null}
@@ -411,6 +426,7 @@ export function InboxClient({
         draft={fromReading?.kind === 'one' ? fromReading.draft : null}
         note={entryNote}
         pendingPhoto={entryFor ? { id: entryFor.id, bytes: entryFor.bytes } : null}
+        place={entryFor?.place ?? null}
         onSaved={(id, opts) => {
           const c = entryFor;
           setEntryFor(null);

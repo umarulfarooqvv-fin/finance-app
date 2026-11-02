@@ -20,6 +20,7 @@ import type { RemarkSuggestion } from '@/app/api/remarks/route';
 import { foldForSearch } from '@/lib/search-text';
 import { createTransactionAction, setPlaceAction, updateTransactionAction } from './actions';
 import { formatPlace, mapsUrl, type Place } from '@/lib/place';
+import { usePlaceName } from '@/components/place-name';
 import { detachPhotoAction } from '@/app/inbox/actions';
 
 /* ===========================================================================
@@ -151,6 +152,8 @@ export function TransactionDialog({
   const [placeTouched, setPlaceTouched] = useState(false);
   const [locating, setLocating] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
+  // Named while the form is open, so the place is confirmed BEFORE the save.
+  const { name: placeName, looking: placeLooking } = usePlaceName(place);
   const latestPlace = useRef(givenPlace);
   latestPlace.current = givenPlace;
 
@@ -335,7 +338,9 @@ export function TransactionDialog({
   /* After the entry saves, never before — and a failure says so without
      touching the entry, which is already in the ledger. */
   async function savePlace(transactionId: string) {
-    const result = await setPlaceAction({ id: transactionId, place });
+    // The name looked up while the form was open is saved with it.
+    const named = place && !place.label && placeName ? { ...place, label: placeName } : place;
+    const result = await setPlaceAction({ id: transactionId, place: named });
     if (!result.ok) notify('error', `Entry saved, but not its location: ${result.error}`);
   }
 
@@ -713,8 +718,13 @@ export function TransactionDialog({
                 className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
               >
                 <MapPin className="h-4 w-4 shrink-0 text-[var(--color-accent)]" aria-hidden="true" />
-                <span className="sensitive truncate">
-                  {place.label ? formatPlace(place) : `Here · ${formatPlace(place)}`}
+                <span className="flex min-w-0 flex-col">
+                  <span className="sensitive truncate">
+                    {placeName ?? (placeLooking ? 'Finding the place…' : formatPlace(place))}
+                  </span>
+                  <span className="sensitive num text-[11px] text-[var(--color-ink-3)]">
+                    {place.lat.toFixed(4)}, {place.lon.toFixed(4)} · open in Maps
+                  </span>
                 </span>
               </a>
               <Button
@@ -733,8 +743,8 @@ export function TransactionDialog({
               {locating ? 'Finding you…' : 'Use where I am now'}
             </Button>
           )}
-          {place && !place.label ? (
-            <p className="mt-1 text-[11px] text-[var(--color-ink-3)]">The place name is looked up after you save.</p>
+          {place && !placeName && !placeLooking ? (
+            <p className="mt-1 text-[11px] text-[var(--color-ink-3)]">No name found for this spot — the map link shows where it is.</p>
           ) : null}
         </Field>
 
