@@ -128,3 +128,40 @@ export function nameFromLookup(json: unknown): string | null {
   }
   return null;
 }
+
+/**
+ * The full address from the same lookup, one line each, the way Maps shows
+ * it: road, area, taluk, "district, PIN", state, country. Lines repeat in
+ * OpenStreetMap's data (a city and its district are often both
+ * "Malappuram"), so a line already shown is not shown twice.
+ */
+export function addressFromLookup(json: unknown): string[] {
+  if (!json || typeof json !== 'object') return [];
+  const j = json as { name?: unknown; address?: Record<string, unknown> };
+  const a = j.address ?? {};
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const any = (...keys: string[]) => keys.map((k) => str(a[k])).find(Boolean) ?? '';
+
+  const road = [str(a['house_number']), any('road', 'pedestrian', 'footway')].filter(Boolean).join(' ');
+  const named = str(j.name);
+  const district = any('state_district', 'city', 'town', 'village');
+  const postcode = str(a['postcode']);
+  const lines = [
+    named && named !== road ? named : '',
+    road,
+    any('suburb', 'neighbourhood', 'quarter', 'hamlet'),
+    any('county', 'city_district'),
+    [district, postcode].filter(Boolean).join(', '),
+    str(a['state']),
+    str(a['country']),
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const l of lines) {
+    const key = l.toLowerCase();
+    if (!l || seen.has(key)) continue;
+    seen.add(key);
+    out.push(l.slice(0, 120));
+  }
+  return out;
+}

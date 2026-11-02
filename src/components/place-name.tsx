@@ -4,54 +4,80 @@ import { useEffect, useState } from 'react';
 import { formatPlace, type Place } from '@/lib/place';
 
 /* ===========================================================================
-   A place's NAME, on screen before anything is saved.
+   A place's NAME and ADDRESS, on screen before anything is saved.
 
-   A place with a label is shown as it is. One without — coordinates from the
-   browser, or a photo whose name has not been looked up yet — asks
-   /api/place-name once and shows "Finding the place…" meanwhile, so the
-   person confirming an entry reads "Lulu Mall, Edappally", not two numbers.
-
-   Answers are kept for the page's life, by coordinates to ~10m, so a list of
-   drafts from one shop asks once.
+   Asks /api/place-name once per spot (to ~10m) for the page's life, and shows
+   "Finding the place…" meanwhile — so the person confirming an entry reads
+   "Kozhikode Ferokh Palakkad Road, Ernad, Malappuram 676517", not two
+   numbers. A place that already has a label shows it at once; the address
+   arrives a moment later.
    =========================================================================== */
 
-const known = new Map<string, Promise<string | null>>();
+type Found = { name: string | null; address: string[] };
+
+const known = new Map<string, Promise<Found | null>>();
 const keyOf = (p: Place) => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`;
 
-function lookup(p: Place): Promise<string | null> {
+function lookup(p: Place): Promise<Found | null> {
   const key = keyOf(p);
   let hit = known.get(key);
   if (!hit) {
     hit = fetch(`/api/place-name?lat=${p.lat}&lon=${p.lon}`)
       .then((r) => r.json())
-      .then((j: { ok: boolean; name?: string | null }) => (j.ok ? (j.name ?? null) : null))
+      .then((j: { ok: boolean; name?: string | null; address?: string[] }) =>
+        j.ok ? { name: j.name ?? null, address: j.address ?? [] } : null)
       .catch(() => null);
     known.set(key, hit);
   }
   return hit;
 }
 
-/** The place's name: its own label, else one looked up. */
-export function usePlaceName(place: Place | null | undefined): { name: string | null; looking: boolean } {
-  const [found, setFound] = useState<{ key: string; name: string | null } | null>(null);
-  const key = place && !place.label ? keyOf(place) : null;
+/** The place's name (its own label first) and its address lines. A
+    labelled place is looked up only when its address is wanted. */
+export function usePlaceName(place: Place | null | undefined, wantAddress = true): {
+  name: string | null;
+  address: string[];
+  looking: boolean;
+} {
+  const [found, setFound] = useState<{ key: string; value: Found | null } | null>(null);
+  const key = place && (wantAddress || !place.label) ? keyOf(place) : null;
 
   useEffect(() => {
-    if (!place || place.label || !key) return;
+    if (!place || !key) return;
     let live = true;
-    void lookup(place).then((name) => { if (live) setFound({ key, name }); });
+    void lookup(place).then((value) => { if (live) setFound({ key, value }); });
     return () => { live = false; };
     // Keyed on the place to ~10m: a new object for the same spot is not a new place.
   }, [key]);
 
-  if (!place) return { name: null, looking: false };
-  if (place.label) return { name: place.label, looking: false };
-  if (found?.key === key) return { name: found.name, looking: false };
-  return { name: null, looking: true };
+  if (!place) return { name: null, address: [], looking: false };
+  const value = found?.key === key ? found.value : undefined;
+  return {
+    name: place.label || value?.name || null,
+    address: value?.address ?? [],
+    looking: key !== null && value === undefined,
+  };
 }
 
-/** The line itself: the name, "Finding the place…", or the coordinates. */
-export function PlaceText({ place }: { place: Place }) {
-  const { name, looking } = usePlaceName(place);
-  return <>{name ?? (looking ? 'Finding the place…' : formatPlace(place))}</>;
+/** One line: the name, then — with `area` — where it is: "Downhill, Ernad,
+    Malappuram, 673642". Without, a labelled place costs no lookup at all,
+    which is what a long list wants. */
+export function PlaceText({ place, area: withArea = false }: { place: Place; area?: boolean }) {
+  const { name, address, looking } = usePlaceName(place, withArea);
+  if (!name) return <>{looking ? 'Finding the place…' : formatPlace(place)}</>;
+  const area = address.filter((l) => l !== name).slice(1, 4).join(', ');
+  return <>{area ? `${name} · ${area}` : name}</>;
+}
+
+/** Every line, as Maps shows an address. */
+export function PlaceAddress({ place }: { place: Place }) {
+  const { address, looking } = usePlaceName(place);
+  if (address.length === 0) {
+    return looking ? <span className="text-[11px] text-[var(--color-ink-3)]">Finding the address…</span> : null;
+  }
+  return (
+    <span className="flex flex-col text-[11px] leading-4 text-[var(--color-ink-3)]">
+      {address.map((l) => <span key={l} className="sensitive">{l}</span>)}
+    </span>
+  );
 }

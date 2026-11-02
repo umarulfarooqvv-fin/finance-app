@@ -107,3 +107,21 @@ it('a placeholder name from the phone is no name at all', () => {
   expect(parsePlace(from({ lat: '11.1', lon: '76.06', place: 'Location' }))).toEqual({ lat: 11.1, lon: 76.06 });
   expect(parsePlace(from({ lat: '11.1', lon: '76.06', place: 'Lulu Mall' }))!.label).toBe('Lulu Mall');
 });
+
+import { addressFromLookup } from '@/lib/place';
+
+it('the full address, a line each, nothing twice', () => {
+  const json = {
+    name: 'Calicut-Malappuram-Palakkad Highway',
+    address: {
+      road: 'Calicut-Malappuram-Palakkad Highway', suburb: 'Downhill', city: 'Malappuram', county: 'Ernad',
+      state_district: 'Malappuram', state: 'Kerala', postcode: '673642', country: 'India',
+    },
+  };
+  expect(addressFromLookup(json)).toEqual([
+    'Calicut-Malappuram-Palakkad Highway', 'Downhill', 'Ernad', 'Malappuram, 673642', 'Kerala', 'India',
+  ]);
+  expect(addressFromLookup({ name: 'Lulu Mall', address: { road: 'NH 66', state: 'Kerala' } }))
+    .toEqual(['Lulu Mall', 'NH 66', 'Kerala']);
+  expect(addressFromLookup(null)).toEqual([]);
+});

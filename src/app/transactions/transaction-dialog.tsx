@@ -20,7 +20,7 @@ import type { RemarkSuggestion } from '@/app/api/remarks/route';
 import { foldForSearch } from '@/lib/search-text';
 import { createTransactionAction, setPlaceAction, updateTransactionAction } from './actions';
 import { formatPlace, mapsUrl, type Place } from '@/lib/place';
-import { usePlaceName } from '@/components/place-name';
+import { PlaceAddress, usePlaceName } from '@/components/place-name';
 import { detachPhotoAction } from '@/app/inbox/actions';
 
 /* ===========================================================================
@@ -715,14 +715,15 @@ export function TransactionDialog({
                 href={mapsUrl(place)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
+                className="flex min-w-0 flex-1 items-start gap-1.5 text-sm text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
               >
-                <MapPin className="h-4 w-4 shrink-0 text-[var(--color-accent)]" aria-hidden="true" />
-                <span className="flex min-w-0 flex-col">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-accent)]" aria-hidden="true" />
+                <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="sensitive truncate">
                     {placeName ?? (placeLooking ? 'Finding the place…' : formatPlace(place))}
                   </span>
-                  <span className="sensitive num text-[11px] text-[var(--color-ink-3)]">
+                  <PlaceAddress place={place} />
+                  <span className="sensitive num text-[11px] text-[var(--color-accent)]">
                     {place.lat.toFixed(4)}, {place.lon.toFixed(4)} · open in Maps
                   </span>
                 </span>

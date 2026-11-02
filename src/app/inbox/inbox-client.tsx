@@ -322,7 +322,7 @@ export function InboxClient({
                     className="mt-1 flex items-center gap-1 text-[11px] text-[var(--color-ink-3)] hover:text-[var(--color-accent)]"
                   >
                     <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
-                    <span className="sensitive truncate"><PlaceText place={c.place} /></span>
+                    <span className="sensitive truncate"><PlaceText place={c.place} area /></span>
                   </a>
                 ) : null}
                 {c.note ? (
