@@ -23,6 +23,11 @@ const source = (path: string) =>
 const entryRoute = source('entry/route.ts');
 const captureRoute = source('capture/route.ts');
 const voiceRoute = source('voice/route.ts');
+// Location keys are read by lib/place on behalf of any route that calls it.
+const placeLib = readFileSync(fileURLToPath(new URL('../src/lib/place.ts', import.meta.url)), 'utf8');
+const readsKey = (src: string, name: string) =>
+  src.includes(`'${name}'`) || src.includes(`"${name}"`)
+  || (src.includes('parsePlace(') && src.includes('`x-${k}`') && placeLib.includes(`'${name}'`));
 
 test('every field a recipe documents is actually read by its route', () => {
   const routeFor: Record<string, string> = {
@@ -38,7 +43,7 @@ test('every field a recipe documents is actually read by its route', () => {
       // The photo's "field" is the request body itself, not a named key.
       if (f.name === 'the photo' || f.name === 'the recording') continue;
       assert.ok(
-        src!.includes(`'${f.name}'`) || src!.includes(`"${f.name}"`),
+        readsKey(src!, f.name),
         `${r.slug}: the page documents "${f.name}" but ${r.path} never reads it`,
       );
     }

@@ -2,7 +2,7 @@
  *
  * Produced by scripts/gen-db-types.mjs from the live PostgREST schema.
  * Regenerate with:  npm run gen:types
- * Generated: 2026-09-13
+ * Generated: 2026-11-02
  */
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -162,6 +162,9 @@ export type Database = {
           created_at: string | null;
           updated_at: string | null;
           updated_by: string | null;
+          place_lat: number | null;
+          place_lon: number | null;
+          place_name: string | null;
         };
         Insert: {
           id: string;
@@ -181,6 +184,9 @@ export type Database = {
           created_at?: string | null;
           updated_at?: string | null;
           updated_by?: string | null;
+          place_lat?: number | null;
+          place_lon?: number | null;
+          place_name?: string | null;
         };
         Update: {
           id?: string;
@@ -200,6 +206,9 @@ export type Database = {
           created_at?: string | null;
           updated_at?: string | null;
           updated_by?: string | null;
+          place_lat?: number | null;
+          place_lon?: number | null;
+          place_name?: string | null;
         };
       };
     };

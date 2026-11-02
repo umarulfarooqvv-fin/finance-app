@@ -8,6 +8,8 @@ import {
 import { isValidInstant } from '@/lib/validation';
 import { nowIST } from '@/lib/time';
 import { toStorable } from '@/lib/image-convert';
+import { parsePlace, type Place } from '@/lib/place';
+import { nameCapturePlace, saveCapturePlace } from '@/lib/capture-places';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -37,6 +39,12 @@ export const maxDuration = 60;
    connection re-sends the same photo, and a random id would leave the inbox
    holding three pictures of one receipt. The same image posted twice is one
    capture.
+
+   WHERE IT WAS TAKEN can ride along: `lat` and `lon` (or one `location`
+   string, plus an optional `place` name) as fields of the body, as headers
+   (`x-lat`, `x-lon`, `x-location`, `x-place`) — the way to send them beside a
+   raw photo, since a query string lands in Vercel's request logs — or, last,
+   in the query string. See lib/place for every shape accepted.
    =========================================================================== */
 
 function unauthorised() {
@@ -47,7 +55,7 @@ function bad(error: string, status = 400) {
   return NextResponse.json({ ok: false, error }, { status });
 }
 
-type Incoming = { bytes: ArrayBuffer; mime: string; note: string; ts: string };
+type Incoming = { bytes: ArrayBuffer; mime: string; note: string; ts: string; place: Place | null };
 
 /** Parse bytes already read off the wire, rather than consuming the stream. */
 function parseJson(bytes: ArrayBuffer): Record<string, unknown> | null {
@@ -66,6 +74,9 @@ async function read(req: Request): Promise<Incoming | { error: string }> {
   // the raw photo and there is nowhere else to put them.
   const qsNote = url.searchParams.get('note') ?? '';
   const qsTs = url.searchParams.get('ts') ?? '';
+  // Location from a header first, the query string second; a field in the
+  // body, where there is one, wins over both.
+  const outside = (k: string) => req.headers.get(`x-${k}`) ?? url.searchParams.get(k);
 
   if (type.startsWith('multipart/form-data')) {
     const form = await req.formData().catch(() => null);
@@ -82,6 +93,7 @@ async function read(req: Request): Promise<Incoming | { error: string }> {
       mime: (file.type || 'image/jpeg').toLowerCase(),
       note: String(form.get('note') ?? qsNote ?? ''),
       ts: String(form.get('ts') ?? qsTs ?? ''),
+      place: parsePlace((k) => form.get(k) ?? outside(k)),
     };
   }
 
@@ -100,7 +112,7 @@ async function read(req: Request): Promise<Incoming | { error: string }> {
       // Not JSON at all. Overwhelmingly this is the photo itself under a JSON
       // content type, so take it rather than refusing over a header.
       const sniffed = sniffImage(body);
-      if (sniffed) return { bytes: body, mime: sniffed, note: qsNote, ts: qsTs };
+      if (sniffed) return { bytes: body, mime: sniffed, note: qsNote, ts: qsTs, place: parsePlace(outside) };
       return {
         error: 'The body was sent as JSON but is not JSON, and is not an image either. '
           + 'In the Shortcut, set Request Body to File and pick the photo.',
@@ -127,6 +139,7 @@ async function read(req: Request): Promise<Incoming | { error: string }> {
       mime,
       note: String(json['note'] ?? qsNote ?? ''),
       ts: String(json['ts'] ?? qsTs ?? ''),
+      place: parsePlace((k) => json[k] ?? outside(k)),
     };
   }
 
@@ -134,7 +147,7 @@ async function read(req: Request): Promise<Incoming | { error: string }> {
   // The sniffed type wins over the declared one — an octet-stream that is
   // plainly a JPEG is a JPEG.
   const declared = type.split(';')[0]?.trim() || 'image/jpeg';
-  return { bytes: body, mime: sniffImage(body) ?? declared, note: qsNote, ts: qsTs };
+  return { bytes: body, mime: sniffImage(body) ?? declared, note: qsNote, ts: qsTs, place: parsePlace(outside) };
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -197,6 +210,18 @@ export async function POST(req: Request): Promise<Response> {
       throw err;
     }
 
+    /* The location is a nicety, so failing to keep it never fails the photo,
+       which is already stored. */
+    const { place } = incoming;
+    if (place) {
+      try {
+        await saveCapturePlace(id, place);
+        if (!place.label) after(() => nameCapturePlace(id));
+      } catch (err) {
+        console.error('[capture-place]', id, err instanceof Error ? err.message : err);
+      }
+    }
+
     /* Read it into rows WITHOUT being asked, after the phone has its reply.
        The Shortcut is one tap at a till and must not wait on a model; `after`
        runs once the response is out, so by the time the inbox is opened the
@@ -211,7 +236,7 @@ export async function POST(req: Request): Promise<Response> {
       }
     });
 
-    return NextResponse.json({ ok: true, id, ts, bytes: bytes.byteLength });
+    return NextResponse.json({ ok: true, id, ts, bytes: bytes.byteLength, place });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

@@ -3,7 +3,7 @@
 import { joinTags } from '@/lib/user-tags';
 import { TagInput } from '@/components/entry/tag-input';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import { Camera, X } from 'lucide-react';
+import { Camera, Loader2, LocateFixed, MapPin, X } from 'lucide-react';
 import { captureSrc, SafeImage } from '@/components/capture-image';
 import type { FieldErrors } from '@/lib/action-result';
 import { ALL_CATEGORIES, ALL_METHODS, isCard } from '@/lib/types';
@@ -18,7 +18,8 @@ import { PairHints } from '@/components/entry/pair-hints';
 import type { EntryPair } from '@/lib/entry-hints';
 import type { RemarkSuggestion } from '@/app/api/remarks/route';
 import { foldForSearch } from '@/lib/search-text';
-import { createTransactionAction, updateTransactionAction } from './actions';
+import { createTransactionAction, setPlaceAction, updateTransactionAction } from './actions';
+import { formatPlace, mapsUrl, type Place } from '@/lib/place';
 import { detachPhotoAction } from '@/app/inbox/actions';
 
 /* ===========================================================================
@@ -51,6 +52,8 @@ export type EditableTransaction = {
   remarks: string;
   /** Required: an edit that forgot them would save the entry without its tags. */
   tags: string[];
+  /** Where it was spent, when known. */
+  place?: Place | null;
 };
 
 type ExistingPhoto = { id: string; bytes: number };
@@ -87,6 +90,8 @@ type Props = {
   pendingPhoto?: ExistingPhoto | null;
   /** One line above the fields saying where their values came from. */
   note?: string | null;
+  /** Where a create made from a photo was spent — the photo's place. */
+  place?: Place | null;
 };
 
 const blank = (ts: string) => ({
@@ -106,7 +111,7 @@ function clean(draft: Props['draft']): Partial<ReturnType<typeof blank>> {
 }
 
 export function TransactionDialog({
-  open, onOpenChange, editing, defaultTs, draft, onSaved, pendingPhoto, note,
+  open, onOpenChange, editing, defaultTs, draft, onSaved, pendingPhoto, note, place: givenPlace,
 }: Props) {
   const { notify } = useToast();
   const [pending, startTransition] = useTransition();
@@ -136,6 +141,47 @@ export function TransactionDialog({
   /** Whether the inbox photo stays on this entry. Reset on every opening. */
   const [keepPending, setKeepPending] = useState(true);
   const photoInputRef = useRef<HTMLInputElement>(null);
+
+  /* Where it was spent. A plain new entry asks the browser for where the
+     phone is NOW — the usual case is typing it at the till. Anything made
+     from somewhere else (a photo, a statement, a voice note) happened
+     elsewhere, so it takes the place it came with or none, and the button is
+     there for the rest. Saved after the entry, like a photo. */
+  const [place, setPlace] = useState<Place | null>(null);
+  const [placeTouched, setPlaceTouched] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [placeError, setPlaceError] = useState<string | null>(null);
+  const latestPlace = useRef(givenPlace);
+  latestPlace.current = givenPlace;
+
+  function locate(auto: boolean) {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      if (!auto) setPlaceError('This browser cannot share a location.');
+      return;
+    }
+    setLocating(true);
+    setPlaceError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        setPlace({
+          lat: Math.round(pos.coords.latitude * 1e6) / 1e6,
+          lon: Math.round(pos.coords.longitude * 1e6) / 1e6,
+        });
+        setPlaceTouched(true);
+      },
+      (err) => {
+        setLocating(false);
+        // Quiet when it was not asked for; a refusal is the person's answer.
+        if (!auto) {
+          setPlaceError(err.code === err.PERMISSION_DENIED
+            ? 'Location is off for this site — allow it in the browser settings.'
+            : 'Could not find where you are. Try again outside, or leave it empty.');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
+    );
+  }
 
   /* The history, fetched once per opening and shared by the two things that
      need it: the method/category hints and the remarks search. */
@@ -213,6 +259,13 @@ export function TransactionDialog({
     setKeepPending(true);
     setZoomOpen(false);
     if (photoInputRef.current) photoInputRef.current.value = '';
+    const start = editing ? (editing.place ?? null) : (latestPlace.current ?? null);
+    setPlace(start);
+    // A photo's place is new to the entry, so it is saved like a touched one.
+    setPlaceTouched(!editing && start !== null);
+    setPlaceError(null);
+    setLocating(false);
+    if (!editing && !start && !latestDraft.current && !pendingPhoto) locate(true);
   }, [open, editing, defaultTs]);
 
   /* The inbox photo, while it is still on the form. Only a create can carry
@@ -277,6 +330,13 @@ export function TransactionDialog({
     } catch {
       notify('error', 'Entry saved, but the photo did not attach — check your connection.');
     }
+  }
+
+  /* After the entry saves, never before — and a failure says so without
+     touching the entry, which is already in the ledger. */
+  async function savePlace(transactionId: string) {
+    const result = await setPlaceAction({ id: transactionId, place });
+    if (!result.ok) notify('error', `Entry saved, but not its location: ${result.error}`);
   }
 
   const set = (k: keyof typeof form) => (v: string) => {
@@ -364,6 +424,7 @@ export function TransactionDialog({
         }
         notify('success', 'Entry updated.');
         if (photo) await attachPhoto(editing.id);
+        if (placeTouched) await savePlace(editing.id);
       } else {
         const result = await createTransactionAction({ ...payload, clientKey });
         if (!result.ok) {
@@ -379,6 +440,7 @@ export function TransactionDialog({
         );
         savedId = result.data.id;
         if (photo && savedId) await attachPhoto(savedId);
+        if (place && savedId) await savePlace(savedId);
       }
 
       onOpenChange(false);
@@ -634,6 +696,46 @@ export function TransactionDialog({
               </Button>
             </>
           )}
+        </Field>
+
+        <Field
+          label="Location"
+          htmlFor="place"
+          hint={place ? undefined : 'Optional — where the money was spent'}
+          error={placeError ?? errors['place']}
+        >
+          {place ? (
+            <div className="flex items-center gap-2">
+              <a
+                href={mapsUrl(place)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
+              >
+                <MapPin className="h-4 w-4 shrink-0 text-[var(--color-accent)]" aria-hidden="true" />
+                <span className="sensitive truncate">
+                  {place.label ? formatPlace(place) : `Here · ${formatPlace(place)}`}
+                </span>
+              </a>
+              <Button
+                type="button" variant="ghost" size="sm"
+                onClick={() => { setPlace(null); setPlaceTouched(true); }}
+                aria-label="Remove the location"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+            </div>
+          ) : (
+            <Button id="place" type="button" variant="secondary" size="sm" onClick={() => locate(false)} disabled={locating}>
+              {locating
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                : <LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />}
+              {locating ? 'Finding you…' : 'Use where I am now'}
+            </Button>
+          )}
+          {place && !place.label ? (
+            <p className="mt-1 text-[11px] text-[var(--color-ink-3)]">The place name is looked up after you save.</p>
+          ) : null}
         </Field>
 
         {/* Full size, because the amount on a receipt is unreadable at

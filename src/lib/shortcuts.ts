@@ -45,6 +45,13 @@ const IDEMPOTENT =
   'Posting the same entry twice updates the first rather than recording a second, ' +
   'so a retry over a bad connection is safe.';
 
+const PLACE_NOTE =
+  'To record WHERE: add Get Current Location before Get Contents of URL, then Get Details of ' +
+  'Locations three times — Latitude, Longitude and Name (or Street). Send them as headers x-lat, ' +
+  'x-lon and x-place, not in the URL: an address in a query string lands in the server logs. ' +
+  'The entry shows the place on Entries and on the Map; without a name, one is looked up from ' +
+  'OpenStreetMap. A location that fails to save never undoes the entry.';
+
 const TS_NOTE =
   'Leave ts out and the server clock is used. Send one — "2026-09-13T14:30:00", ' +
   'IST, no timezone suffix — to date the entry when the money actually moved rather ' +
@@ -65,6 +72,9 @@ export const RECIPES: Recipe[] = [
       { name: 'category', required: true, note: 'What it was for — Food, Fuel, Family…' },
       { name: 'remarks', required: false, note: 'A short description.' },
       { name: 'ts', required: false, note: 'When it happened. Defaults to now.' },
+      { name: 'lat', required: false, note: 'Where — latitude, as the x-lat header (or a field). From Get Current Location.' },
+      { name: 'lon', required: false, note: 'Longitude, as the x-lon header (or a field).' },
+      { name: 'place', required: false, note: 'A name for it — x-place header. Looked up when left out.' },
       {
         name: 'the photo', required: false,
         note: 'Optional — switch the body to Form and add a File field. Attached to this entry directly; it never goes through the inbox.',
@@ -75,10 +85,12 @@ export const RECIPES: Recipe[] = [
       { action: 'Choose from Menu', detail: 'your payment methods: Fi, Jupiter, Cash, Coral, Scapia…' },
       { action: 'Choose from Menu', detail: 'your categories: Food, Fuel, Family, Personal…' },
       { action: 'Ask for Input', detail: 'Text — "What for?" (you can leave it blank)' },
-      { action: 'Get Contents of URL', detail: 'POST, JSON, with those four as the fields below' },
+      { action: 'Get Current Location', detail: 'optional — then Get Details of Locations for Latitude, Longitude, Name' },
+      { action: 'Get Contents of URL', detail: 'POST, JSON, with those four as the fields below; x-lat, x-lon, x-place as headers' },
     ],
     notes: [
       TS_NOTE,
+      PLACE_NOTE,
       'A card name as the category means that card\'s BILL was paid, not that you spent on it. ' +
         '"method: Fi, category: Coral" is paying the Coral bill from Fi.',
       'To attach a photo in the same step: change Request Body from JSON to Form, keep amount/' +
@@ -139,17 +151,22 @@ export const RECIPES: Recipe[] = [
       { name: 'the photo', required: true, note: 'The request BODY is the image itself.' },
       { name: 'note', required: false, note: 'Query string — ?note=Chai%20shop, a line to jog your memory.' },
       { name: 'ts', required: false, note: 'Query string — when the photo was taken. Defaults to now.' },
+      { name: 'lat', required: false, note: 'Header x-lat — where the photo was taken. Every entry made from it takes this place.' },
+      { name: 'lon', required: false, note: 'Header x-lon — the longitude.' },
+      { name: 'place', required: false, note: 'Header x-place — a name for that place. Looked up when left out.' },
     ],
     steps: [
       { action: 'Take Photo', detail: 'or Select Photos, for one you already took' },
+      { action: 'Get Current Location', detail: 'optional — then Get Details of Locations for Latitude, Longitude, Name' },
       { action: 'Get Contents of URL', detail: 'POST to the address below' },
-      { action: 'Headers', detail: 'x-token, and Content-Type: image/jpeg' },
+      { action: 'Headers', detail: 'x-token, Content-Type: image/jpeg, and x-lat / x-lon / x-place if you added the location' },
       { action: 'Request Body', detail: 'File — then pick the Photo from step 1' },
       { action: 'Add to Home Screen', detail: 'or the Action Button, so it is one tap' },
       { action: 'Quick Look', detail: 'optional, while setting up — shows what the server replied' },
     ],
     notes: [
-      'The entry you make from the photo is dated when the PHOTO was taken, not when you typed it.',
+      'The entry you make from the photo is dated when the PHOTO was taken, not when you typed it — '
+        + 'and placed where it was taken, when the location was sent with it.',
       'If nothing appears here, add a Quick Look step after Get Contents of URL and run it again: '
         + 'the reply says what went wrong. A Shortcut swallows an error silently, which looks '
         + 'exactly like a photo that sent fine.',

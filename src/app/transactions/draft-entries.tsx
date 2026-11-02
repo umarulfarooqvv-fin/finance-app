@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Check, ChevronDown, ChevronUp, Loader2, Pencil, Sparkles, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Loader2, MapPin, Pencil, Sparkles, X } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { Money, cx } from '@/components/ui/primitives';
 import { TagChips } from '@/components/entry/tag-input';
@@ -11,6 +11,7 @@ import { TransactionDialog } from './transaction-dialog';
 import { addDraftEntryAction, draftSavedAction, hideDraftAction } from './draft-actions';
 import { formatDayShort } from '@/lib/time';
 import type { DraftEntry } from '@/lib/draft-entries';
+import { formatPlace, mapsUrl } from '@/lib/place';
 
 /* ===========================================================================
    Drafts on Entries: rows the AI read off inbox photos, waiting for a yes.
@@ -118,6 +119,17 @@ export function DraftEntries({ drafts, defaultTs }: { drafts: DraftEntry[]; defa
                       ) : d.dateNote ? (
                         <div className="mt-0.5 truncate text-[11px] text-[var(--color-ink-3)]">{d.dateNote}</div>
                       ) : null}
+                      {d.place ? (
+                        <a
+                          href={mapsUrl(d.place)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-0.5 flex w-fit max-w-full items-center gap-1 text-[11px] text-[var(--color-ink-3)] hover:text-[var(--color-accent)]"
+                        >
+                          <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                          <span className="sensitive truncate">{formatPlace(d.place)}</span>
+                        </a>
+                      ) : null}
 
                       <div className="mt-1.5 flex items-center justify-end gap-1">
                         <button type="button" disabled={busy !== null} onClick={() => run(d, 'hide')}
@@ -181,6 +193,7 @@ export function DraftEntries({ drafts, defaultTs }: { drafts: DraftEntry[]; defa
         } : null}
         note="A draft read from the photo. Check every field before adding."
         pendingPhoto={editing ? { id: editing.captureId, bytes: editing.bytes } : null}
+        place={editing?.place ?? null}
         onSaved={(id) => {
           const d = editing;
           setEditing(null);

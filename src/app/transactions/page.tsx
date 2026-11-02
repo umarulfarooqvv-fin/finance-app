@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { currentSnapshot } from '@/lib/views';
 import { listCaptures, photosByTransaction } from '@/lib/captures';
 import { readCaptureDrafts } from '@/lib/capture-drafts';
+import { readCapturePlaces } from '@/lib/capture-places';
+import { loadPlaces } from '@/lib/places';
 import { draftEntries, type DraftEntry } from '@/lib/draft-entries';
 import { bankMethodsFrom } from '@/lib/bank-methods';
 import { DraftEntries } from './draft-entries';
@@ -49,6 +51,8 @@ export default async function TransactionsPage({
     photosByTransaction(),
   ]);
   const { snap, today } = await currentSnapshot();
+  // Apart from the snapshot, which never carries places — see lib/places.
+  const places = await loadPlaces(snap.version);
   const now = endOfDay(today);
 
   const f = readFilters(sp);
@@ -59,15 +63,17 @@ export default async function TransactionsPage({
      migration not run) just means no drafts. */
   let drafts: DraftEntry[] = [];
   if (f.page === 1 && !f.deleted && !isNarrowed(f)) {
-    const [pending, readings] = await Promise.all([
+    const [pending, readings, places] = await Promise.all([
       listCaptures('pending').catch(() => []),
       readCaptureDrafts(),
+      readCapturePlaces(),
     ]);
     drafts = draftEntries(
       pending.map((c) => ({ id: c.id, ts: c.ts, bytes: c.bytes })),
       readings,
       bankMethodsFrom(snap.config),
       snap.transactions,
+      places,
     );
   }
   const matched = applyFilters(snap.transactions, f, now).sort((a, b) => (a.ts! < b.ts! ? 1 : -1));
@@ -116,6 +122,7 @@ export default async function TransactionsPage({
         deleted: t.deleted,
         isFuture: t.ts! > now,
         photoId: photos.get(t.id) ?? null,
+        place: places[t.id] ?? null,
       }),
     ),
   }));

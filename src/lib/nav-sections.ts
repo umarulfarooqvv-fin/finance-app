@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, BellRing, BookOpen, Camera, CreditCard, Home, LineChart, MessageCircleQuestion, Scale, ScanLine, Search, Settings, Sheet, Smartphone, Tag, TrendingUp, Upload, Wallet, type LucideIcon,
+  ArrowLeftRight, BellRing, BookOpen, Camera, CreditCard, Home, LineChart, Map as MapIcon, MessageCircleQuestion, Scale, ScanLine, Search, Settings, Sheet, Smartphone, Tag, TrendingUp, Upload, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 /* ===========================================================================
@@ -80,6 +80,14 @@ export const NAV_SECTIONS: NavSection[] = [
         keywords: ['spreadsheet', 'excel', 'table', 'grid', 'pivot', 'sort', 'filter',
                    'analyse', 'analyze', 'export', 'csv', 'sum', 'total'],
         match: ['/sheet'],
+      },
+      {
+        label: 'Map',
+        href: '/map',
+        icon: MapIcon,
+        hint: 'Where the money was spent, as pins on a map',
+        keywords: ['map', 'location', 'place', 'where', 'shop', 'gps', 'pin', 'nearby', 'area'],
+        match: ['/map'],
       },
       {
         label: 'Tags',

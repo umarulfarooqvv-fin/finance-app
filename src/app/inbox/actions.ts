@@ -3,6 +3,8 @@
 import { guardedAction, MONEY_PATHS } from '@/lib/actions';
 import { detachPhoto, discardCapture, markUsed } from '@/lib/captures';
 import { forgetCaptureDrafts } from '@/lib/capture-drafts';
+import { forgetCapturePlaces } from '@/lib/capture-places';
+import { placeFromPhoto } from '@/lib/places';
 import { forgetVoiceDraft } from '@/lib/voice-drafts';
 import { logEvent } from '@/lib/supabase';
 
@@ -25,6 +27,7 @@ export const discardCaptureAction = guardedAction(
     await discardCapture(input.id, ctx);
     // The photo is gone, so the rows read out of it describe nothing.
     await forgetCaptureDrafts([input.id]);
+    await forgetCapturePlaces([input.id]);
     return { id: input.id };
   },
 );
@@ -38,6 +41,7 @@ export const detachPhotoAction = guardedAction(
   },
   async (input, ctx) => {
     await detachPhoto(input.id, ctx);
+    await forgetCapturePlaces([input.id]);
     return { id: input.id };
   },
 );
@@ -52,6 +56,7 @@ export const linkCaptureAction = guardedAction(
   },
   async (input, ctx) => {
     await markUsed(input.id, input.transactionId, ctx);
+    await placeFromPhoto(input.id, [input.transactionId], ctx.actor);
     // It is an entry now; the draft it was waiting to become has served.
     await forgetCaptureDrafts([input.id]);
     return { id: input.id };
@@ -86,6 +91,7 @@ export const retireCapturesAction = guardedAction(
       // One failure must not strand the rest — the entries are already saved.
       try {
         await markUsed(id, input.transactionId, ctx);
+        await placeFromPhoto(id, [input.transactionId], ctx.actor);
         retired.push(id);
       } catch {
         /* Left in the inbox, which is the safe direction. */

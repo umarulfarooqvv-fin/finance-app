@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { Camera, CheckSquare, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import { Camera, CheckSquare, MapPin, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import { captureSrc, SafeImage } from '@/components/capture-image';
 import { formatDayShort } from '@/lib/time';
 import { money } from '@/lib/format';
@@ -11,6 +11,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { Badge, cx, Empty, Money } from '@/components/ui/primitives';
 import { TransactionDialog, type EditableTransaction } from './transaction-dialog';
+import { formatPlace, mapsUrl } from '@/lib/place';
 import { deleteTransactionAction, restoreTransactionAction } from './actions';
 import { tagEntriesAction } from '@/app/tags/actions';
 import { TagChips, TagInput } from '@/components/entry/tag-input';
@@ -341,6 +342,18 @@ export function TransactionsClient({
                         <span className="text-[var(--color-pos)]" title="Matched against the statement">
                           &#10003;
                         </span>
+                      ) : null}
+                      {t.place ? (
+                        <a
+                          href={mapsUrl(t.place)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Open in Maps"
+                          className="flex w-full min-w-0 items-center gap-1 text-[11px] text-[var(--color-ink-3)] hover:text-[var(--color-accent)]"
+                        >
+                          <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                          <span className="sensitive truncate">{formatPlace(t.place)}</span>
+                        </a>
                       ) : null}
                       {t.photoId ? (
                         <button

@@ -1,6 +1,7 @@
 import { parseImport } from '@/lib/import-parse';
 import { dateFromReading } from '@/lib/capture-entry';
 import type { BankMethods } from '@/lib/bank-methods';
+import type { Place } from '@/lib/place';
 import type { Instant } from '@/lib/time';
 import type { Transaction } from '@/lib/types';
 
@@ -38,6 +39,8 @@ export type DraftEntry = {
   duplicateOf: { remarks: string; method: string; amount: number } | null;
   /** The photo's size, for the form's photo field. */
   bytes: number;
+  /** Where the phone was when the photo was taken, if the Shortcut sent it. */
+  place: Place | null;
 };
 
 export type Reading = { text?: string; hidden?: string[] };
@@ -47,6 +50,7 @@ export function draftEntries(
   readings: Record<string, Reading>,
   bankMethods: BankMethods,
   transactions: Transaction[],
+  places: Record<string, Place> = {},
 ): DraftEntry[] {
   // Live entries by day, for the "already recorded?" check.
   const byDay = new Map<string, Transaction[]>();
@@ -87,6 +91,7 @@ export function draftEntries(
             : null,
         duplicateOf: twin ? { remarks: twin.remarks || twin.category, method: twin.method, amount: twin.amount! } : null,
         bytes: c.bytes,
+        place: places[c.id] ?? null,
       });
     }
   }

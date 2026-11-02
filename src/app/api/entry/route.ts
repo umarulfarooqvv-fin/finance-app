@@ -7,6 +7,8 @@ import { attachPhoto } from '@/lib/captures';
 import { checkEntryAgainstPhoto } from '@/lib/photo-check';
 import { isValidInstant, validateIncome, type IncomeInput } from '@/lib/validation';
 import { dayOf, nowIST } from '@/lib/time';
+import { parsePlace } from '@/lib/place';
+import { nameTransactionPlace, setTransactionPlace } from '@/lib/places';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +19,11 @@ export const dynamic = 'force-dynamic';
    ts, and an optional type=income (which also accepts source/account as
    aliases for method/category). Exempt from the PIN lock (see src/proxy.ts)
    and guarded by INGEST_TOKEN instead.
+
+   Where it was spent can ride along: `lat` and `lon` (or one `location`),
+   plus an optional `place` name, as fields or as `x-lat`/`x-lon`/`x-place`
+   headers. Saved after the entry and never at its expense; a nameless place
+   is named from OpenStreetMap after the reply (lib/places).
 
    Send the token as the x-token HEADER. The ?token= query form still works for
    older Shortcut versions, but query strings are recorded in Vercel's request
@@ -129,6 +136,17 @@ export async function POST(req: Request): Promise<Response> {
     invalidateSnapshot();
     await logEvent('entry.transaction', { id: entry.id, amount: entry.amount, kind: entry.kind });
 
+    const place = parsePlace((k) => body[k] ?? req.headers.get(`x-${k}`));
+    let placeError: string | null = null;
+    if (place) {
+      try {
+        await setTransactionPlace(entry.id, place, 'shortcut');
+        if (!place.label) after(() => nameTransactionPlace(entry.id));
+      } catch (err) {
+        placeError = err instanceof Error ? err.message : 'Unknown error';
+      }
+    }
+
     /* Attached last, after the money is safely recorded. A photo that fails
        to upload — a dropped connection, a bad file — must not undo an entry
        that already landed; `photoError` says so without a 500. */
@@ -158,6 +176,8 @@ export async function POST(req: Request): Promise<Response> {
       kind: entry.kind,
       photo: photo ? photoError === null : undefined,
       photoError: photoError ?? undefined,
+      place: place ? placeError === null : undefined,
+      placeError: placeError ?? undefined,
       card: entry.cardAffected,
       needsReview: entry.needsReview,
     });

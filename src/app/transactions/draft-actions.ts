@@ -8,6 +8,7 @@ import { dateFromReading } from '@/lib/capture-entry';
 import { parseImport } from '@/lib/import-parse';
 import { bankMethodsFrom } from '@/lib/bank-methods';
 import { createTransaction } from '@/lib/transactions';
+import { placeFromPhoto } from '@/lib/places';
 import { joinTags } from '@/lib/user-tags';
 import { validateTransaction } from '@/lib/validation';
 import type { Actor } from '@/lib/auth';
@@ -69,6 +70,8 @@ export const addDraftEntryAction = guardedAction(
 
     // Keyed by the photo and the row: a double tap or a retry finds the same entry.
     const { id } = await createTransaction({ ...entry, clientKey: `draft:${input.captureId}:${input.raw}` }, ctx);
+    // Spent where the photo was taken.
+    await placeFromPhoto(input.captureId, [id], ctx.actor);
     const retired = await finish(input, id, ctx);
     return { id, retired };
   },
@@ -81,7 +84,11 @@ export const draftSavedAction = guardedAction(
     revalidate: REVALIDATE,
     validate: (i: RowRef & { transactionId: string }) => validRef(i) ?? (i.transactionId?.trim() ? null : { raw: 'Missing entry.' }),
   },
-  async (input, ctx) => ({ retired: await finish(input, input.transactionId, ctx) }),
+  async (input, ctx) => {
+    // The form saved its own place if it had one; this fills in only a gap.
+    await placeFromPhoto(input.captureId, [input.transactionId], ctx.actor);
+    return { retired: await finish(input, input.transactionId, ctx) };
+  },
 );
 
 /** "Not now": off Entries. The photo stays in the inbox with its reading. */

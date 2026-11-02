@@ -226,7 +226,12 @@ Two separate paths, with different requirements:
   photo's own, because payment screens print "September 22" with none.
   The same readings are also offered on **Entries as drafts**
   (`lib/draft-entries`, `transactions/draft-entries.tsx`): dashed, marked
-  "Draft", in no total. **Add** saves the row as READ — the server finds it
+  "Draft", in no total. A capture may carry where it was taken (`lat`/`lon`
+  or `location`, optional `place`; `x-lat`/`x-lon`/`x-place` headers beside a
+  raw photo — `lib/place`), kept as `capture_places` in `app_config`
+  and shown on each draft as a map link; it survives the photo becoming an
+  entry (which takes the place — `placeFromPhoto`) and goes when the photo is
+  discarded. **Add** saves the row as READ — the server finds it
   again in the stored reading (`draft-actions`), never trusting the browser's
   values — and only when amount, method and category are all known; anything
   less opens the ordinary form ("Finish"). Each row added is cut out of the
@@ -270,6 +275,24 @@ Automatic is acceptable only because it is never silent; keep it that way.
 
 Audio never leaves the device — transcription is the Web Speech API on the
 phone, and only the transcript is sent.
+
+## Places — where each entry was spent
+
+`place_lat`, `place_lon`, `place_name` on `transactions`
+(`db/migrations/003_places.sql`). **Not in the snapshot**: `TX_COLUMNS` is
+what every page loads, and these columns missing would take the app down, so
+`lib/places` loads them apart (`loadPlaces(snap.version)`, cached on the
+version) and returns `{}` before 003 is run. Written apart from the entry,
+after it saves, like a photo (`setPlaceAction`, `setTransactionPlace`) — a
+place that fails never costs the entry, and it never clears the verified tick.
+Sources: `/api/entry` and `/api/capture` (`x-lat`/`x-lon`/`x-place` headers or
+fields, read by `lib/place`'s `parsePlace`), the entry form (browser
+geolocation, only for a plain new entry — never one made from a photo,
+statement or voice note), and the photo an entry came from. A nameless place
+is named from OpenStreetMap Nominatim in `after()` (`lib/geocode`; only the
+two numbers are sent). Shown on each Entries row, in the form, and on `/map`
+(Leaflet + OSM tiles, one pin per place — `lib/map-pins`, spend by the usual
+definition).
 
 ## Conventions
 

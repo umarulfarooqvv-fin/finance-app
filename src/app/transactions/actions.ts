@@ -6,6 +6,10 @@ import {
   createTransaction, deleteTransaction, restoreTransaction, setVerified, updateTransaction,
 } from '@/lib/transactions';
 import { validateTransaction, type TransactionInput } from '@/lib/validation';
+import { after } from 'next/server';
+import type { FieldErrors } from '@/lib/action-result';
+import { parsePlace, type Place } from '@/lib/place';
+import { nameTransactionPlace, setTransactionPlace } from '@/lib/places';
 
 /* ===========================================================================
    Server actions for transactions.
@@ -75,3 +79,30 @@ export const setVerifiedAction = guardedAction(
   async (input: { id: string; verified: boolean }, ctx) =>
     setVerified(input.id, input.verified, ctx),
 );
+
+/* Where an entry was spent — set after the entry itself saves, like a photo,
+   so a place that fails can never cost the entry. Null clears it. The
+   coordinates are re-read through the same parser the Shortcut uses, so the
+   browser cannot store a pin outside the map. */
+export const setPlaceAction = guardedAction(
+  {
+    name: 'transaction.place',
+    revalidate: ['/transactions', '/map'],
+    validate: (input: { id: string; place: Place | null }): FieldErrors | null => {
+      if (!input.id?.trim()) return { id: 'Missing entry id.' };
+      if (input.place && !checked(input.place)) return { place: 'That is not a location on the map.' };
+      return null;
+    },
+  },
+  async (input, ctx) => {
+    const place = input.place ? checked(input.place) : null;
+    await setTransactionPlace(input.id, place, ctx.actor);
+    if (place && !place.label) after(() => nameTransactionPlace(input.id));
+    return { id: input.id };
+  },
+);
+
+function checked(p: Place): Place | null {
+  const fields: Record<string, unknown> = { lat: p.lat, lon: p.lon, place: p.label };
+  return parsePlace((k) => fields[k]);
+}
