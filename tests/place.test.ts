@@ -92,3 +92,13 @@ describe('pins on the map', () => {
     expect(placedMonths(txs, places)).toEqual(['2026-10', '2026-09']);
   });
 });
+
+describe('coordinates as phones write them', () => {
+  it('degrees, hemispheres, typographic minus, comma decimals', () => {
+    expect(parsePlace(from({ lat: '9.9312° N', lon: '76.2673° E' }))).toEqual({ lat: 9.9312, lon: 76.2673 });
+    expect(parsePlace(from({ lat: '33.86 S', lon: '151.2 E' }))).toEqual({ lat: -33.86, lon: 151.2 });
+    expect(parsePlace(from({ lat: '−33.86', lon: '151.2' }))).toEqual({ lat: -33.86, lon: 151.2 });
+    expect(parsePlace(from({ lat: '9,9312', lon: '76,2673' }))).toEqual({ lat: 9.9312, lon: 76.2673 });
+    expect(parsePlace(from({ lat: ' 9.9312 ', lon: '76.2673' }))).toEqual({ lat: 9.9312, lon: 76.2673 });
+  });
+});

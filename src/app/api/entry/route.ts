@@ -7,7 +7,7 @@ import { attachPhoto } from '@/lib/captures';
 import { checkEntryAgainstPhoto } from '@/lib/photo-check';
 import { isValidInstant, validateIncome, type IncomeInput } from '@/lib/validation';
 import { dayOf, nowIST } from '@/lib/time';
-import { parsePlace } from '@/lib/place';
+import { parsePlace, placeInputs } from '@/lib/place';
 import { nameTransactionPlace, setTransactionPlace } from '@/lib/places';
 
 export const dynamic = 'force-dynamic';
@@ -177,6 +177,11 @@ export async function POST(req: Request): Promise<Response> {
       photo: photo ? photoError === null : undefined,
       photoError: photoError ?? undefined,
       place: place ? placeError === null : undefined,
+      // Sent something, read nothing: show what arrived.
+      placeReceived: place ? undefined : (() => {
+        const raw = placeInputs((k) => body[k] ?? req.headers.get(`x-${k}`));
+        return Object.keys(raw).length ? raw : undefined;
+      })(),
       placeError: placeError ?? undefined,
       card: entry.cardAffected,
       needsReview: entry.needsReview,

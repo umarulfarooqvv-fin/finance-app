@@ -8,7 +8,7 @@ import {
 import { isValidInstant } from '@/lib/validation';
 import { nowIST } from '@/lib/time';
 import { toStorable } from '@/lib/image-convert';
-import { parsePlace, type Place } from '@/lib/place';
+import { parsePlace, placeInputs, type Place } from '@/lib/place';
 import { nameCapturePlace, saveCapturePlace } from '@/lib/capture-places';
 
 export const dynamic = 'force-dynamic';
@@ -236,7 +236,15 @@ export async function POST(req: Request): Promise<Response> {
       }
     });
 
-    return NextResponse.json({ ok: true, id, ts, bytes: bytes.byteLength, place });
+    /* No place read: say what DID arrive, so a Shortcut being built can see
+       whether the headers were missing or written in a shape not read. */
+    const placeReceived = place
+      ? undefined
+      : placeInputs((k) => req.headers.get(`x-${k}`) ?? new URL(req.url).searchParams.get(k));
+    return NextResponse.json({
+      ok: true, id, ts, bytes: bytes.byteLength, place,
+      ...(placeReceived ? { placeReceived: Object.keys(placeReceived).length ? placeReceived : 'no x-lat / x-lon headers arrived' } : {}),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

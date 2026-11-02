@@ -36,12 +36,37 @@ function first(get: (key: string) => unknown, keys: string[]): string {
   return '';
 }
 
-/** A number in range, to six places (about 10cm) — or null. */
+/**
+ * A number in range, to six places (about 10cm) — or null.
+ *
+ * Tolerant of how a phone writes one: "9.9312° N", "−76.26" (a typographic
+ * minus), "9,9312" (a comma decimal, from a region that writes them so), a
+ * stray space. A hemisphere letter sets the sign: S and W are negative.
+ */
 function coord(raw: string, limit: number): number | null {
-  if (!/^-?\d{1,3}(?:\.\d+)?$/.test(raw)) return null;
-  const n = Number(raw);
+  let s = raw.replace(/[\s\u00a0°]/g, '').replace(/[\u2212\u2013]/g, '-');
+  let sign = 1;
+  const hemi = s.match(/[NSEW]$/i);
+  if (hemi) {
+    if (/[SW]/i.test(hemi[0])) sign = -1;
+    s = s.slice(0, -1);
+  }
+  if (/^-?\d{1,3},\d+$/.test(s)) s = s.replace(',', '.');
+  if (!/^-?\d{1,3}(?:\.\d+)?$/.test(s)) return null;
+  const n = sign * Number(s);
   if (!Number.isFinite(n) || Math.abs(n) > limit) return null;
   return Math.round(n * 1e6) / 1e6;
+}
+
+/** What arrived for a place, raw, for a reply that has to say why none was
+    read. Truncated: it is shown back to the phone, not stored. */
+export function placeInputs(get: (key: string) => unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, keys] of [['lat', LAT], ['lon', LON], ['location', BOTH], ['place', LABEL]] as const) {
+    const v = first(get, [...keys]);
+    if (v) out[name] = v.slice(0, 80);
+  }
+  return out;
 }
 
 export function parsePlace(get: (key: string) => unknown): Place | null {
