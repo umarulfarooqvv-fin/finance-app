@@ -69,6 +69,12 @@ export function placeInputs(get: (key: string) => unknown): Record<string, strin
   return out;
 }
 
+/* What iOS sends as a location's Name when it has none: the word itself.
+   Kept, it would label every pin "Location"; dropped, the place is named
+   from OpenStreetMap instead. */
+const PLACEHOLDERS = new Set(['location', 'current location', 'my location', 'unknown']);
+const meaningful = (label: string) => (PLACEHOLDERS.has(label.toLowerCase()) ? '' : label);
+
 export function parsePlace(get: (key: string) => unknown): Place | null {
   let lat = coord(first(get, LAT), 90);
   let lon = coord(first(get, LON), 180);
@@ -84,7 +90,7 @@ export function parsePlace(get: (key: string) => unknown): Place | null {
   // 0,0 is in the sea off Africa: a location service that had nothing.
   if (lat === 0 && lon === 0) return null;
 
-  const label = first(get, LABEL).replace(/\s+/g, ' ').slice(0, 200);
+  const label = meaningful(first(get, LABEL).replace(/\s+/g, ' ').slice(0, 200));
   return label ? { lat, lon, label } : { lat, lon };
 }
 

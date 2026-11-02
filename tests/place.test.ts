@@ -102,3 +102,8 @@ describe('coordinates as phones write them', () => {
     expect(parsePlace(from({ lat: ' 9.9312 ', lon: '76.2673' }))).toEqual({ lat: 9.9312, lon: 76.2673 });
   });
 });
+
+it('a placeholder name from the phone is no name at all', () => {
+  expect(parsePlace(from({ lat: '11.1', lon: '76.06', place: 'Location' }))).toEqual({ lat: 11.1, lon: 76.06 });
+  expect(parsePlace(from({ lat: '11.1', lon: '76.06', place: 'Lulu Mall' }))!.label).toBe('Lulu Mall');
+});
