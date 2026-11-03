@@ -284,3 +284,29 @@ body {
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) .map-tiles { filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9); }
 }
+
+/* ---------------------------------------------------------------------------
+   Printing a page (the statement report's "Print / PDF"). The navigation, the
+   frozen header and anything marked .no-print are for using the app, not for
+   the paper; and a report printed light-on-white reads better than a screenful
+   of dark panels.
+   --------------------------------------------------------------------------- */
+@media print {
+  nav,
+  header.sticky,
+  .no-print,
+  [role='dialog'] {
+    display: none !important;
+  }
+  :root,
+  :root[data-theme='dark'] {
+    color-scheme: light;
+  }
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+  main {
+    padding-bottom: 0 !important;
+  }
+}

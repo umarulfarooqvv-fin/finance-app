@@ -108,6 +108,7 @@ per-request dedupe.
 | `balances.ts` | Account balances, net worth |
 | `entry.ts` | Normalising a new entry from the Shortcut or the app |
 | `validation.ts` | Field-level rules shared by every write |
+| `statement-report.ts` | One card statement explained (`/cards/<card>/report`): own spend vs lent, categories, days, and whether each lending came back |
 
 ### Definitions that are easy to get wrong
 
@@ -132,6 +133,19 @@ per-request dedupe.
 - **Statement cycles chain.** If last month's statement *excluded* its own bill
   date, that day was never billed, so this cycle starts **on** it, not after it.
   No day may fall between two statements; a tiling invariant test asserts this.
+
+### Marking a lending as paid back
+
+The statement report lists every lending on a bill with its status from the
+credit ledger's FIFO allocation (`lib/statement-report`), and **Mark as paid**
+records the return the way the app already records one: INCOME, source
+"Credit Return", in the account the owner names ("None" if it never reached
+one), plus `assignRepayment` naming the person — `recordReturnAction`. The
+ledger then settles that person's OLDEST lendings with it, not necessarily the
+row whose button was pressed, so the form shows `planReturn`'s preview of
+exactly what an amount settles before saving. Money that arrived but was never
+linked to anyone (`ledger.unattached`) is offered as "It was this" so it is
+linked instead of recorded twice.
 
 ## Integrations that are live — do not break these
 

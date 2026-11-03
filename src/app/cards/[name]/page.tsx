@@ -16,7 +16,7 @@ import { Page, PageHeader } from '@/components/layout/page-header';
 import { EditEntryButton } from '@/components/entry/entry-editor';
 import { TagChips } from '@/components/entry/tag-input';
 import {
-  Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, Stat, StatGrid, TableWrap, Td, Th,
+  Badge, Dot, cx, Empty, Meter, Money, Panel, SectionTitle, Stat, StatGrid, TableWrap, Td, Th,
 } from '@/components/ui/primitives';
 
 export const dynamic = 'force-dynamic';
@@ -203,6 +203,12 @@ export default async function CardPage({
               Check a statement
             </Link>
             <Link
+              href={`/cards/${encodeURIComponent(card.name)}/report?cycle=${encodeURIComponent(sRow.cycle.statementEnd)}`}
+              className="rounded-[var(--radius-field)] border border-[var(--color-line)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-2)] hover:border-[var(--color-line-strong)]"
+            >
+              Statement report
+            </Link>
+            <Link
               href={`/cards/${encodeURIComponent(card.name)}/analysis`}
               className="rounded-[var(--radius-field)] border border-[var(--color-line)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-line-strong)]"
             >
@@ -268,8 +274,53 @@ export default async function CardPage({
         </div>
 
         <div className="mt-5 border-t border-[var(--color-line)] pt-4">
-          <StatGrid cols={4}>
-            <Stat label="On this bill" value={row.remainingDueBill} />
+          {/* THE NUMBER THAT NEEDS ACTING ON, and so the one thing here that is
+              not a quiet tile. Tinted by urgency — amber when it is close,
+              red once it is late, calm otherwise — so a bill that is due
+              today cannot be read past as one more figure on the page. */}
+          {!inCredit ? (
+            <div
+              className={cx(
+                'mb-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-[var(--radius-card)] border px-4 py-3.5',
+                row.remainingDueBill <= 0.005
+                  ? 'border-[var(--color-line)] bg-[var(--color-raised)]'
+                  : row.status === 'overdue'
+                    ? 'border-[var(--color-neg)] bg-[var(--color-neg-soft)]'
+                    : row.status === 'due-soon'
+                      ? 'border-[var(--color-warn)] bg-[var(--color-warn-soft)]'
+                      : 'border-[var(--color-accent)] bg-[var(--color-accent-soft)]',
+              )}
+            >
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-2)]">
+                  {row.remainingDueBill <= 0.005 ? 'Current due' : 'Current due — pay this'}
+                </div>
+                <Money
+                  value={row.remainingDueBill}
+                  size="display"
+                  tone={row.remainingDueBill <= 0.005 ? 'credit' : row.status === 'overdue' ? 'debt' : 'neutral'}
+                  className="mt-0.5 block"
+                />
+              </div>
+              <div className="text-sm text-[var(--color-ink-2)] sm:text-right">
+                {row.remainingDueBill <= 0.005 ? (
+                  <span className="font-medium text-[var(--color-pos)]">Nothing due — this bill is cleared</span>
+                ) : (
+                  <>
+                    <div className="font-semibold text-[var(--color-ink)]">
+                      {row.status === 'overdue' ? 'Was due' : 'Due'} {formatDay(row.cycle.dueDate)}
+                    </div>
+                    <div>
+                      {row.status === 'overdue'
+                        ? `${Math.abs(row.daysLeft)} ${Math.abs(row.daysLeft) === 1 ? 'day' : 'days'} late`
+                        : row.daysLeft === 0 ? 'today' : relativeDays(row.daysLeft)}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
+          <StatGrid cols={3}>
             <Stat
               label={row.unbilled < -0.005 ? 'Credit carried forward' : 'Unbilled since'}
               value={Math.abs(row.unbilled)}
