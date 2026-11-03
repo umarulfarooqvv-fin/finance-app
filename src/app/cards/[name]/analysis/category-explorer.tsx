@@ -6,6 +6,7 @@ import { Money, SectionTitle, cx } from '@/components/ui/primitives';
 import { inputClass } from '@/components/ui/field';
 import { EditEntryButton } from '@/components/entry/entry-editor';
 import { TagChips } from '@/components/entry/tag-input';
+import { InfoTip } from '@/components/ui/info-tip';
 import { formatDayShort } from '@/lib/time';
 import {
   byDay, exploreCategories,
@@ -37,6 +38,8 @@ const SORTS: { key: ExploreSort; label: string }[] = [
   { key: 'count', label: 'Most entries' },
   { key: 'average', label: 'Biggest average' },
   { key: 'name', label: 'A–Z' },
+  { key: 'newest', label: 'Newest first' },
+  { key: 'oldest', label: 'Oldest first' },
 ];
 
 const chip = (active: boolean) =>
@@ -99,6 +102,11 @@ export function CategoryExplorer({ rows }: { rows: ExploreRow[] }) {
         </label>
         <label className="flex items-center gap-1.5 text-xs text-[var(--color-ink-3)]">
           Sort
+          <InfoTip label="How sorting works">
+            One choice orders the categories and the entries inside each one. Entries stay grouped
+            by day: the sort decides which day comes first and the order within it — for example,
+            Highest total puts the biggest day and the biggest amount first.
+          </InfoTip>
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as ExploreSort)}
@@ -156,7 +164,7 @@ export function CategoryExplorer({ rows }: { rows: ExploreRow[] }) {
 
                 {isOpen ? (
                   <div className="mb-3 overflow-hidden rounded-[var(--radius-field)] border border-[var(--color-line)]">
-                    {byDay(g.rows).map((d) => (
+                    {byDay(g.rows, sort).map((d) => (
                       <div key={d.day}>
                         <div className="flex items-center justify-between bg-[var(--color-canvas)] px-3 py-1.5 text-[11px] font-medium text-[var(--color-ink-3)]">
                           <span>{formatDayShort(d.day)}</span>

@@ -27,7 +27,14 @@ export type ExploreRow = {
 };
 
 export type ExploreScope = 'spend' | 'all' | 'lent';
-export type ExploreSort = 'total' | 'count' | 'average' | 'name';
+/**
+ * How the explorer is ordered. ONE choice orders BOTH levels — the categories,
+ * and the entries inside an opened category — because a sort that reorders the
+ * list but leaves the rows underneath in a different order reads as broken.
+ * Entries stay grouped by day either way (every list of entries in this app
+ * is); the sort decides the order of the days and of the rows within each.
+ */
+export type ExploreSort = 'total' | 'count' | 'average' | 'name' | 'newest' | 'oldest';
 
 export type CategoryGroup = {
   category: string;
@@ -35,6 +42,9 @@ export type CategoryGroup = {
   count: number;
   average: number;
   largest: number;
+  /** The most recent and the oldest entry, so categories can be ordered by when. */
+  latest: string;
+  earliest: string;
   /** Of the filtered total, 0..1. */
   share: number;
   /** Newest first. */
@@ -81,6 +91,8 @@ export function exploreCategories(
       count: list.length,
       average: round2(p / 100 / list.length),
       largest: Math.max(...list.map((r) => r.amount)),
+      latest: list.reduce((m, r) => (r.ts > m ? r.ts : m), ''),
+      earliest: list.reduce((m, r) => (m === '' || r.ts < m ? r.ts : m), ''),
       share: totalPaise > 0 ? p / totalPaise : 0,
       rows: [...list].sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0)),
     };
@@ -92,14 +104,28 @@ export function exploreCategories(
     count: (a, b) => b.count - a.count || b.total - a.total || byName(a, b),
     average: (a, b) => b.average - a.average || byName(a, b),
     name: byName,
+    newest: (a, b) => (a.latest < b.latest ? 1 : a.latest > b.latest ? -1 : byName(a, b)),
+    oldest: (a, b) => (a.earliest < b.earliest ? -1 : a.earliest > b.earliest ? 1 : byName(a, b)),
   };
   groups.sort(cmp[opts.sort]);
 
   return { groups, total: totalPaise / 100, count: kept.length };
 }
 
-/** Rows grouped by day, newest day first, each with its day's total. */
-export function byDay(rows: ExploreRow[]): { day: string; total: number; rows: ExploreRow[] }[] {
+/**
+ * Rows grouped by day, ordered by the chosen sort.
+ *
+ *   total, average  the biggest day first, and the biggest amount first inside it
+ *   count           the day with the most entries first
+ *   name            newest day first, A–Z by description inside each
+ *   newest, oldest  by date, in that direction, rows by time the same way
+ *
+ * Ties fall back to the newest day, so the order is always the same one.
+ */
+export function byDay(
+  rows: ExploreRow[],
+  sort: ExploreSort = 'newest',
+): { day: string; total: number; rows: ExploreRow[] }[] {
   const days = new Map<string, ExploreRow[]>();
   for (const r of rows) {
     const d = r.ts.slice(0, 10);
@@ -107,11 +133,32 @@ export function byDay(rows: ExploreRow[]): { day: string; total: number; rows: E
     if (list) list.push(r);
     else days.set(d, [r]);
   }
-  return [...days.entries()]
-    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-    .map(([day, list]) => ({
-      day,
-      total: list.reduce((a, r) => a + Math.round(r.amount * 100), 0) / 100,
-      rows: list,
-    }));
+
+  const newestTs = (a: ExploreRow, b: ExploreRow) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0);
+  const label = (r: ExploreRow) => foldForSearch(r.remarks || r.category);
+  const inDay: Record<ExploreSort, (a: ExploreRow, b: ExploreRow) => number> = {
+    total: (a, b) => b.amount - a.amount || newestTs(a, b),
+    average: (a, b) => b.amount - a.amount || newestTs(a, b),
+    count: newestTs,
+    name: (a, b) => label(a).localeCompare(label(b)) || newestTs(a, b),
+    newest: newestTs,
+    oldest: (a, b) => -newestTs(a, b),
+  };
+
+  const groups = [...days.entries()].map(([day, list]) => ({
+    day,
+    total: list.reduce((a, r) => a + Math.round(r.amount * 100), 0) / 100,
+    rows: [...list].sort(inDay[sort]),
+  }));
+
+  const newestDay = (a: { day: string }, b: { day: string }) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0);
+  const order: Record<ExploreSort, (a: (typeof groups)[number], b: (typeof groups)[number]) => number> = {
+    total: (a, b) => b.total - a.total || newestDay(a, b),
+    average: (a, b) => b.total - a.total || newestDay(a, b),
+    count: (a, b) => b.rows.length - a.rows.length || newestDay(a, b),
+    name: newestDay,
+    newest: newestDay,
+    oldest: (a, b) => -newestDay(a, b),
+  };
+  return groups.sort(order[sort]);
 }

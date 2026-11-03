@@ -50,3 +50,58 @@ describe('byDay', () => {
     expect(days.find((d) => d.day === '2026-09-02')!.total).toBe(250.2);
   });
 });
+
+describe('one sort orders the categories AND the entries inside them', () => {
+  const r = (id: string, ts: string, amount: number, remarks = id): ExploreRow => ({
+    id, ts, amount, category: 'Family', remarks, tags: [], kind: 'spend',
+  });
+  const inside = [
+    r('tea', '2026-10-01T09:00:00', 50),
+    r('shop', '2026-10-01T18:00:00', 3000),
+    r('bus', '2026-10-05T08:00:00', 120),
+    r('milk', '2026-10-05T09:00:00', 60),
+    r('rent', '2026-10-09T10:00:00', 400),
+  ];
+  const days = (sort: Parameters<typeof byDay>[1]) => byDay(inside, sort).map((d) => d.day.slice(8));
+  const ids = (sort: Parameters<typeof byDay>[1]) => byDay(inside, sort).flatMap((d) => d.rows.map((x) => x.id));
+
+  it('highest total: the biggest day first, the biggest amount first within it', () => {
+    expect(days('total')).toEqual(['01', '09', '05']);
+    expect(ids('total')).toEqual(['shop', 'tea', 'rent', 'bus', 'milk']);
+  });
+
+  it('newest and oldest run by date, rows by time the same way', () => {
+    expect(days('newest')).toEqual(['09', '05', '01']);
+    expect(ids('newest')).toEqual(['rent', 'milk', 'bus', 'shop', 'tea']);
+    expect(days('oldest')).toEqual(['01', '05', '09']);
+    expect(ids('oldest')).toEqual(['tea', 'shop', 'bus', 'milk', 'rent']);
+  });
+
+  it('most entries: the day with the most entries first', () => {
+    expect(days('count').slice(0, 2)).toEqual(['05', '01']);
+  });
+
+  it('A–Z keeps the days newest first and sorts within each', () => {
+    expect(days('name')).toEqual(['09', '05', '01']);
+    expect(ids('name')).toEqual(['rent', 'bus', 'milk', 'shop', 'tea']);
+  });
+
+  it('entries stay grouped by day and still add up, whatever the sort', () => {
+    for (const s of ['total', 'count', 'average', 'name', 'newest', 'oldest'] as const) {
+      const g = byDay(inside, s);
+      expect(g.reduce((a, d) => a + d.total, 0)).toBe(3630);
+      expect(g.every((d) => d.rows.every((x) => x.ts.startsWith(d.day)))).toBe(true);
+    }
+  });
+
+  it('categories can be ordered by when they were last or first used', () => {
+    const rows = [
+      { ...r('a', '2026-10-09T10:00:00', 10), category: 'Food' },
+      { ...r('b', '2026-10-01T10:00:00', 10), category: 'Food' },
+      { ...r('c', '2026-10-05T10:00:00', 999), category: 'Fuel' },
+    ];
+    expect(exploreCategories(rows, { scope: 'spend', sort: 'newest' }).groups.map((g) => g.category)).toEqual(['Food', 'Fuel']);
+    expect(exploreCategories(rows, { scope: 'spend', sort: 'oldest' }).groups.map((g) => g.category)).toEqual(['Food', 'Fuel']);
+    expect(exploreCategories(rows, { scope: 'spend', sort: 'total' }).groups.map((g) => g.category)).toEqual(['Fuel', 'Food']);
+  });
+});
