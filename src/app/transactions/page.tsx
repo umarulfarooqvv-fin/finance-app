@@ -1,11 +1,10 @@
 import Link from 'next/link';
 import { currentSnapshot } from '@/lib/views';
-import { listCaptures, photosByTransaction } from '@/lib/captures';
-import { readCaptureDrafts } from '@/lib/capture-drafts';
-import { readCapturePlaces } from '@/lib/capture-places';
+import { photosByTransaction } from '@/lib/captures';
 import { loadPlaces } from '@/lib/places';
-import { draftEntries, type DraftEntry } from '@/lib/draft-entries';
-import { bankMethodsFrom } from '@/lib/bank-methods';
+import type { DraftEntry } from '@/lib/draft-entries';
+import { autoAddedForPage, autoAddOn, loadDrafts, photoEntries } from '@/lib/draft-auto';
+import { PhotoEntries } from '@/components/photo-entries';
 import { DraftEntries } from './draft-entries';
 import { photoNoticesForPage } from '@/lib/photo-check';
 import { tagNames } from '@/lib/tag-summary';
@@ -21,6 +20,10 @@ import { FilterBar } from './filter-bar';
 import { TransactionsClient, type DayGroup, type Row } from './transactions-client';
 
 export const dynamic = 'force-dynamic';
+/* For the server actions on this page: adding a backlog of photo drafts
+   (autoAddDraftsAction) took about three seconds a row against the remote
+   database, and its batches must not be cut off half-way. */
+export const maxDuration = 60;
 
 /* Whole days per page, never a split one. A day header states that day's
    total, and a total computed from half a day is simply a wrong number on
@@ -45,8 +48,10 @@ export default async function TransactionsPage({
   /* All three at once. A correction made moments ago makes the notices drop
      the cached snapshot, and currentSnapshot then loads again — so the rows
      still include it. Usually nothing is dropped and the warm one is reused. */
-  const [{ corrections, questions }, , photos] = await Promise.all([
+  const [{ corrections, questions }, autoAdded, , photos] = await Promise.all([
     photoNoticesForPage(),
+    // Entries made from photos without being asked — never quiet.
+    autoAddedForPage(),
     getSnapshot(),
     photosByTransaction(),
   ]);
@@ -57,25 +62,18 @@ export default async function TransactionsPage({
 
   const f = readFilters(sp);
 
-  /* Rows the AI read off inbox photos, offered as drafts at the top of the
-     first page — only when nothing is filtered, since a filter describes the
-     ledger and a draft is not in it yet. A missing captures table (the
-     migration not run) just means no drafts. */
+  /* Rows the AI read off inbox photos. Most are made into entries by
+     themselves; what is listed at the top of the first page is what was held
+     back for a person — only when nothing is filtered, since a filter
+     describes the ledger and a draft is not in it yet. */
   let drafts: DraftEntry[] = [];
+  let stale = 0;
   if (f.page === 1 && !f.deleted && !isNarrowed(f)) {
-    const [pending, readings, places] = await Promise.all([
-      listCaptures('pending').catch(() => []),
-      readCaptureDrafts(),
-      readCapturePlaces(),
-    ]);
-    drafts = draftEntries(
-      pending.map((c) => ({ id: c.id, ts: c.ts, bytes: c.bytes })),
-      readings,
-      bankMethodsFrom(snap.config),
-      snap.transactions,
-      places,
-    );
+    const loaded = await loadDrafts(snap, today);
+    drafts = loaded.drafts;
+    stale = loaded.stale.length;
   }
+  const fromPhotos = photoEntries(snap, autoAdded);
   const matched = applyFilters(snap.transactions, f, now).sort((a, b) => (a.ts! < b.ts! ? 1 : -1));
 
   // Group first, then page over whole days.
@@ -150,7 +148,9 @@ export default async function TransactionsPage({
 
       <PhotoCorrections corrections={corrections} questions={questions} />
 
-      <DraftEntries drafts={drafts} defaultTs={nowIST()} />
+      <PhotoEntries {...fromPhotos} />
+
+      <DraftEntries drafts={drafts} defaultTs={nowIST()} auto={autoAddOn()} stale={stale} />
 
       {/* Search, filters and New entry live INSIDE this panel now, in a bar
           frozen to the top of it — they were a separate panel above, which

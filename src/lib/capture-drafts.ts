@@ -168,25 +168,39 @@ export function withoutRow(text: string, raw: string): string {
 }
 
 /**
- * One row of a photo became an entry: cut it from the reading and remember
- * the entry. Returns what is left to read, and the first entry made, so the
- * caller can retire the photo once nothing is left.
+ * Rows of photos became entries: cut each from its reading and remember the
+ * entry. One read-modify-write however many rows, because adding a backlog
+ * row by row would be that many chances for two writes to cross. Returns, per
+ * photo touched, what is left to read and the first entry it made, so the
+ * caller can retire a photo once nothing is left.
  */
+export async function consumeDraftRows(
+  rows: { captureId: string; raw: string; tx: string }[],
+): Promise<Record<string, { remaining: string; firstTx: string }>> {
+  const out: Record<string, { remaining: string; firstTx: string }> = {};
+  if (rows.length === 0) return out;
+  await updateConfigKey<CaptureDrafts>(KEY, (current) => {
+    const next = { ...current };
+    for (const { captureId, raw, tx } of rows) {
+      const d = next[captureId];
+      if (!d?.text) continue;
+      const remaining = withoutRow(d.text, raw);
+      const added = [...(d.added ?? []), { raw, tx }];
+      out[captureId] = { remaining, firstTx: added[0]!.tx };
+      next[captureId] = { ...d, text: remaining, added };
+    }
+    return next;
+  });
+  return out;
+}
+
+/** One row — see consumeDraftRows. */
 export async function consumeDraftRow(
   captureId: string,
   raw: string,
   tx: string,
 ): Promise<{ remaining: string; firstTx: string } | null> {
-  let out: { remaining: string; firstTx: string } | null = null;
-  await updateConfigKey<CaptureDrafts>(KEY, (current) => {
-    const d = current[captureId];
-    if (!d?.text) return current;
-    const remaining = withoutRow(d.text, raw);
-    const added = [...(d.added ?? []), { raw, tx }];
-    out = { remaining, firstTx: added[0]!.tx };
-    return { ...current, [captureId]: { ...d, text: remaining, added } };
-  });
-  return out;
+  return (await consumeDraftRows([{ captureId, raw, tx }]))[captureId] ?? null;
 }
 
 /** Stop listing one row on Entries. Nothing else changes. */

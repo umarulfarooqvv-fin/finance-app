@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth';
 import {
   readCapture, readCaptureDrafts, saveCaptureDrafts, type CaptureDraft,
 } from '@/lib/capture-drafts';
 import { visionConfigured } from '@/lib/ai/vision';
+import { autoAddDrafts } from '@/lib/draft-auto';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -20,9 +21,9 @@ export const maxDuration = 60;
    not spend a model call on an answer it already has. `refresh` forces a
    re-read of the ones asked for.
 
-   A capture is never touched: no status change, nothing marked used. This
-   produces TEXT for /import to show, and a photo stops being "waiting" only
-   when a person turns it into an entry.
+   This produces TEXT. A fresh reading is then handed to lib/draft-auto, which
+   makes entries of the rows it safely can — as it does for a photo read on
+   arrival — and leaves the rest waiting for a person.
    =========================================================================== */
 
 const MAX_IDS = 8;
@@ -62,6 +63,13 @@ export async function POST(req: Request): Promise<Response> {
 
   // One write for the batch rather than one per photo.
   await saveCaptureDrafts(fresh);
+
+  // Photos read late (a limit lifted, a retry) become entries like any other.
+  if (Object.values(fresh).some((d) => d.text)) {
+    after(() => autoAddDrafts({ actor: 'photo-auto', via: auth.ctx.via }).catch((err) => {
+      console.error('[photo-auto]', err instanceof Error ? err.message : err);
+    }));
+  }
 
   return NextResponse.json({ ok: true, drafts });
 }

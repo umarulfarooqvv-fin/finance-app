@@ -22,6 +22,12 @@ import { ALL_CATEGORIES, ALL_METHODS } from '@/lib/types';
    and confirmed; nothing here writes.
    =========================================================================== */
 
+/* The moment the prompt shows as an example of how to write one. A model
+   with no date to read sometimes copies it — three stored readings carry
+   exactly this minute — so a row dated this is treated as undated wherever a
+   reading is acted on without a person (lib/draft-entries). */
+export const PROMPT_EXAMPLE_WHEN = { text: '22/09/2026 15:11', day: '2026-09-22', time: '15:11:00' };
+
 const CATEGORIES = ALL_CATEGORIES.join(', ');
 const METHODS = ALL_METHODS.join(', ');
 
@@ -39,7 +45,7 @@ Rules:
   that went OUT.
 - Leave out money RECEIVED — refunds, cashback, payments made to you. This
   list is for spending; money coming in is recorded separately.
-- Give the time in 24-hour form after the date ("22/09/2026 15:11") when the
+- Give the time in 24-hour form after the date ("${PROMPT_EXAMPLE_WHEN.text}") when the
   screenshot shows one; write the date alone when it does not. Never make up
   a time.
 - Many payment screens print a date with no year ("September 22"). Do not

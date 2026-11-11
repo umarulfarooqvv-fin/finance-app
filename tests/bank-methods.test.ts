@@ -64,6 +64,12 @@ describe('resolveMethod', () => {
     expect(resolveMethod('utkarsh xx24', MAPPING)).toBe('Super Money');
   });
 
+  it('reads an account masked with dots or stars, as a payment screen prints it', () => {
+    expect(resolveMethod('FEDERAL BANK ••2788', MAPPING)).toBe('Fi');
+    expect(resolveMethod('Federal Bank **2788', MAPPING)).toBe('Fi');
+    expect(resolveMethod('Federal CC ••16', MAPPING)).toBe('Scapia');
+  });
+
   /* "I do not know" has to be a possible answer: a wrong method moves money
      onto the wrong card and nothing afterwards looks wrong. */
   it('returns null rather than guessing', () => {

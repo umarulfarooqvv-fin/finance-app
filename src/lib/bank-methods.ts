@@ -41,9 +41,10 @@ export function bankMethodsFrom(config: Record<string, unknown>): BankMethods {
   return out;
 }
 
-/** "Federal 2788" → "Federal"; "CSB XX06" → "CSB". Empty when there is no tail. */
+/** "Federal 2788" → "Federal"; "CSB XX06" → "CSB". Empty when there is no tail.
+    The mask may be dots or stars instead of X: "FEDERAL BANK ••2788". */
 function withoutAccount(label: string): string {
-  return label.replace(/\s*(?:XX)?[\dX]{2,}\s*$/i, '').trim();
+  return label.replace(/\s*(?:XX)?[\dX•●·*]{2,}\s*$/i, '').trim();
 }
 
 /** "Federal CC XX16" → "Federal XX16": the words that say what KIND of account
@@ -138,6 +139,6 @@ export function resolveMethod(raw: string, mapping: BankMethods): string | null 
 
 /** The digits an account label shows: "XXXXXXXXXX2788" → "2788", "XX16" → "16". */
 function accountDigits(label: string): string {
-  const tail = /(?:XX)?[\dX]{2,}\s*$/i.exec(label.trim())?.[0] ?? '';
+  const tail = /(?:XX)?[\dX•●·*]{2,}\s*$/i.exec(label.trim())?.[0] ?? '';
   return tail.replace(/\D/g, '');
 }

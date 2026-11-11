@@ -10,6 +10,8 @@ import { getSnapshot } from '@/lib/snapshot';
 import { EditEntryButton } from '@/components/entry/entry-editor';
 import { TagChips } from '@/components/entry/tag-input';
 import { PhotoCorrections } from '@/components/photo-corrections';
+import { PhotoEntries } from '@/components/photo-entries';
+import { autoAddedForPage, photoEntries } from '@/lib/draft-auto';
 import { Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
 import { SpanSelect } from '@/components/today/span-select';
 import { InfoTip } from '@/components/ui/info-tip';
@@ -62,7 +64,7 @@ export default async function TodayPage({
      ago makes photoNoticesForPage drop the cached snapshot, and then
      currentSnapshot below loads again — so the balances still include it. In
      the usual case nothing was dropped and the warmed snapshot is reused. */
-  const [{ corrections, questions }] = await Promise.all([photoNoticesForPage(), getSnapshot()]);
+  const [{ corrections, questions }, autoAdded] = await Promise.all([photoNoticesForPage(), autoAddedForPage(), getSnapshot()]);
   const { snap, today } = await currentSnapshot();
   // Both go through the cached selectors: forecast() calls statementView()
   // internally, so without the dedupe the engine would run twice per render.
@@ -108,6 +110,9 @@ export default async function TodayPage({
       {/* Here too: this is the page opened first, and a card balance just
           changed because of a photo. */}
       <PhotoCorrections corrections={corrections} questions={questions} />
+
+      {/* And entries made from photos without being asked. */}
+      <PhotoEntries {...photoEntries(snap, autoAdded)} />
 
       {empty ? (
         <Panel>

@@ -40,6 +40,16 @@
       ],
       "port": 3002,
       "autoPort": true
+    },
+    {
+      "name": "next-dev-open-noauto",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "APP_ACCESS_KEY= PHOTO_AUTO_ADD=off npm run dev"
+      ],
+      "port": 3003,
+      "autoPort": true
     }
   ]
 }

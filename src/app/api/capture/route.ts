@@ -1,6 +1,7 @@
 import { after, NextResponse } from 'next/server';
 import { insertCapture } from '@/lib/captures';
 import { readCaptureIntoDraft } from '@/lib/capture-drafts';
+import { autoAddDrafts } from '@/lib/draft-auto';
 import {
   deleteObject, extensionFor, idFromBytes, isAllowedImage, MAX_IMAGE_BYTES, putObject,
   sniffImage, storageConfigured,
@@ -231,6 +232,11 @@ export async function POST(req: Request): Promise<Response> {
     after(async () => {
       try {
         await readCaptureIntoDraft(id);
+        /* And made into an entry at once, when the rules allow it — never a
+           row that looks like one already on file (lib/draft-entries). The
+           owner asked for this: a draft waiting for a tap was a draft
+           forgotten. What it adds is listed on Today and Entries. */
+        await autoAddDrafts({ actor: 'photo-auto', via: 'ingest-token' });
       } catch (err) {
         console.error('[capture-draft]', id, err instanceof Error ? err.message : err);
       }

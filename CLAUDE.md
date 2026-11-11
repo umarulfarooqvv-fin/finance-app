@@ -230,26 +230,47 @@ Two separate paths, with different requirements:
   `src/lib/capture-drafts.ts` stores each reading in `app_config` under
   `capture_drafts` (no migration, and a photo's bytes are immutable so its
   reading is too), pruned when the capture is used or discarded.
-  **The reading never becomes an entry by itself.** It is text handed to
-  `/import` via `sessionStorage` (`lib/import-handoff`), which still demands
-  the same read-and-confirm as a paste. Only a clean import (nothing refused)
-  retires the source photos, via `retireCapturesAction`. A one-row reading
-  also fills the inbox's single-entry form (`lib/capture-entry`), with the
-  photo shown in its Photo field and linked on save. A read date is trusted
-  only within 45 days before the photo; an invented year is replaced with the
-  photo's own, because payment screens print "September 22" with none.
-  The same readings are also offered on **Entries as drafts**
-  (`lib/draft-entries`, `transactions/draft-entries.tsx`): dashed, marked
-  "Draft", in no total. A capture may carry where it was taken (`lat`/`lon`
+  Opened in the inbox, a reading is text handed to `/import` via
+  `sessionStorage` (`lib/import-handoff`), with the same read-and-confirm as
+  a paste; only a clean import (nothing refused) retires the source photos,
+  via `retireCapturesAction`. A one-row reading also fills the inbox's
+  single-entry form (`lib/capture-entry`), with the photo shown in its Photo
+  field and linked on save. A read date is trusted only within 45 days before
+  the photo; an invented year is replaced with the photo's own, because
+  payment screens print "September 22" with none.
+  **A reading's rows become entries WITHOUT BEING ASKED** — the second
+  deliberate exception below, asked for by the owner because drafts waiting
+  for a tap were piling up unadded. `lib/draft-entries` (pure) gives every
+  row a verdict; `lib/draft-auto` does the writing, right after a photo is
+  read (`/api/capture`, `/api/inbox/convert`) and from Entries for anything
+  still waiting (`autoAddDraftsAction`, a few rows per call).
+  `PHOTO_AUTO_ADD=off` turns it off. A row is added with whatever was read —
+  a blank category or payment is allowed (`gapErrors`), saved with source
+  `photo`, and listed on Today and Entries as needing that detail until it
+  is filled (`components/photo-entries`, `fillEntryAction`, which fills only
+  a blank field). A row is HELD, never added, when: an entry on file has the
+  same amount at the same moment (10 min) with no other card named, or the
+  same day and a shared word where one side has no real time — a certain
+  duplicate; ANY other entry of that amount that day — a possible one; the
+  date was not trusted (including the prompt's own example moment, which
+  models copy out — `PROMPT_EXAMPLE_WHEN`); or neither payment nor category
+  was read. Drafts are judged oldest first and each one added counts for the
+  next, so two photos of one payment make one entry. Held rows are what
+  Entries still lists as drafts (`transactions/draft-entries.tsx`), each with
+  its reason: **Same entry** puts the row away and links the photo to the
+  entry it matched (`sameEntryAction`, the twin re-derived on the server),
+  **Add anyway** saves it, **Finish** opens the ordinary form. Every entry
+  added this way is kept in `photo_auto` (`app_config`) and shown until "OK".
+  A capture may carry where it was taken (`lat`/`lon`
   or `location`, optional `place`; `x-lat`/`x-lon`/`x-place` headers beside a
   raw photo — `lib/place`), kept as `capture_places` in `app_config`
   and shown on each draft with a Google Maps link; it survives the photo becoming an
   entry (which takes the place — `placeFromPhoto`) and goes when the photo is
-  discarded. **Add** saves the row as READ — the server finds it
+  discarded. Whoever adds a row — the app or a tap — the server finds it
   again in the stored reading (`draft-actions`), never trusting the browser's
-  values — and only when amount, method and category are all known; anything
-  less opens the ordinary form ("Finish"). Each row added is cut out of the
-  reading at once (`consumeDraftRow`), so the inbox cannot offer it again, and
+  values, and the entry's id comes from the photo and the row (`draftKey`),
+  so a second pass finds the same entry. Each row added is cut out of the
+  reading at once (`consumeDraftRows`), so the inbox cannot offer it again, and
   the photo is linked to the first entry when no row is left. "Hide" only
   takes it off Entries (`hidden` on the draft); the photo stays in the inbox.
   The provider's allowance (`x-ratelimit-*` headers, a 429's own wording) is
@@ -263,13 +284,19 @@ Two separate paths, with different requirements:
   before that are converted when served and when read. Image URLs go through
   `captureSrc()`, versioned, because the route caches as immutable.
 
-None of the three paths write. Each produces a draft that a person confirms,
-because speech recognition mishears numbers routinely, a guessed payment
-method silently moves debt onto the wrong card, and a photo misread the same
-way is just as capable of filing an entry under the wrong wallet.
+Voice never writes: it produces a draft that a person confirms, because
+speech recognition mishears numbers routinely and a guessed payment method
+silently moves debt onto the wrong card. A photo's reading NEVER GUESSES a
+field either — what it could not read stays blank — but it is acted on
+without a person in two places, both asked for by the owner, both listed on
+Today and Entries until acknowledged. Automatic is acceptable only because
+it is never silent; keep it that way.
 
-**One deliberate exception, asked for by the owner: correcting an entry from
-its attached photo.** When a photo is attached to an entry (`/api/entry`,
+**The first: a row read off an inbox photo becomes an entry** — described
+above (`lib/draft-auto`), and never when it looks like an entry already on
+file.
+
+**The second: correcting an entry from its attached photo.** When a photo is attached to an entry (`/api/entry`,
 `/api/capture/attach`, or `/api/photo-check` for older ones), `lib/photo-check`
 reads it after the reply and may move the entry to another CARD
 (`reassignMethod`) and/or another TIME (`retimeTransaction`).
