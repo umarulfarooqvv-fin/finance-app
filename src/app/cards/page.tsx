@@ -3,6 +3,8 @@ import { cardsView, currentSnapshot } from '@/lib/views';
 import type { StatementRow } from '@/lib/statement';
 import { formatDay, relativeDays } from '@/lib/time';
 import { money, percent } from '@/lib/format';
+import { billPayers } from '@/lib/bill-pay';
+import { MarkBillPaid } from '@/components/mark-bill-paid';
 import { Page, PageHeader } from '@/components/layout/page-header';
 import {
   Badge, Dot, Empty, Meter, Money, Panel, Stat, StatGrid, TableWrap, Td, Th,
@@ -28,7 +30,7 @@ function StatusCell({ row }: { row: StatementRow }) {
 }
 
 export default async function CardsPage() {
-  const { today } = await currentSnapshot();
+  const { snap, today } = await currentSnapshot();
   const { rows, totals } = await cardsView();
 
   return (
@@ -75,13 +77,14 @@ export default async function CardsPage() {
           <Empty title="No active cards" hint="Add a card in settings to start tracking statements." />
         ) : (
           <div className="p-4 sm:p-5">
-            <TableWrap minWidth={760} stickyFirst>
+            <TableWrap minWidth={840} stickyFirst>
               <thead>
                 <tr>
                   <Th sticky>Card</Th>
                   <Th>Statement</Th>
                   <Th>Due</Th>
                   <Th align="right">Bill due</Th>
+                  <Th><span className="sr-only">Pay the bill</span></Th>
                   <Th align="right">Unbilled</Th>
                   <Th align="right">Total (live)</Th>
                   <Th align="right">Excl. credit</Th>
@@ -109,6 +112,10 @@ export default async function CardsPage() {
                     </Td>
                     <Td align="right">
                       <Money value={row.remainingDueBill} size="sm" />
+                    </Td>
+                    {/* Right beside what is due — the end of the row is off-screen on a phone. */}
+                    <Td>
+                      <MarkBillPaid card={row.card} due={row.remainingDueBill} payers={billPayers(snap.transactions, row.card)} compact />
                     </Td>
                     <Td align="right">
                       <Money value={row.unbilled} size="sm" tone="muted" />
@@ -138,6 +145,7 @@ export default async function CardsPage() {
                   <Td align="right">
                     <Money value={totals.remainingDueBill} size="sm" className="font-semibold" />
                   </Td>
+                  <Td />
                   <Td align="right">
                     <Money value={totals.unbilled} size="sm" className="font-semibold" />
                   </Td>

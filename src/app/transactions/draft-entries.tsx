@@ -200,7 +200,8 @@ export function DraftEntries({
                       </div>
                       <div className="truncate text-[11px] text-[var(--color-ink-3)]">
                         {d.ts.slice(11, 16)} ·{' '}
-                        {d.category || <span className="text-[var(--color-warn)]">needs a category</span>} ·{' '}
+                        {d.category || <span className="text-[var(--color-warn)]">needs a category</span>}
+                        {d.ruled ? <span className="text-[var(--color-accent)]" title={`From your rule “${d.ruled}”`}> (your rule)</span> : null} ·{' '}
                         {d.method || <span className="text-[var(--color-warn)]">needs a payment</span>}
                       </div>
                       {d.duplicateOf ? (

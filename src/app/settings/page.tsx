@@ -5,6 +5,9 @@ import { Page, PageHeader } from '@/components/layout/page-header';
 import { Panel, SectionTitle } from '@/components/ui/primitives';
 import { AccountSettings, CardSettings } from './settings-client';
 import { BankMethodSettings } from './bank-methods-client';
+import { CategoryRuleSettings } from './category-rules-client';
+import { rulesFrom } from '@/lib/category-rules';
+import { PICKABLE_CATEGORIES } from '@/lib/payee-hint';
 import { bankMethodsFrom } from '@/lib/bank-methods';
 import { ALL_METHODS } from '@/lib/types';
 import { TABS_COOKIE, TABS_MODE_COOKIE } from '@/lib/nav-sections';
@@ -67,6 +70,21 @@ export default async function SettingsPage() {
           bank is the normal case here, and a label that could mean two of them is reported as
           unknown rather than guessed &mdash; a wrong method moves money onto the wrong card, and
           nothing afterwards looks wrong.
+        </p>
+      </Panel>
+
+      <Panel className="mt-4 scroll-mt-4" as="section">
+        <span id="category-rules" />
+        <SectionTitle>Categories by name</SectionTitle>
+        <p className="mb-3 text-xs text-[var(--color-ink-2)]">
+          A photo of a payment to a person or a UPI id cannot say what it was for, so it arrives with
+          no category. Say it once here: when the name contains these words, use this category.
+        </p>
+        <CategoryRuleSettings rules={rulesFrom(snap.config)} categories={PICKABLE_CATEGORIES} />
+        <p className="mt-3 text-[11px] text-[var(--color-ink-3)]">
+          Whole words, capitals ignored: &ldquo;bakery&rdquo; covers &ldquo;K K Bakery Coolbar&rdquo;.
+          When two rules match, the one with more words wins. A rule only fills a BLANK category on an
+          entry from a photo &mdash; it never changes one the photo showed or you chose.
         </p>
       </Panel>
 

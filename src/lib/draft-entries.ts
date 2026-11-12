@@ -1,4 +1,5 @@
 import { parseImport } from '@/lib/import-parse';
+import { ruleFor, type CategoryRule } from '@/lib/category-rules';
 import { PROMPT_EXAMPLE_WHEN } from '@/lib/import-prompt';
 import { dateFromReading } from '@/lib/capture-entry';
 import { foldForSearch } from '@/lib/search-text';
@@ -79,6 +80,8 @@ export type DraftEntry = {
   bytes: number;
   /** Where the phone was when the photo was taken, if the Shortcut sent it. */
   place: Place | null;
+  /** The owner's rule that gave the category (lib/category-rules), if one did. */
+  ruled: string | null;
 };
 
 export type Reading = { text?: string; hidden?: string[] };
@@ -144,6 +147,8 @@ export function draftEntries(
   places: Record<string, Place> = {},
   /** IST date, for the "too far ahead" rule a saved entry must pass. */
   today: string = '9990-01-01',
+  /** The owner's "these words are this category" rules; fill a blank only. */
+  rules: CategoryRule[] = [],
 ): DraftEntry[] {
   // What a row is compared against: every live entry, then each draft that
   // will itself be added — two photos of one payment must not become two.
@@ -166,6 +171,8 @@ export function draftEntries(
       const amount = row.amount > 0 ? row.amount : null;
       // The prompt's own example moment, copied out instead of a date read.
       const parroted = row.day === PROMPT_EXAMPLE_WHEN.day && row.time === PROMPT_EXAMPLE_WHEN.time;
+      const rule = row.category ? null : ruleFor(row.remarks, rules);
+      const category = row.category || rule?.category || '';
       pending.push({
         key: `${c.id}\u0000${row.raw}`,
         captureId: c.id,
@@ -173,10 +180,10 @@ export function draftEntries(
         ts: dated.ts,
         amount,
         method: row.method,
-        category: row.category,
+        category,
         remarks: row.remarks,
         tags: row.tags,
-        complete: amount != null && Boolean(row.method) && Boolean(row.category),
+        complete: amount != null && Boolean(row.method) && Boolean(category),
         dateNote: parroted
           ? 'This date is the example the AI was shown, not one it read'
           : dated.yearCorrected
@@ -186,6 +193,7 @@ export function draftEntries(
             : null,
         bytes: c.bytes,
         place: places[c.id] ?? null,
+        ruled: rule?.words ?? null,
         // A time printed on the screen, or the photo's own moment that day.
         timed: row.time !== null || dated.ts === c.ts,
         dateDoubtful: dated.dateDoubtful || parroted,

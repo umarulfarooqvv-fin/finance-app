@@ -1,16 +1,20 @@
 import 'server-only';
-import { listCaptures, markUsed } from '@/lib/captures';
+import { listCaptures, markUsed, photosByTransaction } from '@/lib/captures';
 import { consumeDraftRows, forgetCaptureDrafts, readCaptureDrafts, withoutRow } from '@/lib/capture-drafts';
 import { readCapturePlaces } from '@/lib/capture-places';
-import { draftEntries, entryInput, needingDetail, type DraftEntry, type Reading } from '@/lib/draft-entries';
+import { draftEntries, entryInput, gapErrors, needingDetail, type DraftEntry, type Reading } from '@/lib/draft-entries';
 import { bankMethodsFrom } from '@/lib/bank-methods';
 import { parseImport } from '@/lib/import-parse';
-import { createTransaction, idFromKey } from '@/lib/transactions';
-import { placeFromPhoto } from '@/lib/places';
+import { payeeHint, type PayeeHint } from '@/lib/payee-hint';
+import { createTransaction, idFromKey, updateTransaction } from '@/lib/transactions';
+import { ruleFor, rulesFrom, type CategoryRule } from '@/lib/category-rules';
+import { joinTags } from '@/lib/user-tags';
+import { loadPlaces, placeFromPhoto, type PlaceMap } from '@/lib/places';
 import { getSnapshot, invalidateSnapshot } from '@/lib/snapshot';
 import { readConfigKey, writeConfigKey } from '@/lib/config';
 import { addSeconds, dayOf, nowIST } from '@/lib/time';
 import type { Actor } from '@/lib/auth';
+import type { Place } from '@/lib/place';
 import type { Snapshot, Transaction } from '@/lib/types';
 
 /* ===========================================================================
@@ -45,7 +49,10 @@ const LOG = 'photo_auto';
 /** A backlog's worth; anything older has been seen or is on Entries anyway. */
 const KEEP = 200;
 
-export type AutoAdded = { tx: string; at: string };
+/** One entry made here. `capture` is the photo it was read off; `seen` is set
+    by "OK" — kept rather than dropped, so the photo can still be shown beside
+    an entry that needs a detail. */
+export type AutoAdded = { tx: string; at: string; capture?: string; seen?: boolean; rule?: string };
 
 export function autoAddOn(): boolean {
   return (process.env.PHOTO_AUTO_ADD ?? '').trim().toLowerCase() !== 'off';
@@ -54,7 +61,7 @@ export function autoAddOn(): boolean {
 /** The idempotency key of the entry a draft row becomes — by hand or not. */
 export const draftKey = (captureId: string, raw: string) => `draft:${captureId}:${raw}`;
 
-type RowDone = { captureId: string; raw: string; tx: string };
+type RowDone = { captureId: string; raw: string; tx: string; rule?: string | null };
 
 /**
  * The drafts as they stand, and `stale`: rows whose entry already exists (a
@@ -88,7 +95,7 @@ export async function loadDrafts(snap: Snapshot, today: string): Promise<{ draft
 
   const drafts = draftEntries(
     pending.map((c) => ({ id: c.id, ts: c.ts, bytes: c.bytes })),
-    readings, bankMethods, snap.transactions, places, today,
+    readings, bankMethods, snap.transactions, places, today, rulesFrom(snap.config),
   );
   return { drafts, stale };
 }
@@ -133,7 +140,7 @@ export async function autoAddDrafts(ctx: Actor, limit = 50): Promise<{ added: nu
       );
       // Spent where the photo was taken.
       await placeFromPhoto(d.captureId, [id], ctx.actor);
-      done.push({ captureId: d.captureId, raw: d.raw, tx: id });
+      done.push({ captureId: d.captureId, raw: d.raw, tx: id, rule: d.ruled });
     } catch (err) {
       // One row failing costs that row, which simply stays a draft.
       console.error('[photo-auto]', d.captureId, err instanceof Error ? err.message : err);
@@ -141,7 +148,7 @@ export async function autoAddDrafts(ctx: Actor, limit = 50): Promise<{ added: nu
   }
 
   if (done.length || loaded.stale.length) await retireRows([...loaded.stale, ...done], ctx);
-  if (done.length) await rememberAdded(done.map((r) => r.tx));
+  if (done.length) await rememberAdded(done);
   invalidateSnapshot();
   return { added: done.length, left: todo.length - batch.length };
 }
@@ -154,15 +161,20 @@ export async function readAutoAdded(): Promise<AutoAdded[]> {
   }
 }
 
-async function rememberAdded(ids: string[]): Promise<void> {
+async function rememberAdded(rows: RowDone[]): Promise<void> {
   const at = nowIST();
-  const list = (await readAutoAdded()).filter((x) => !ids.includes(x.tx));
-  await writeConfigKey(LOG, [...ids.map((tx) => ({ tx, at })), ...list].slice(0, KEEP));
+  const ids = new Set(rows.map((r) => r.tx));
+  const list = (await readAutoAdded()).filter((x) => !ids.has(x.tx));
+  await writeConfigKey(LOG, [
+    ...rows.map((r) => ({ tx: r.tx, at, capture: r.captureId, ...(r.rule ? { rule: r.rule } : {}) })),
+    ...list,
+  ].slice(0, KEEP));
 }
 
 /** "OK, seen." Entries still missing a detail stay listed until completed. */
 export async function clearAutoAdded(): Promise<void> {
-  await writeConfigKey(LOG, []);
+  const list = await readAutoAdded();
+  await writeConfigKey(LOG, list.map((x) => ({ ...x, seen: true })));
 }
 
 /**
@@ -180,10 +192,54 @@ export async function autoAddedForPage(): Promise<AutoAdded[]> {
 
 export type PhotoEntryRow = {
   id: string; ts: string; amount: number; method: string; category: string; remarks: string;
+  /** The capture it was read off — what to look at to decide a category. */
+  photo: string | null;
+  /** Where it was spent, from the entry or else from its photo. */
+  place: Place | null;
+  /** What earlier entries to the same name were filed under — offered, never filled. */
+  hint: PayeeHint | null;
+  /** The owner's rule that set its category, when one did. */
+  rule: string | null;
 };
 
-const strip = (t: Transaction): PhotoEntryRow => ({
+/** Entry id -> the photo it came from, and entry id -> where it was spent. */
+export type PhotoLinks = { photos: Record<string, string>; places: PlaceMap };
+
+/**
+ * Which photo each entry was read off, from every record that says so: the
+ * log kept here, the photo a used capture names (the first entry it made),
+ * and the rows already cut from a photo still in the inbox. A place comes
+ * from the entry, or failing that from its photo.
+ */
+export async function photoLinks(
+  snap: Snapshot,
+  log: AutoAdded[],
+  loaded: { used?: Map<string, string>; places?: PlaceMap } = {},
+): Promise<PhotoLinks> {
+  const [used, readings, places, capturePlaces] = await Promise.all([
+    loaded.used ?? photosByTransaction(),
+    readCaptureDrafts().catch(() => ({})),
+    loaded.places ?? loadPlaces(snap.version),
+    readCapturePlaces().catch(() => ({})),
+  ]);
+  const photos: Record<string, string> = {};
+  for (const [cid, r] of Object.entries(readings)) for (const a of r.added ?? []) photos[a.tx] = cid;
+  for (const [tx, cid] of used) photos[tx] = cid;
+  for (const x of log) if (x.capture) photos[x.tx] = x.capture;
+
+  const where: PlaceMap = {};
+  for (const [tx, cid] of Object.entries(photos)) {
+    const p = places[tx] ?? (capturePlaces as Record<string, Place>)[cid];
+    if (p) where[tx] = p;
+  }
+  return { photos, places: where };
+}
+
+const strip = (links: PhotoLinks, ruled: Map<string, string>, all?: Transaction[]) => (t: Transaction): PhotoEntryRow => ({
   id: t.id, ts: t.ts!, amount: t.amount ?? 0, method: t.method, category: t.category, remarks: t.remarks,
+  photo: links.photos[t.id] ?? null, place: links.places[t.id] ?? null,
+  hint: all ? payeeHint(t, all) : null,
+  rule: ruled.get(t.id) ?? null,
 });
 
 /**
@@ -191,11 +247,52 @@ const strip = (t: Transaction): PhotoEntryRow => ({
  * or a category (until they are completed), and the rest of what was added
  * since the list was last acknowledged.
  */
-export function photoEntries(snap: Snapshot, log: AutoAdded[]): { needs: PhotoEntryRow[]; added: PhotoEntryRow[]; unseen: number } {
+export function photoEntries(
+  snap: Snapshot,
+  log: AutoAdded[],
+  links: PhotoLinks = { photos: {}, places: {} },
+): { needs: PhotoEntryRow[]; added: PhotoEntryRow[]; unseen: number } {
   const needs = needingDetail(snap.transactions, PHOTO_SOURCE);
   const needy = new Set(needs.map((t) => t.id));
-  const logged = new Set(log.map((x) => x.tx));
+  const logged = new Set(log.filter((x) => !x.seen).map((x) => x.tx));
   const live = snap.transactions.filter((t) => logged.has(t.id) && !t.deleted && t.ts);
   const added = live.filter((t) => !needy.has(t.id)).sort((a, b) => (a.ts! < b.ts! ? 1 : -1));
-  return { needs: needs.map(strip), added: added.map(strip), unseen: live.length };
+  const ruled = new Map(log.filter((x) => x.rule).map((x) => [x.tx, x.rule!]));
+  return {
+    needs: needs.map(strip(links, ruled, snap.transactions)),
+    added: added.map(strip(links, ruled)),
+    unseen: live.length,
+  };
+}
+
+/**
+ * A rule was just saved: give every photo entry still waiting for its
+ * category the one the rules now say. Fills a blank only — a category a
+ * person chose is never changed by a rule saved afterwards. Returns how many
+ * entries were filled; each is noted in the log as set by that rule.
+ */
+export async function fillFromRules(rules: CategoryRule[], ctx: Actor): Promise<number> {
+  if (rules.length === 0) return 0;
+  const today = dayOf(nowIST());
+  const snap = await getSnapshot({ force: true });
+  const filled: { tx: string; rule: string }[] = [];
+  for (const t of needingDetail(snap.transactions, PHOTO_SOURCE)) {
+    if (t.category.trim()) continue;
+    const rule = ruleFor(t.remarks, rules);
+    if (!rule) continue;
+    const next = {
+      amount: t.amount, ts: t.ts!, method: t.method, category: rule.category,
+      remarks: joinTags(t.remarks, t.userTags),
+    };
+    if (gapErrors(next, today)) continue;
+    await updateTransaction(t.id, next, ctx);
+    filled.push({ tx: t.id, rule: rule.words });
+  }
+  if (filled.length) {
+    const by = new Map(filled.map((f) => [f.tx, f.rule]));
+    const list = await readAutoAdded();
+    await writeConfigKey(LOG, list.map((x) => (by.has(x.tx) ? { ...x, rule: by.get(x.tx)! } : x)));
+    invalidateSnapshot();
+  }
+  return filled.length;
 }

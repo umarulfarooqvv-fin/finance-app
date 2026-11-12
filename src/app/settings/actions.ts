@@ -3,6 +3,8 @@
 import { guardedAction, MONEY_PATHS } from '@/lib/actions';
 import { writeConfigKey } from '@/lib/config';
 import { ALL_METHODS } from '@/lib/types';
+import { RULES_KEY, ruleErrors, type CategoryRule } from '@/lib/category-rules';
+import { fillFromRules } from '@/lib/draft-auto';
 import type { FieldErrors } from '@/lib/action-result';
 import { currentSnapshot } from '@/lib/views';
 import { saveAccountSettings, saveCardSettings } from '@/lib/settings';
@@ -92,5 +94,29 @@ export const saveBankMethodsAction = guardedAction(
     for (const [label, method] of Object.entries(input.mapping)) clean[label.trim()] = method;
     await writeConfigKey('bank_methods', clean);
     return clean;
+  },
+);
+
+/* ===========================================================================
+   The owner's category rules: "a name containing these words is this
+   category" (lib/category-rules). Stored whole, like the bank mapping, so a
+   removed line is removed. Saving also fills photo entries still waiting for
+   a category that a rule now covers — never one that already has one.
+   =========================================================================== */
+
+export const saveCategoryRulesAction = guardedAction(
+  {
+    name: 'settings.category-rules.save',
+    revalidate: [...REVALIDATE, '/transactions'],
+    validate: (input: { rules: CategoryRule[] }): FieldErrors | null => {
+      if (!Array.isArray(input.rules)) return { rules: 'Nothing to save.' };
+      const problem = ruleErrors(input.rules);
+      return problem ? { rules: problem } : null;
+    },
+  },
+  async (input, ctx) => {
+    const clean = input.rules.map((r) => ({ words: r.words.trim(), category: r.category }));
+    await writeConfigKey(RULES_KEY, clean);
+    return { saved: clean.length, filled: await fillFromRules(clean, ctx) };
   },
 );

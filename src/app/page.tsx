@@ -11,7 +11,9 @@ import { EditEntryButton } from '@/components/entry/entry-editor';
 import { TagChips } from '@/components/entry/tag-input';
 import { PhotoCorrections } from '@/components/photo-corrections';
 import { PhotoEntries } from '@/components/photo-entries';
-import { autoAddedForPage, photoEntries } from '@/lib/draft-auto';
+import { autoAddedForPage, photoEntries, photoLinks } from '@/lib/draft-auto';
+import { billPayers } from '@/lib/bill-pay';
+import { MarkBillPaid } from '@/components/mark-bill-paid';
 import { Badge, Dot, Empty, Meter, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
 import { SpanSelect } from '@/components/today/span-select';
 import { InfoTip } from '@/components/ui/info-tip';
@@ -68,7 +70,7 @@ export default async function TodayPage({
   const { snap, today } = await currentSnapshot();
   // Both go through the cached selectors: forecast() calls statementView()
   // internally, so without the dedupe the engine would run twice per render.
-  const [view, fc] = await Promise.all([cardsView(), forecastView()]);
+  const [view, fc, links] = await Promise.all([cardsView(), forecastView(), photoLinks(snap, autoAdded)]);
   const month = monthSummary(snap, today);
   const prior = priorWindow(snap, today);
   const recent = recentActivity(snap, today, 6);
@@ -112,7 +114,7 @@ export default async function TodayPage({
       <PhotoCorrections corrections={corrections} questions={questions} />
 
       {/* And entries made from photos without being asked. */}
-      <PhotoEntries {...photoEntries(snap, autoAdded)} />
+      <PhotoEntries {...photoEntries(snap, autoAdded, links)} />
 
       {empty ? (
         <Panel>
@@ -266,32 +268,37 @@ export default async function TodayPage({
           <SectionTitle>Needs attention</SectionTitle>
           <div className="flex flex-col gap-2">
             {needsAction.map((row) => (
-              <Link
+              /* The row opens the card; the button beside it pays the bill.
+                 Siblings, not nested — a dialog opened from inside a link
+                 would send every click in it to the card page. */
+              <div
                 key={row.card}
-                href={`/cards/${encodeURIComponent(row.card)}`}
                 className={cx(
-                  'flex items-center gap-3 rounded-[var(--radius-card)] border px-4 py-3 transition-colors',
+                  'flex items-center gap-3 rounded-[var(--radius-card)] border pr-3 transition-colors',
                   row.status === 'overdue'
                     ? 'border-transparent bg-[var(--color-neg-soft)]'
                     : 'border-transparent bg-[var(--color-warn-soft)]',
                 )}
               >
-                <Dot color={row.color} size={10} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold">{row.card}</div>
-                  <div className="text-xs text-[var(--color-ink-2)]">
-                    {row.status === 'overdue'
-                      ? `Was due ${formatDay(row.cycle.dueDate)}`
-                      : `Due ${formatDay(row.cycle.dueDate)} · ${relativeDays(row.daysLeft)}`}
+                <Link href={`/cards/${encodeURIComponent(row.card)}`} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4">
+                  <Dot color={row.color} size={10} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold">{row.card}</div>
+                    <div className="text-xs text-[var(--color-ink-2)]">
+                      {row.status === 'overdue'
+                        ? `Was due ${formatDay(row.cycle.dueDate)}`
+                        : `Due ${formatDay(row.cycle.dueDate)} · ${relativeDays(row.daysLeft)}`}
+                    </div>
                   </div>
-                </div>
-                <Money
-                  value={row.remainingDueBill}
-                  size="md"
-                  tone={row.status === 'overdue' ? 'debt' : 'neutral'}
-                  className="font-semibold"
-                />
-              </Link>
+                  <Money
+                    value={row.remainingDueBill}
+                    size="md"
+                    tone={row.status === 'overdue' ? 'debt' : 'neutral'}
+                    className="font-semibold"
+                  />
+                </Link>
+                <MarkBillPaid card={row.card} due={row.remainingDueBill} payers={billPayers(snap.transactions, row.card)} />
+              </div>
             ))}
           </div>
         </section>

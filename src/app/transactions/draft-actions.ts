@@ -12,8 +12,10 @@ import { placeFromPhoto } from '@/lib/places';
 import { joinTags } from '@/lib/user-tags';
 import { entryInput, gapErrors } from '@/lib/draft-entries';
 import {
-  autoAddDrafts, clearAutoAdded, draftKey, loadDrafts, PHOTO_SOURCE, retireRows,
+  autoAddDrafts, clearAutoAdded, draftKey, fillFromRules, loadDrafts, PHOTO_SOURCE, retireRows,
 } from '@/lib/draft-auto';
+import { RULES_KEY, ruleErrors, ruleFor, rulesFrom, withRule } from '@/lib/category-rules';
+import { readConfigKey, writeConfigKey } from '@/lib/config';
 import { getSnapshot } from '@/lib/snapshot';
 import { ALL_CATEGORIES, ALL_METHODS } from '@/lib/types';
 import type { Actor } from '@/lib/auth';
@@ -81,8 +83,11 @@ export const addDraftEntryAction = guardedAction(
       .find((x) => x.raw === input.raw);
     if (!row) throw new Error('This draft has already been dealt with.');
 
+    // A blank category takes the owner's rule for the name, as it would have
+    // had it been added by itself.
+    const category = row.category || ruleFor(row.remarks, rulesFrom(snap.config))?.category || '';
     const entry = entryInput({
-      amount: row.amount, method: row.method, category: row.category, remarks: row.remarks, tags: row.tags,
+      amount: row.amount, method: row.method, category, remarks: row.remarks, tags: row.tags,
       ts: dateFromReading(row.day, row.time, capture.ts).ts,
     });
     const errors = gapErrors(entry, today);
@@ -174,5 +179,29 @@ export const fillEntryAction = guardedAction(
     const errors = gapErrors(next, today);
     if (errors) throw new Error(Object.values(errors)[0] ?? 'Invalid entry.');
     return updateTransaction(t.id, next, ctx);
+  },
+);
+
+/**
+ * "Always for this name": save a rule that a name containing these words is
+ * this category, then fill every photo entry still waiting whose name it
+ * matches — the one the person was looking at included. A rule with the same
+ * words is replaced, not duplicated.
+ */
+export const addCategoryRuleAction = guardedAction(
+  {
+    name: 'category-rule.add',
+    revalidate: [...REVALIDATE, '/settings'],
+    validate: (i: { words: string; category: string }): FieldErrors | null => {
+      const problem = ruleErrors([{ words: i.words, category: i.category }]);
+      return problem ? { words: problem } : null;
+    },
+  },
+  async (input, ctx) => {
+    const { snap } = await currentSnapshot();
+    const fresh = (await readConfigKey<unknown>(RULES_KEY)) ?? snap.config[RULES_KEY];
+    const rules = withRule(rulesFrom({ [RULES_KEY]: fresh }), { words: input.words, category: input.category });
+    await writeConfigKey(RULES_KEY, rules);
+    return { filled: await fillFromRules(rules, ctx) };
   },
 );

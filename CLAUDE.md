@@ -134,6 +134,16 @@ per-request dedupe.
   date, that day was never billed, so this cycle starts **on** it, not after it.
   No day may fall between two statements; a tiling invariant test asserts this.
 
+### Marking a card bill as paid
+
+**Mark as paid** on Today's "Needs attention" and beside each bill on Cards
+(`components/mark-bill-paid`) asks only which account paid, the one this
+card was last paid from already chosen (`lib/bill-pay`'s `billPayers`), with
+the amount set to what is due (editable for a part payment) and the time now.
+It saves an ordinary entry through `createTransactionAction` — method = the
+account, category = the card, remarks "<Card> bill" — which `classify` reads
+as `card_payment`, and the statement view applies it to the bill first.
+
 ### Marking a lending as paid back
 
 The statement report lists every lending on a bill with its status from the
@@ -248,8 +258,10 @@ Two separate paths, with different requirements:
   a blank category or payment is allowed (`gapErrors`), saved with source
   `photo`, and listed on Today and Entries as needing that detail until it
   is filled (`components/photo-entries`, `fillEntryAction`, which fills only
-  a blank field). A row is HELD, never added, when: an entry on file has the
-  same amount at the same moment (10 min) with no other card named, or the
+  a blank field), each shown with its photo and where it was spent
+  (`photoLinks`: the log's `capture`, the used capture, the reading's
+  `added`). A row is HELD, never added, when: an entry on file has the same
+  amount at the same moment (10 min) with no other card named, or the
   same day and a shared word where one side has no real time — a certain
   duplicate; ANY other entry of that amount that day — a possible one; the
   date was not trusted (including the prompt's own example moment, which
@@ -260,7 +272,18 @@ Two separate paths, with different requirements:
   its reason: **Same entry** puts the row away and links the photo to the
   entry it matched (`sameEntryAction`, the twin re-derived on the server),
   **Add anyway** saves it, **Finish** opens the ordinary form. Every entry
-  added this way is kept in `photo_auto` (`app_config`) and shown until "OK".
+  added this way is kept in `photo_auto` (`app_config`, with its photo) and
+  shown until "OK", which marks it seen rather than dropping it.
+  **Categories by name.** A payment to a person or a UPI id cannot say what
+  it was for, so it arrives with no category. Two helps, both filling a BLANK
+  only: `lib/payee-hint` offers what earlier entries to the same name were
+  filed under ("Family · as before", one tap — never filled by itself), and
+  `lib/category-rules` holds the owner's own rules (`category_rules` in
+  `app_config`: whole words in the name → a category; more words wins),
+  edited on Settings or by ticking "Always" on the list. A rule is applied
+  to rows as they are read (`draftEntries`'s `rules`), to "Add anyway", and,
+  when saved, to photo entries still waiting (`fillFromRules`). An entry
+  categorised by a rule says so ("by your rule …", `rule` in `photo_auto`).
   A capture may carry where it was taken (`lat`/`lon`
   or `location`, optional `place`; `x-lat`/`x-lon`/`x-place` headers beside a
   raw photo — `lib/place`), kept as `capture_places` in `app_config`

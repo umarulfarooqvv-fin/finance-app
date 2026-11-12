@@ -3,7 +3,7 @@ import { currentSnapshot } from '@/lib/views';
 import { photosByTransaction } from '@/lib/captures';
 import { loadPlaces } from '@/lib/places';
 import type { DraftEntry } from '@/lib/draft-entries';
-import { autoAddedForPage, autoAddOn, loadDrafts, photoEntries } from '@/lib/draft-auto';
+import { autoAddedForPage, autoAddOn, loadDrafts, photoEntries, photoLinks } from '@/lib/draft-auto';
 import { PhotoEntries } from '@/components/photo-entries';
 import { DraftEntries } from './draft-entries';
 import { photoNoticesForPage } from '@/lib/photo-check';
@@ -73,7 +73,7 @@ export default async function TransactionsPage({
     drafts = loaded.drafts;
     stale = loaded.stale.length;
   }
-  const fromPhotos = photoEntries(snap, autoAdded);
+  const fromPhotos = photoEntries(snap, autoAdded, await photoLinks(snap, autoAdded, { used: photos, places }));
   const matched = applyFilters(snap.transactions, f, now).sort((a, b) => (a.ts! < b.ts! ? 1 : -1));
 
   // Group first, then page over whole days.
