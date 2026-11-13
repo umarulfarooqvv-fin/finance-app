@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, BellRing, BookOpen, Camera, CreditCard, Home, LineChart, Map as MapIcon, MessageCircleQuestion, Scale, ScanLine, Search, Settings, Sheet, Smartphone, Tag, TrendingUp, Upload, Wallet, type LucideIcon,
+  ArrowLeftRight, BellRing, Users, BookOpen, Camera, CreditCard, Home, LineChart, Map as MapIcon, MessageCircleQuestion, Scale, ScanLine, Search, Settings, Sheet, Smartphone, Tag, TrendingUp, Upload, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 /* ===========================================================================
@@ -143,6 +143,15 @@ export const NAV_SECTIONS: NavSection[] = [
                    'debt', 'people'],
         match: ['/ledgers'],
         primary: true,
+      },
+      {
+        label: 'Family',
+        href: '/family',
+        icon: Users,
+        hint: 'Family costs shared with brothers: who paid, each share',
+        keywords: ['family', 'brother', 'brothers', 'share', 'split', 'car', 'contribution',
+                   'uppa', 'hospital', 'sister', 'pool'],
+        match: ['/family'],
       },
     ],
   },

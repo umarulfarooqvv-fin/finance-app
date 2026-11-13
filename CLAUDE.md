@@ -134,6 +134,19 @@ per-request dedupe.
   date, that day was never billed, so this cycle starts **on** it, not after it.
   No day may fall between two statements; a tiling invariant test asserts this.
 
+### Family costs shared between brothers
+
+`/family` (`lib/family`, pure; `app/family`). People in the split, each with
+the day they joined, and cost groups of two kinds: **shared** (each payment
+split equally among whoever was in the split that day) and **pledge** (a
+fixed amount a month each from a start date — the car, ₹5,000). The
+owner's payments are ledger entries found by a group's tags or whole words
+(`matchesGroup`; a wrong match is left out via `exclude`); a brother's are
+typed in on the page. Everything is in `family` in `app_config` — nothing on
+the page changes the ledger. A group can be kept out of the summary
+(`inTotal`, e.g. Uppa's hospital). Until saved, the page shows `FAMILY_START`
+as a suggestion.
+
 ### Marking a card bill as paid
 
 **Mark as paid** on Today's "Needs attention" and beside each bill on Cards
