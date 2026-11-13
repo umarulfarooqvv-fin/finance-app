@@ -147,6 +147,26 @@ the page changes the ledger. A group can be kept out of the summary
 (`inTotal`, e.g. Uppa's hospital). Until saved, the page shows `FAMILY_START`
 as a suggestion.
 
+### Splitting with friends
+
+`/splits` (`lib/splits`, pure; `app/splits`). A split is one occasion — a
+trip, a meal out — with the owner (`ME`) and friends. Each expense is shared
+equally among the people it was for (`among`, everyone by default); the
+owner's are ledger entries found by the split's tag or words (reusing
+`matchesGroup`, with `exclude`), friends' are typed in. `settleUp` gives the
+fewest payments that settle everyone. **Settle** records one as received,
+or **written off** (`kind: 'writeoff'` — never coming back, shown as the
+owner's loss). The owner's Credit Given entries — how he logs paying for the
+group first — can be picked in one by one (`include`). All in `splits` in
+`app_config`; the page itself never changes the ledger.
+
+**From a Shortcut: `/api/share`** (INGEST_TOKEN, PIN-exempt). GET lists the
+names for the Shortcut's menus; POST adds a family payment or a split expense
+by name (`lib/share-intake`). A brother's or friend's payment goes on the page
+only; the OWNER's is money that left his account, so it becomes an entry — a
+Family entry tagged with the group's name (a group always takes entries
+tagged with its own name), or a Credit Given entry picked into the split.
+
 ### Marking a card bill as paid
 
 **Mark as paid** on Today's "Needs attention" and beside each bill on Cards

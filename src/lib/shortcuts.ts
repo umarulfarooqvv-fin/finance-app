@@ -28,7 +28,7 @@ export type RecipeStep = {
 };
 
 export type Recipe = {
-  slug: 'spend' | 'income' | 'photo' | 'voice' | 'dictate';
+  slug: 'spend' | 'income' | 'photo' | 'voice' | 'dictate' | 'family' | 'split';
   title: string;
   /** One line on what it is for, in the user's terms. */
   why: string;
@@ -228,6 +228,71 @@ export const RECIPES: Recipe[] = [
     notes: [
       'Lands in the Inbox as a draft exactly like a voice note, to check and add.',
       'English only: the iPhone has no Malayalam dictation. For Malayalam, use Speak a spend.',
+    ],
+  },
+
+  {
+    slug: 'family',
+    title: 'Family: add a payment',
+    why: 'Car share, Uppa’s hospital, any family cost — who paid it, in three taps. It lands on the Family page.',
+    path: '/api/share',
+    contentType: 'application/json',
+    example: '{"to":"family","group":"Car","by":"Ikka","amount":"5000","note":"November"}',
+    fields: [
+      { name: 'to', required: true, note: 'The word "family".' },
+      { name: 'group', required: true, note: 'The cost, as named on the Family page — Car, Uppa’s hospital…' },
+      { name: 'by', required: true, note: '"Me", or a brother’s name as on the Family page.' },
+      { name: 'amount', required: true, note: 'Digits.' },
+      { name: 'method', required: false, note: 'Only when by is Me: what you paid with — Fi, Cash… It also becomes an entry in your ledger.' },
+      { name: 'note', required: false, note: 'A few words.' },
+      { name: 'day', required: false, note: '"2026-11-13". Defaults to today.' },
+    ],
+    steps: [
+      { action: 'Get Contents of URL', detail: 'GET the address below with the x-token header — it returns your groups and people' },
+      { action: 'Get Dictionary Value', detail: '"family" → "groups", then Choose from List — "Which cost?"' },
+      { action: 'Get Dictionary Value', detail: '"family" → "people", then Choose from List — "Who paid?"' },
+      { action: 'Ask for Input', detail: 'Number — "How much?"' },
+      { action: 'Get Contents of URL', detail: 'POST, JSON: to = family, group, by, amount (add method when it was you)' },
+      { action: 'Show Notification', detail: 'with Get Dictionary Value "message" from the reply' },
+    ],
+    notes: [
+      'A brother’s payment is kept on the Family page only — your accounts do not change.',
+      'When by is Me, the money left YOUR account, so it is saved as an ordinary Family entry from the method you send, tagged with the group’s name — the group finds it by that tag.',
+      'The menus come from the app each time, so a new brother or a new cost appears in the Shortcut without editing it.',
+      'The same payment sent twice within a minute is saved once.',
+    ],
+  },
+
+  {
+    slug: 'split',
+    title: 'Splits: add to a trip or meal',
+    why: 'Who paid what on a trip or dinner out, from the table. It lands in the split on the Splits page.',
+    path: '/api/share',
+    contentType: 'application/json',
+    example: '{"to":"split","split":"Wayanad trip","by":"Ashiq","amount":"600","note":"Room"}',
+    fields: [
+      { name: 'to', required: true, note: 'The word "split".' },
+      { name: 'split', required: false, note: 'Its name on the Splits page. Left out: the newest split.' },
+      { name: 'by', required: true, note: '"Me", or a friend’s name in that split.' },
+      { name: 'amount', required: true, note: 'Digits.' },
+      { name: 'method', required: false, note: 'Needed when by is Me — what you paid with. Saved as a Credit Given entry and added to the split.' },
+      { name: 'note', required: false, note: 'What for — dinner, fuel, room.' },
+      { name: 'day', required: false, note: '"2026-11-13". Defaults to today.' },
+    ],
+    steps: [
+      { action: 'Get Contents of URL', detail: 'GET the address below with the x-token header — it returns your splits and who is in each' },
+      { action: 'Get Dictionary Value', detail: '"splits", then Choose from List on each item’s "name" — "Which split?"' },
+      { action: 'Choose from List', detail: 'that split’s "people" — "Who paid?"' },
+      { action: 'Ask for Input', detail: 'Number — "How much?", then Text — "What for?"' },
+      { action: 'If', detail: 'Who paid is Me → Choose from Menu: Fi, Scapia, Cash… for method' },
+      { action: 'Get Contents of URL', detail: 'POST, JSON: to = split, split, by, amount, note (and method when it was you)' },
+      { action: 'Show Notification', detail: 'with Get Dictionary Value "message" from the reply' },
+    ],
+    notes: [
+      'A friend’s payment is kept in the split only. Yours is money that left your account, so it is saved as a Credit Given entry — the way you already log paying for the group — and picked into the split for you.',
+      'A quicker version for the usual case: skip the split menu and leave split out — it goes to the newest split.',
+      'Each expense is shared equally by everyone in the split; to share one among only some people, edit it on the Splits page.',
+      'The same payment sent twice within a minute is saved once.',
     ],
   },
 ];

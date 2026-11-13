@@ -179,6 +179,11 @@ test('the retired v2 endpoints are no longer holes in the lock', async () => {
   }
 });
 
+test('the family and split Shortcuts reach /api/share, which checks its own token', async () => {
+  assert.ok(passedThrough(await proxy(req('/api/share'))), 'shares must be reachable from the phone');
+  assert.equal(passedThrough(await proxy(req('/api/share/anything'))), false);
+});
+
 test('the voice Shortcut reaches /api/voice, which checks its own token', async () => {
   assert.ok(passedThrough(await proxy(req('/api/voice'))), 'voice notes must be reachable from the phone');
   // Exact: nothing below it is exempted by accident.

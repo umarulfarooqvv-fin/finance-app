@@ -29,7 +29,7 @@ export default async function ShortcutsPage() {
     <Page>
       <PageHeader
         title="iPhone Shortcuts"
-        subtitle="Three ways to get something in without opening the app"
+        subtitle="Ways to get something in without opening the app"
       />
 
       <Panel className="mb-4">

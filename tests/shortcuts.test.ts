@@ -25,6 +25,9 @@ const captureRoute = source('capture/route.ts');
 const voiceRoute = source('voice/route.ts');
 // Location keys are read by lib/place on behalf of any route that calls it.
 const placeLib = readFileSync(fileURLToPath(new URL('../src/lib/place.ts', import.meta.url)), 'utf8');
+const shareRoute =
+  readFileSync(fileURLToPath(new URL('../src/app/api/share/route.ts', import.meta.url)), 'utf8')
+  + readFileSync(fileURLToPath(new URL('../src/lib/share-intake.ts', import.meta.url)), 'utf8');
 const readsKey = (src: string, name: string) =>
   src.includes(`'${name}'`) || src.includes(`"${name}"`)
   || (src.includes('parsePlace(') && src.includes('`x-${k}`') && placeLib.includes(`'${name}'`));
@@ -34,6 +37,8 @@ test('every field a recipe documents is actually read by its route', () => {
     '/api/entry': entryRoute,
     '/api/capture': captureRoute,
     '/api/voice?format=text': voiceRoute,
+    // The route hands the body to lib/share-intake, which reads the names.
+    '/api/share': shareRoute,
   };
 
   for (const r of RECIPES) {

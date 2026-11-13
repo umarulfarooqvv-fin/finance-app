@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, BellRing, Users, BookOpen, Camera, CreditCard, Home, LineChart, Map as MapIcon, MessageCircleQuestion, Scale, ScanLine, Search, Settings, Sheet, Smartphone, Tag, TrendingUp, Upload, Wallet, type LucideIcon,
+  ArrowLeftRight, BellRing, Users, Split, BookOpen, Camera, CreditCard, Home, LineChart, Map as MapIcon, MessageCircleQuestion, Scale, ScanLine, Search, Settings, Sheet, Smartphone, Tag, TrendingUp, Upload, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 /* ===========================================================================
@@ -152,6 +152,14 @@ export const NAV_SECTIONS: NavSection[] = [
         keywords: ['family', 'brother', 'brothers', 'share', 'split', 'car', 'contribution',
                    'uppa', 'hospital', 'sister', 'pool'],
         match: ['/family'],
+      },
+      {
+        label: 'Splits',
+        href: '/splits',
+        icon: Split,
+        hint: 'Trips and meals with friends: who paid, who pays whom',
+        keywords: ['split', 'friends', 'trip', 'share', 'settle', 'who owes', 'dinner', 'outing', 'splitwise'],
+        match: ['/splits'],
       },
     ],
   },

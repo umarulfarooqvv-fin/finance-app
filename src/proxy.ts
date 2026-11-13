@@ -61,8 +61,11 @@ const PUBLIC_PATHS = [
 
     /api/voice takes a voice note or dictated words from a Shortcut and checks
     INGEST_TOKEN itself, the same way. Exact, so nothing added below it later
-    is exempted by accident. */
-const PUBLIC_EXACT = ['/api/capture', '/api/voice'];
+    is exempted by accident.
+
+    /api/share adds a family payment or a split expense from a Shortcut, and
+    checks INGEST_TOKEN itself, like the two above. */
+const PUBLIC_EXACT = ['/api/capture', '/api/voice', '/api/share'];
 
 const COOKIE = 'app_session';
 const YEAR = 60 * 60 * 24 * 365;

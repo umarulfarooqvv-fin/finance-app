@@ -143,6 +143,12 @@ export function matchesGroup(t: Pick<Transaction, 'remarks' | 'userTags'>, group
   });
 }
 
+/** An entry tagged with the group's own name belongs to it — what the Shortcut sends. Tag only: "Car" as a word would catch "Car fuel". */
+export function taggedWith(t: Pick<Transaction, 'userTags'>, name: string): boolean {
+  const key = name.trim().toLowerCase();
+  return key !== '' && t.userTags.some((x) => x.trim().toLowerCase() === key);
+}
+
 export type FamilyRow = {
   /** The entry's id, or the typed payment's. */
   id: string;
@@ -196,7 +202,7 @@ function groupView(snap: Snapshot, cfg: FamilyConfig, group: FamilyGroup, today:
   if (me) {
     for (const t of snap.transactions) {
       if (t.deleted || !t.ts || t.amount == null || excluded.has(t.id)) continue;
-      if (!matchesGroup(t, group)) continue;
+      if (!matchesGroup(t, group) && !taggedWith(t, group.name)) continue;
       rows.push({ id: t.id, day: t.ts.slice(0, 10), amount: t.amount, member: me.id, note: t.remarks || t.category, from: 'ledger' });
     }
   }
