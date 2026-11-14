@@ -389,7 +389,11 @@ statement or voice note), and the photo an entry came from. A nameless place
 is named from OpenStreetMap Nominatim in `after()` (`lib/geocode`; only the
 two numbers are sent). Shown on each Entries row, in the form, and on `/map`
 (Leaflet + OSM tiles, one pin per place — `lib/map-pins`, spend by the usual
-definition).
+definition). Under the map, **Where you spend** (`lib/place-analytics`): spend
+by AREA (the locality at the end of a place's name), each area's main
+categories, the biggest located purchases — and how much of the period's
+spend has a location at all (all time counts from the first located entry),
+with a pointer to adding location to the Shortcut when that share is low.
 
 ## Conventions
 

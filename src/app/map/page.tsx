@@ -3,9 +3,10 @@ import { MapPin } from 'lucide-react';
 import { currentSnapshot } from '@/lib/views';
 import { loadPlaces } from '@/lib/places';
 import { mapPins, placedMonths } from '@/lib/map-pins';
-import { formatMonth, monthKey } from '@/lib/time';
+import { placeAnalytics } from '@/lib/place-analytics';
+import { formatDay, formatMonth, monthKey } from '@/lib/time';
 import { Page, PageHeader } from '@/components/layout/page-header';
-import { Empty, Money, Panel, cx } from '@/components/ui/primitives';
+import { Empty, Money, Panel, SectionTitle, cx } from '@/components/ui/primitives';
 import { MapClient } from './map-client';
 
 export const dynamic = 'force-dynamic';
@@ -35,6 +36,8 @@ export default async function MapPage({ searchParams }: { searchParams: Params }
       : months.includes(monthKey(today)) ? monthKey(today) : null;
 
   const pins = mapPins(snap.transactions, places, month);
+  const where = placeAnalytics(snap.transactions, places, month);
+  const seen = where.coverage.spent > 0 ? where.coverage.placedSpent / where.coverage.spent : 0;
   const placed = pins.reduce((a, p) => a + p.count, 0);
 
   const chip = (label: string, m: string, on: boolean) => (
@@ -74,6 +77,61 @@ export default async function MapPage({ searchParams }: { searchParams: Params }
           </div>
 
           <MapClient pins={pins} />
+
+          {/* Where the money goes, by area — and how much of it is on the map at all. */}
+          <Panel className="mt-4">
+            <SectionTitle>Where you spend</SectionTitle>
+            <p className="text-xs text-[var(--color-ink-2)]">
+              <Money value={where.coverage.placedSpent} size="sm" /> of <Money value={where.coverage.spent} size="sm" /> spent
+              {month ? ` in ${formatMonth(month)}` : where.coverage.since ? ` since ${formatDay(where.coverage.since.slice(0, 10))}` : ''} has a location
+              {' '}({Math.round(seen * 100)}%, {where.coverage.placedCount} of {where.coverage.count} entries).
+            </p>
+            {seen < 0.6 ? (
+              <p className="mt-1 text-[11px] text-[var(--color-ink-3)]">
+                The rest has no place, so this shows part of the picture. Add location to your Daily Spent Shortcut —{' '}
+                <Link href="/shortcuts" className="text-[var(--color-accent)]">steps on the Shortcuts page</Link> — and more of it lands here.
+              </p>
+            ) : null}
+
+            {where.areas.length ? (
+              <ul className="mt-4 flex flex-col gap-3">
+                {where.areas.slice(0, 8).map((a) => (
+                  <li key={a.area}>
+                    <div className="flex items-baseline gap-2 text-sm">
+                      <span className="sensitive min-w-0 flex-1 truncate font-medium">{a.area}</span>
+                      <span className="shrink-0 text-[11px] text-[var(--color-ink-3)]">{Math.round(a.share * 100)}%</span>
+                      <Money value={a.spent} size="sm" className="shrink-0" />
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--color-raised)]">
+                      <div className="h-full rounded-full bg-[var(--color-accent)]" style={{ width: `${Math.max(2, Math.round(a.share * 100))}%` }} />
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] text-[var(--color-ink-3)]">
+                      {a.count} {a.count === 1 ? 'entry' : 'entries'} at {a.places} {a.places === 1 ? 'place' : 'places'}
+                      {a.categories.length ? <> · mostly {a.categories.map((c) => c.category).join(', ')}</> : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {where.biggest.length ? (
+              <>
+                <h3 className="mt-5 text-[11px] font-medium uppercase tracking-wide text-[var(--color-ink-3)]">Biggest purchases on the map</h3>
+                <ul className="mt-1.5 flex flex-col">
+                  {where.biggest.map((b) => (
+                    <li key={b.id} className="flex items-center gap-3 border-b border-[var(--color-line)] py-1.5 text-xs last:border-b-0">
+                      <span className="w-16 shrink-0 text-[var(--color-ink-3)]">{formatDay(b.ts.slice(0, 10))}</span>
+                      <span className="min-w-0 flex-1 truncate">
+                        {b.remarks || b.category}
+                        <span className="sensitive text-[var(--color-ink-3)]"> · {b.where}</span>
+                      </span>
+                      <Money value={b.amount} size="sm" className="shrink-0" />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </Panel>
 
           <Panel className="mt-4" padded={false}>
             <ul>
