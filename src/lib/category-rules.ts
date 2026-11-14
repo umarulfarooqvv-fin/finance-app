@@ -62,6 +62,16 @@ export function rulesFrom(config: Record<string, unknown>): CategoryRule[] {
   return out;
 }
 
+/**
+ * The name a rule should look for, from an entry's description: the name in
+ * brackets when a rule already described it ("Tea shop (NIBRASIL HAQ P)" →
+ * "NIBRASIL HAQ P"), otherwise the description itself.
+ */
+export function ruleWords(remarks: string): string {
+  const inner = /\(([^()]+)\)\s*$/.exec(remarks.trim());
+  return (inner?.[1] ?? remarks).trim();
+}
+
 /** Problems with a list about to be saved, or null. */
 export function ruleErrors(rules: CategoryRule[]): string | null {
   const seen = new Set<string>();

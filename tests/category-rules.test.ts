@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { described, ruleErrors, ruleFor, rulesFrom, withRule } from '@/lib/category-rules';
+import { described, ruleErrors, ruleFor, rulesFrom, ruleWords, withRule } from '@/lib/category-rules';
 import { payeeHint, payeeKey } from '@/lib/payee-hint';
 import { draftEntries } from '@/lib/draft-entries';
 import type { Transaction } from '@/lib/types';
@@ -75,6 +75,11 @@ describe('a rule that also remembers what to call it', () => {
     expect(described('Tea shop (NIBRASIL HAQ P)', tea)).toBe('Tea shop (NIBRASIL HAQ P)');
     expect(described('NIBRASIL HAQ P', { description: '' })).toBe('NIBRASIL HAQ P');
     expect(described('NIBRASIL HAQ P', null)).toBe('NIBRASIL HAQ P');
+  });
+
+  it('a rule made from an entry looks for the name it came with, not the description', () => {
+    expect(ruleWords('MUHAMMED SUHAIL C H')).toBe('MUHAMMED SUHAIL C H');
+    expect(ruleWords('Tea shop (NIBRASIL HAQ P)')).toBe('NIBRASIL HAQ P');
   });
 
   it('the described name still matches the rule next time', () => {

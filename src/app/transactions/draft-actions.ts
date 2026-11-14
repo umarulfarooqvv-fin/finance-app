@@ -15,6 +15,7 @@ import {
   autoAddDrafts, clearAutoAdded, draftKey, fillFromRules, loadDrafts, PHOTO_SOURCE, retireRows,
 } from '@/lib/draft-auto';
 import { described, RULES_KEY, ruleErrors, ruleFor, rulesFrom, withRule } from '@/lib/category-rules';
+import { payeeKey } from '@/lib/payee-hint';
 import { readConfigKey, writeConfigKey } from '@/lib/config';
 import { getSnapshot } from '@/lib/snapshot';
 import { ALL_CATEGORIES, ALL_METHODS } from '@/lib/types';
@@ -202,7 +203,13 @@ export const addCategoryRuleAction = guardedAction(
   async (input, ctx) => {
     const { snap } = await currentSnapshot();
     const fresh = (await readConfigKey<unknown>(RULES_KEY)) ?? snap.config[RULES_KEY];
-    const rules = withRule(rulesFrom({ [RULES_KEY]: fresh }), { words: input.words, category: input.category, ...(input.description?.trim() ? { description: input.description.trim() } : {}) });
+    const existing = rulesFrom({ [RULES_KEY]: fresh });
+    /* No description sent means "remember the category only" — a description
+       remembered before for this name is kept, not wiped. */
+    const kept = input.description === undefined
+      ? existing.find((r) => payeeKey(r.words) === payeeKey(input.words))?.description
+      : input.description.trim();
+    const rules = withRule(existing, { words: input.words, category: input.category, ...(kept ? { description: kept } : {}) });
     await writeConfigKey(RULES_KEY, rules);
     return { filled: await fillFromRules(rules, ctx) };
   },

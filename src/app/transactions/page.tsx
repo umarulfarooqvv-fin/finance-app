@@ -115,6 +115,7 @@ export default async function TransactionsPage({
         category: t.category,
         remarks: t.remarks,
         tags: t.userTags,
+        source: t.source,
         kind: t.kind,
         verified: t.verified,
         deleted: t.deleted,

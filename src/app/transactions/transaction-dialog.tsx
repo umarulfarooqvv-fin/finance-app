@@ -19,6 +19,9 @@ import type { EntryPair } from '@/lib/entry-hints';
 import type { RemarkSuggestion } from '@/app/api/remarks/route';
 import { foldForSearch } from '@/lib/search-text';
 import { createTransactionAction, setPlaceAction, updateTransactionAction } from './actions';
+import { addCategoryRuleAction } from './draft-actions';
+import { ruleWords } from '@/lib/category-rules';
+import { PICKABLE_CATEGORIES } from '@/lib/payee-hint';
 import { formatPlace, mapsUrl, type Place } from '@/lib/place';
 import { PlaceAddress, usePlaceName } from '@/components/place-name';
 import { detachPhotoAction } from '@/app/inbox/actions';
@@ -55,6 +58,8 @@ export type EditableTransaction = {
   tags: string[];
   /** Where it was spent, when known. */
   place?: Place | null;
+  /** Where the entry came from — 'photo' offers to remember its category for the name. */
+  source?: string;
 };
 
 type ExistingPhoto = { id: string; bytes: number };
@@ -123,6 +128,10 @@ export function TransactionDialog({
      silently accepted: a misheard payment method moves debt onto the wrong
      card, which is the hardest error to spot weeks later. */
   const [uncertain, setUncertain] = useState<string[]>([]);
+  /* "Always" — for an entry from a photo: remember this category (and, only
+     if ticked too, this remark) for every payment to the name it came with. */
+  const [alwaysCategory, setAlwaysCategory] = useState(false);
+  const [alwaysRemark, setAlwaysRemark] = useState(false);
   const [heardAs, setHeardAs] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
 
@@ -242,6 +251,8 @@ export function TransactionDialog({
     if (!open) return;
     setErrors({});
     setUncertain([]);
+    setAlwaysCategory(false);
+    setAlwaysRemark(false);
     setHeardAs(null);
     setClientKey(crypto.randomUUID());
     setForm(
@@ -402,6 +413,10 @@ export function TransactionDialog({
     return `Spending from ${method}.`;
   }, [form]);
 
+  /* The name a payment screen showed, as the entry was opened — what a rule
+     looks for. Only for entries made from a photo: rules apply to those. */
+  const ruleName = editing?.source === 'photo' ? ruleWords(editing.remarks) : '';
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setErrors({});
@@ -428,6 +443,19 @@ export function TransactionDialog({
           return;
         }
         notify('success', 'Entry updated.');
+        if (ruleName && (alwaysCategory || alwaysRemark) && PICKABLE_CATEGORIES.includes(form.category)) {
+          // Saved after the entry, never at its expense: a rule that fails is said, the entry stands.
+          const rule = await addCategoryRuleAction({
+            words: ruleName,
+            category: form.category,
+            ...(alwaysRemark && form.remarks.trim() ? { description: form.remarks.trim() } : {}),
+          });
+          if (!rule.ok) notify('error', `Saved, but not remembered: ${rule.error}`);
+          else {
+            const others = rule.data.filled;
+            notify('success', `Every “${ruleName}” will be ${form.category}${alwaysRemark ? `, called “${form.remarks.trim()}”` : ''}${others ? ` · ${others} more filled` : ''}.`);
+          }
+        }
         if (photo) await attachPhoto(editing.id);
         if (placeTouched) await savePlace(editing.id);
       } else {
@@ -530,6 +558,13 @@ export function TransactionDialog({
                 <option key={c} value={c}>{isCard(c) ? `${c} (bill payment)` : c}</option>
               ))}
             </select>
+            {ruleName && PICKABLE_CATEGORIES.includes(form.category) ? (
+              <label className="mt-1 flex cursor-pointer items-start gap-1.5 text-[11px] text-[var(--color-ink-2)]">
+                <input type="checkbox" checked={alwaysCategory} onChange={(e) => setAlwaysCategory(e.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--color-accent)]" />
+                <span>Always {form.category} for “{ruleName}”</span>
+              </label>
+            ) : null}
           </Field>
         </div>
 
@@ -587,6 +622,16 @@ export function TransactionDialog({
               setUncertain((u) => u.filter((x) => x !== 'remarks' && x !== 'category'));
             }}
           />
+          {ruleName && PICKABLE_CATEGORIES.includes(form.category) && form.remarks.trim() && form.remarks.trim() !== editing?.remarks.trim() ? (
+            <label className="mt-1 flex cursor-pointer items-start gap-1.5 text-[11px] text-[var(--color-ink-2)]">
+              <input type="checkbox" checked={alwaysRemark} onChange={(e) => setAlwaysRemark(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--color-accent)]" />
+              <span>
+                Always call payments to “{ruleName}” this
+                {alwaysRemark ? <span className="text-[var(--color-ink-3)]"> — and file them under {form.category}</span> : <span className="text-[var(--color-ink-3)]"> — leave it off for this entry only</span>}
+              </span>
+            </label>
+          ) : null}
         </Field>
 
         <Field

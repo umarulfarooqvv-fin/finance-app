@@ -47,6 +47,7 @@ export async function loadEntryAction(id: string): Promise<ActionResult<LoadedEn
         category: t.category,
         remarks: t.remarks,
         tags: t.userTags,
+        source: t.source,
       },
     });
   }
