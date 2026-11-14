@@ -19,7 +19,7 @@ import { saveCategoryRulesAction } from './actions';
    waiting for a category that a rule now covers.
    =========================================================================== */
 
-type Line = { id: string; words: string; category: string };
+type Line = { id: string; words: string; category: string; description: string };
 
 export function CategoryRuleSettings({
   rules, categories,
@@ -30,14 +30,14 @@ export function CategoryRuleSettings({
   const router = useRouter();
   const { notify } = useToast();
   const [pending, startTransition] = useTransition();
-  const [lines, setLines] = useState<Line[]>(rules.map((r, i) => ({ id: `r${i}`, ...r })));
+  const [lines, setLines] = useState<Line[]>(rules.map((r, i) => ({ id: `r${i}`, words: r.words, category: r.category, description: r.description ?? '' })));
 
   const set = (id: string, patch: Partial<Line>) =>
     setLines((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)));
 
   function save() {
     const out = lines
-      .map((l) => ({ words: l.words.trim(), category: l.category }))
+      .map((l) => ({ words: l.words.trim(), category: l.category, ...(l.description.trim() ? { description: l.description.trim() } : {}) }))
       .filter((l) => l.words && l.category);
     startTransition(async () => {
       const result = await saveCategoryRulesAction({ rules: out });
@@ -73,6 +73,14 @@ export function CategoryRuleSettings({
               <option value="">Choose&hellip;</option>
               {categories.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
+            <input
+              value={l.description}
+              onChange={(e) => set(l.id, { description: e.target.value })}
+              placeholder="Call it (optional)"
+              maxLength={80}
+              aria-label={`Description for ${l.words || 'these words'}`}
+              className={cn(inputClass(), 'w-40 shrink-0 text-xs')}
+            />
             <Button
               variant="ghost"
               size="icon"
@@ -89,7 +97,7 @@ export function CategoryRuleSettings({
         <Button
           size="sm"
           variant="secondary"
-          onClick={() => setLines((ls) => [...ls, { id: `n${Date.now()}`, words: '', category: '' }])}
+          onClick={() => setLines((ls) => [...ls, { id: `n${Date.now()}`, words: '', category: '', description: '' }])}
         >
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
           Add a rule

@@ -7,7 +7,7 @@ import { bankMethodsFrom } from '@/lib/bank-methods';
 import { parseImport } from '@/lib/import-parse';
 import { payeeHint, type PayeeHint } from '@/lib/payee-hint';
 import { createTransaction, idFromKey, updateTransaction } from '@/lib/transactions';
-import { ruleFor, rulesFrom, type CategoryRule } from '@/lib/category-rules';
+import { described, ruleFor, rulesFrom, type CategoryRule } from '@/lib/category-rules';
 import { joinTags } from '@/lib/user-tags';
 import { loadPlaces, placeFromPhoto, type PlaceMap } from '@/lib/places';
 import { getSnapshot, invalidateSnapshot } from '@/lib/snapshot';
@@ -282,7 +282,7 @@ export async function fillFromRules(rules: CategoryRule[], ctx: Actor): Promise<
     if (!rule) continue;
     const next = {
       amount: t.amount, ts: t.ts!, method: t.method, category: rule.category,
-      remarks: joinTags(t.remarks, t.userTags),
+      remarks: joinTags(described(t.remarks, rule), t.userTags),
     };
     if (gapErrors(next, today)) continue;
     await updateTransaction(t.id, next, ctx);

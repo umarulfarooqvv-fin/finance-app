@@ -221,8 +221,8 @@ describe('adding drafts without being asked — the writes', () => {
       entry({ id: 'c', source: 'photo', category: '', remarks: 'Sandeep P' }),
     );
     db.config['photo_auto'] = [{ tx: 'a', at: NOW }];
-    expect(await fillFromRules([{ words: 'usman p p', category: 'Family' }], CTX)).toBe(1);
-    expect(db.updated).toEqual([{ id: 'a', input: expect.objectContaining({ category: 'Family' }) }]);
+    expect(await fillFromRules([{ words: 'usman p p', category: 'Family', description: 'Cousin' }], CTX)).toBe(1);
+    expect(db.updated).toEqual([{ id: 'a', input: expect.objectContaining({ category: 'Family', remarks: 'Cousin (Usman P P)' }) }]);
     expect(db.config['photo_auto']).toEqual([{ tx: 'a', at: NOW, rule: 'usman p p' }]);
   });
 });

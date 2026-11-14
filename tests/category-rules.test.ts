@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ruleErrors, ruleFor, rulesFrom, withRule } from '@/lib/category-rules';
+import { described, ruleErrors, ruleFor, rulesFrom, withRule } from '@/lib/category-rules';
 import { payeeHint, payeeKey } from '@/lib/payee-hint';
 import { draftEntries } from '@/lib/draft-entries';
 import type { Transaction } from '@/lib/types';
@@ -63,6 +63,36 @@ describe('the owner’s category rules', () => {
   it('a rule makes a row with neither payment nor category addable — the owner said what it is', () => {
     const d = draftEntries([{ id: 'p', ts: '2026-11-10T16:05:00', bytes: 1 }], { p: { text: '10/11/2026 15:22 | 36 |  |  | Usman P P' } }, {}, [], {}, '2026-11-11', rules);
     expect(d[0]!.auto).toEqual({ add: true, missing: ['method'] });
+  });
+});
+
+describe('a rule that also remembers what to call it', () => {
+  const tea = { words: 'Nibrasil Haq P', category: 'Food', description: 'Tea shop' };
+
+  it('puts the description in front and keeps the name in brackets', () => {
+    expect(described('NIBRASIL HAQ P', tea)).toBe('Tea shop (NIBRASIL HAQ P)');
+    expect(described('', tea)).toBe('Tea shop');
+    expect(described('Tea shop (NIBRASIL HAQ P)', tea)).toBe('Tea shop (NIBRASIL HAQ P)');
+    expect(described('NIBRASIL HAQ P', { description: '' })).toBe('NIBRASIL HAQ P');
+    expect(described('NIBRASIL HAQ P', null)).toBe('NIBRASIL HAQ P');
+  });
+
+  it('the described name still matches the rule next time', () => {
+    expect(ruleFor('Tea shop (NIBRASIL HAQ P)', [tea])).toEqual(tea);
+  });
+
+  it('is kept when stored and when replaced', () => {
+    expect(rulesFrom({ category_rules: [tea, { words: 'x', category: 'Food', description: '  ' }] }))
+      .toEqual([tea, { words: 'x', category: 'Food' }]);
+    expect(withRule([tea], { words: 'nibrasil haq p', category: 'Family', description: 'Uppa tea' }))
+      .toEqual([{ words: 'nibrasil haq p', category: 'Family', description: 'Uppa tea' }]);
+  });
+
+  it('a photo row takes the description even when the photo showed a category', () => {
+    const d = draftEntries([{ id: 'p', ts: '2026-11-13T20:40:00', bytes: 1 }], {
+      p: { text: '13/11/2026 20:35 | 40 | Fi | Personal | NIBRASIL HAQ P' },
+    }, {}, [], {}, '2026-11-14', [tea]);
+    expect(d[0]).toMatchObject({ category: 'Personal', remarks: 'Tea shop (NIBRASIL HAQ P)', ruled: 'Nibrasil Haq P' });
   });
 });
 

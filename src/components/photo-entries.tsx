@@ -114,6 +114,8 @@ export function PhotoEntries({
   const [zoomed, setZoomed] = useState<string | null>(null);
   // Rows where the category picked should become a rule for the name.
   const [always, setAlways] = useState<Record<string, boolean>>({});
+  // With Always: what to call payments to that name from now on (optional).
+  const [desc, setDesc] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!zoomed) return;
@@ -129,10 +131,11 @@ export function PhotoEntries({
     startTransition(async () => {
       if (field === 'category' && always[r.id] && r.remarks.trim()) {
         // A rule for the name, which fills this entry and every other one waiting.
-        const res = await addCategoryRuleAction({ words: r.remarks, category: value });
+        const description = (desc[r.id] ?? '').trim();
+        const res = await addCategoryRuleAction({ words: r.remarks, category: value, ...(description ? { description } : {}) });
         if (!res.ok) { notify('error', res.error); return; }
         const others = res.data.filled - 1;
-        notify('success', `Every “${r.remarks}” is now ${value}${others > 0 ? ` · ${others} more filled` : ''}.`);
+        notify('success', `Every “${r.remarks}” is now ${value}${description ? `, called “${description}”` : ''}${others > 0 ? ` · ${others} more filled` : ''}.`);
       } else {
         const res = await fillEntryAction({ id: r.id, [field]: value });
         if (!res.ok) { notify('error', res.error); return; }
@@ -231,6 +234,21 @@ export function PhotoEntries({
                   ) : null}
                   <EditEntryButton id={r.id} label={`Edit ${r.remarks || 'this entry'}`} />
                 </span>
+                {always[r.id] && !r.category ? (
+                  <label className="flex w-full flex-wrap items-center gap-2 text-[11px] text-[var(--color-ink-3)]">
+                    <span className="shrink-0">Call it</span>
+                    <input
+                      value={desc[r.id] ?? ''}
+                      onChange={(e) => setDesc((d) => ({ ...d, [r.id]: e.target.value }))}
+                      disabled={pending}
+                      maxLength={80}
+                      placeholder="optional — e.g. Tea shop"
+                      aria-label={`Description for every payment to ${r.remarks}`}
+                      className="h-8 min-w-0 flex-1 basis-40 rounded-[var(--radius-field)] border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs text-[var(--color-ink)]"
+                    />
+                    <span className="basis-full sm:basis-auto">then choose the category. Kept as “{(desc[r.id] ?? '').trim() || 'Tea shop'} ({r.remarks})”.</span>
+                  </label>
+                ) : null}
               </li>
             ))}
           </ul>

@@ -1,5 +1,5 @@
 import { parseImport } from '@/lib/import-parse';
-import { ruleFor, type CategoryRule } from '@/lib/category-rules';
+import { described, ruleFor, type CategoryRule } from '@/lib/category-rules';
 import { PROMPT_EXAMPLE_WHEN } from '@/lib/import-prompt';
 import { dateFromReading } from '@/lib/capture-entry';
 import { foldForSearch } from '@/lib/search-text';
@@ -171,8 +171,12 @@ export function draftEntries(
       const amount = row.amount > 0 ? row.amount : null;
       // The prompt's own example moment, copied out instead of a date read.
       const parroted = row.day === PROMPT_EXAMPLE_WHEN.day && row.time === PROMPT_EXAMPLE_WHEN.time;
-      const rule = row.category ? null : ruleFor(row.remarks, rules);
+      // The owner's rule for the name: its category fills a blank one only;
+      // its description goes in front of the name the photo showed.
+      const rule = ruleFor(row.remarks, rules);
       const category = row.category || rule?.category || '';
+      const remarks = described(row.remarks, rule);
+      const ruleUsed = rule && (!row.category || remarks !== row.remarks) ? rule : null;
       pending.push({
         key: `${c.id}\u0000${row.raw}`,
         captureId: c.id,
@@ -181,7 +185,7 @@ export function draftEntries(
         amount,
         method: row.method,
         category,
-        remarks: row.remarks,
+        remarks,
         tags: row.tags,
         complete: amount != null && Boolean(row.method) && Boolean(category),
         dateNote: parroted
@@ -193,7 +197,7 @@ export function draftEntries(
             : null,
         bytes: c.bytes,
         place: places[c.id] ?? null,
-        ruled: rule?.words ?? null,
+        ruled: ruleUsed?.words ?? null,
         // A time printed on the screen, or the photo's own moment that day.
         timed: row.time !== null || dated.ts === c.ts,
         dateDoubtful: dated.dateDoubtful || parroted,

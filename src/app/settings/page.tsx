@@ -84,7 +84,8 @@ export default async function SettingsPage() {
         <p className="mt-3 text-[11px] text-[var(--color-ink-3)]">
           Whole words, capitals ignored: &ldquo;bakery&rdquo; covers &ldquo;K K Bakery Coolbar&rdquo;.
           When two rules match, the one with more words wins. A rule only fills a BLANK category on an
-          entry from a photo &mdash; it never changes one the photo showed or you chose.
+          entry from a photo &mdash; it never changes one the photo showed or you chose. &ldquo;Call
+          it&rdquo; goes in front of the name: &ldquo;Tea shop (NIBRASIL HAQ P)&rdquo;.
         </p>
       </Panel>
 

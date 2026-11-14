@@ -14,7 +14,7 @@ import { entryInput, gapErrors } from '@/lib/draft-entries';
 import {
   autoAddDrafts, clearAutoAdded, draftKey, fillFromRules, loadDrafts, PHOTO_SOURCE, retireRows,
 } from '@/lib/draft-auto';
-import { RULES_KEY, ruleErrors, ruleFor, rulesFrom, withRule } from '@/lib/category-rules';
+import { described, RULES_KEY, ruleErrors, ruleFor, rulesFrom, withRule } from '@/lib/category-rules';
 import { readConfigKey, writeConfigKey } from '@/lib/config';
 import { getSnapshot } from '@/lib/snapshot';
 import { ALL_CATEGORIES, ALL_METHODS } from '@/lib/types';
@@ -85,9 +85,10 @@ export const addDraftEntryAction = guardedAction(
 
     // A blank category takes the owner's rule for the name, as it would have
     // had it been added by itself.
-    const category = row.category || ruleFor(row.remarks, rulesFrom(snap.config))?.category || '';
+    const rule = ruleFor(row.remarks, rulesFrom(snap.config));
+    const category = row.category || rule?.category || '';
     const entry = entryInput({
-      amount: row.amount, method: row.method, category, remarks: row.remarks, tags: row.tags,
+      amount: row.amount, method: row.method, category, remarks: described(row.remarks, rule), tags: row.tags,
       ts: dateFromReading(row.day, row.time, capture.ts).ts,
     });
     const errors = gapErrors(entry, today);
@@ -192,15 +193,16 @@ export const addCategoryRuleAction = guardedAction(
   {
     name: 'category-rule.add',
     revalidate: [...REVALIDATE, '/settings'],
-    validate: (i: { words: string; category: string }): FieldErrors | null => {
+    validate: (i: { words: string; category: string; description?: string }): FieldErrors | null => {
       const problem = ruleErrors([{ words: i.words, category: i.category }]);
-      return problem ? { words: problem } : null;
+      if (problem) return { words: problem };
+      return (i.description ?? '').length > 80 ? { description: 'Keep the description short.' } : null;
     },
   },
   async (input, ctx) => {
     const { snap } = await currentSnapshot();
     const fresh = (await readConfigKey<unknown>(RULES_KEY)) ?? snap.config[RULES_KEY];
-    const rules = withRule(rulesFrom({ [RULES_KEY]: fresh }), { words: input.words, category: input.category });
+    const rules = withRule(rulesFrom({ [RULES_KEY]: fresh }), { words: input.words, category: input.category, ...(input.description?.trim() ? { description: input.description.trim() } : {}) });
     await writeConfigKey(RULES_KEY, rules);
     return { filled: await fillFromRules(rules, ctx) };
   },

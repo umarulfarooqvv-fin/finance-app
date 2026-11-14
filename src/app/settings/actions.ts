@@ -115,7 +115,7 @@ export const saveCategoryRulesAction = guardedAction(
     },
   },
   async (input, ctx) => {
-    const clean = input.rules.map((r) => ({ words: r.words.trim(), category: r.category }));
+    const clean = input.rules.map((r) => ({ words: r.words.trim(), category: r.category, ...(r.description?.trim() ? { description: r.description.trim() } : {}) }));
     await writeConfigKey(RULES_KEY, clean);
     return { saved: clean.length, filled: await fillFromRules(clean, ctx) };
   },

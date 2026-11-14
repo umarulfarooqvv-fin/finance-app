@@ -10,7 +10,8 @@ import { payeeKey, PICKABLE_CATEGORIES } from '@/lib/payee-hint';
 
    Stored in app_config as `category_rules`, edited on Settings and from the
    "needs a detail" list. A rule FILLS A BLANK CATEGORY ONLY: it never
-   replaces one the photo showed or a person chose. It applies to rows read
+   replaces one the photo showed or a person chose. A rule may also carry a
+   DESCRIPTION, put in front of the name the photo showed (`described`). It applies to rows read
    off photos (lib/draft-entries) and, when a rule is saved, to photo entries
    still waiting for their category (lib/draft-auto: fillFromRules).
 
@@ -21,7 +22,27 @@ import { payeeKey, PICKABLE_CATEGORIES } from '@/lib/payee-hint';
    Pure: config in, rules out; text in, a rule out.
    =========================================================================== */
 
-export type CategoryRule = { words: string; category: string };
+export type CategoryRule = {
+  words: string;
+  category: string;
+  /** What to call the payment, e.g. "Tea shop" for "NIBRASIL HAQ P" — see `described`. */
+  description?: string;
+};
+
+/**
+ * The description a rule gives: its own words first, the name the payment
+ * screen showed kept after it in brackets — "Tea shop (NIBRASIL HAQ P)" — so
+ * who was paid is never lost, and the rule still finds the name next time.
+ * Unchanged when the rule has no description or it is already there.
+ */
+export function described(remarks: string, rule: Pick<CategoryRule, 'description'> | null): string {
+  const desc = rule?.description?.trim();
+  if (!desc) return remarks;
+  const name = remarks.trim();
+  if (!name) return desc;
+  if (payeeKey(name).startsWith(payeeKey(desc))) return remarks;
+  return `${desc} (${name})`;
+}
 
 export const RULES_KEY = 'category_rules';
 
@@ -32,10 +53,11 @@ export function rulesFrom(config: Record<string, unknown>): CategoryRule[] {
   const out: CategoryRule[] = [];
   for (const r of raw) {
     if (!r || typeof r !== 'object') continue;
-    const { words, category } = r as Record<string, unknown>;
+    const { words, category, description } = r as Record<string, unknown>;
     if (typeof words !== 'string' || typeof category !== 'string') continue;
     if (!payeeKey(words) || !PICKABLE_CATEGORIES.includes(category)) continue;
-    out.push({ words: words.trim(), category });
+    const desc = typeof description === 'string' ? description.trim() : '';
+    out.push({ words: words.trim(), category, ...(desc ? { description: desc } : {}) });
   }
   return out;
 }
@@ -69,8 +91,12 @@ export function ruleFor(remarks: string, rules: CategoryRule[]): CategoryRule | 
   return best?.rule ?? null;
 }
 
-/** Add a rule, or change the category of the one with the same words. */
+/** Add a rule, or change the one with the same words. */
 export function withRule(rules: CategoryRule[], rule: CategoryRule): CategoryRule[] {
   const key = payeeKey(rule.words);
-  return [...rules.filter((r) => payeeKey(r.words) !== key), { words: rule.words.trim(), category: rule.category }];
+  const desc = rule.description?.trim();
+  return [
+    ...rules.filter((r) => payeeKey(r.words) !== key),
+    { words: rule.words.trim(), category: rule.category, ...(desc ? { description: desc } : {}) },
+  ];
 }
